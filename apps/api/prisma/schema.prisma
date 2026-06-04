@@ -1,0 +1,125 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+model User {
+  id           String   @id @default(uuid())
+  email        String   @unique
+  name         String
+  passwordHash String
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+  ledgers      Ledger[]
+}
+
+model Ledger {
+  id            String        @id @default(uuid())
+  name          String
+  ownerId       String
+  serverVersion Int           @default(1)
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+  owner         User          @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  accounts      Account[]
+  categories    Category[]
+  transactions  Transaction[]
+  budgets       Budget[]
+  auditLogs     AuditLog[]
+
+  @@index([ownerId])
+}
+
+model Account {
+  id                  String        @id @default(uuid())
+  ledgerId            String
+  name                String
+  type                String
+  openingBalanceCents Int           @default(0)
+  color               String
+  version             Int           @default(1)
+  createdAt           DateTime      @default(now())
+  updatedAt           DateTime      @updatedAt
+  deletedAt           DateTime?
+  ledger              Ledger        @relation(fields: [ledgerId], references: [id], onDelete: Cascade)
+  transactions        Transaction[] @relation("TransactionAccount")
+  incomingTransfers   Transaction[] @relation("TransactionToAccount")
+
+  @@index([ledgerId])
+}
+
+model Category {
+  id           String        @id @default(uuid())
+  ledgerId     String
+  name         String
+  kind         String
+  icon         String
+  color        String
+  version      Int           @default(1)
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
+  deletedAt    DateTime?
+  ledger       Ledger        @relation(fields: [ledgerId], references: [id], onDelete: Cascade)
+  transactions Transaction[]
+  budgets      Budget[]
+
+  @@index([ledgerId])
+}
+
+model Transaction {
+  id          String    @id @default(uuid())
+  ledgerId    String
+  type        String
+  accountId   String
+  toAccountId String?
+  categoryId  String?
+  amountCents Int
+  occurredAt  DateTime
+  note        String?
+  merchant    String?
+  tags        String[]  @default([])
+  version     Int       @default(1)
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  deletedAt   DateTime?
+  ledger      Ledger    @relation(fields: [ledgerId], references: [id], onDelete: Cascade)
+  account     Account   @relation("TransactionAccount", fields: [accountId], references: [id])
+  toAccount   Account?  @relation("TransactionToAccount", fields: [toAccountId], references: [id])
+  category    Category? @relation(fields: [categoryId], references: [id])
+
+  @@index([ledgerId, occurredAt])
+  @@index([accountId])
+  @@index([categoryId])
+}
+
+model Budget {
+  id          String    @id @default(uuid())
+  ledgerId    String
+  categoryId  String?
+  month       String
+  amountCents Int
+  version     Int       @default(1)
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  deletedAt   DateTime?
+  ledger      Ledger    @relation(fields: [ledgerId], references: [id], onDelete: Cascade)
+  category    Category? @relation(fields: [categoryId], references: [id])
+
+  @@index([ledgerId, month])
+}
+
+model AuditLog {
+  id        String   @id @default(uuid())
+  ledgerId  String
+  actorId   String
+  action    String
+  entity    String
+  entityId  String
+  createdAt DateTime @default(now())
+  ledger    Ledger   @relation(fields: [ledgerId], references: [id], onDelete: Cascade)
+
+  @@index([ledgerId, createdAt])
+}

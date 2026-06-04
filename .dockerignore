@@ -1,0 +1,14 @@
+node_modules
+dist
+build
+.git
+.env
+.env.*
+!.env.example
+backups
+uploads
+data
+postgres-data
+caddy-data
+caddy-config
+*.log
