@@ -1,9 +1,10 @@
-FROM node:24-alpine AS deps
+FROM node:24-slim AS deps
 WORKDIR /app
 COPY package.json package-lock.json* ./
 COPY apps/web/package.json apps/web/package.json
 COPY packages/shared/package.json packages/shared/package.json
-RUN npm install
+COPY .npmrc .npmrc
+RUN npm install --legacy-peer-deps && npm install --no-save --legacy-peer-deps @rollup/rollup-linux-x64-gnu
 
 FROM deps AS build
 WORKDIR /app

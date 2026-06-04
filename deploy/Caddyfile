@@ -1,7 +1,3 @@
-{
-  email {$CADDY_EMAIL}
-}
-
 {$CADDY_DOMAIN} {
   encode zstd gzip
 
