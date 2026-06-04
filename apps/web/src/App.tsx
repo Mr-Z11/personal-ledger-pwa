@@ -1,6 +1,4 @@
 import {
-  DEFAULT_ACCOUNTS,
-  DEFAULT_CATEGORIES,
   activeOnly,
   calculateAccountBalance,
   centsToYuan,
@@ -296,11 +294,6 @@ function AuthScreen({ onAuth }: { onAuth: (result: Awaited<ReturnType<typeof api
       const result = mode === "login" ? await api.login({ email, password }) : await api.register({ email, password, name });
       onAuth(result);
     } catch (caught) {
-      if (isLocalhost()) {
-        const localResult = await createLocalPreviewAccount(email, name || "本地预览账本");
-        onAuth(localResult);
-        return;
-      }
       setError(caught instanceof Error ? caught.message : "登录失败");
     } finally {
       setBusy(false);
@@ -706,30 +699,4 @@ async function exportCsv(token: string | null) {
   link.download = `ledger-${new Date().toISOString().slice(0, 10)}.csv`;
   link.click();
   URL.revokeObjectURL(url);
-}
-
-function isLocalhost() {
-  return ["localhost", "127.0.0.1", "::1"].includes(window.location.hostname);
-}
-
-async function createLocalPreviewAccount(email: string, name: string): Promise<Awaited<ReturnType<typeof api.login>>> {
-  const now = new Date().toISOString();
-  const existingAccounts = await db.accounts.count();
-
-  if (existingAccounts === 0) {
-    await db.accounts.bulkPut(DEFAULT_ACCOUNTS.map((account) => ({ ...entityStamp(), ...account, updatedAt: now })));
-    await db.categories.bulkPut(DEFAULT_CATEGORIES.map((category) => ({ ...entityStamp(), ...category, updatedAt: now })));
-  }
-
-  await db.meta.put({ key: "lastSyncAt", value: now });
-
-  return {
-    token: `local-preview:${crypto.randomUUID()}`,
-    user: {
-      id: "local-preview",
-      email: email || "preview@local.test",
-      name
-    },
-    ledgerId: "local-preview"
-  };
 }

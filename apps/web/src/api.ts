@@ -1,6 +1,7 @@
 import type { Account, Budget, Category, LedgerSnapshot, SyncPayload, Transaction } from "@ledger/shared";
 
 const API_BASE = import.meta.env.VITE_API_BASE ?? "/api";
+const REQUEST_TIMEOUT_MS = 10_000;
 
 export interface AuthResult {
   token: string;
@@ -9,14 +10,24 @@ export interface AuthResult {
 }
 
 export async function apiFetch<T>(path: string, options: RequestInit = {}, token?: string | null): Promise<T> {
-  const response = await fetch(`${API_BASE}${path}`, {
-    ...options,
-    headers: {
-      "content-type": "application/json",
-      ...(token ? { authorization: `Bearer ${token}` } : {}),
-      ...options.headers
-    }
-  });
+  const controller = new AbortController();
+  const timeout = window.setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+  let response: Response;
+  try {
+    response = await fetch(`${API_BASE}${path}`, {
+      ...options,
+      signal: controller.signal,
+      headers: {
+        "content-type": "application/json",
+        ...(token ? { authorization: `Bearer ${token}` } : {}),
+        ...options.headers
+      }
+    });
+  } catch {
+    throw new Error("无法连接云服务器，请检查网络或服务器状态");
+  } finally {
+    window.clearTimeout(timeout);
+  }
   if (!response.ok) {
     const error = await response.json().catch(() => ({ message: response.statusText }));
     throw new Error(error.message ?? "请求失败");
