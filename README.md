@@ -4,9 +4,16 @@
 
 ## 快速开始
 
-## 换电脑维护
+## 换电脑用 Codex 继续维护
 
-Windows 新电脑 clone 仓库后，优先用这些双击入口：
+新电脑 clone 仓库后，让 Codex 先读：
+
+- `AGENTS.md`
+- `docs/codex-handoff.md`
+
+这两份文件记录了当前架构、线上服务器、数据边界、部署方式、自动备份和已完成的功能状态。之后只需要告诉 Codex 要改什么功能，它就可以按当前进度继续，不需要重新适配。
+
+Windows 上也保留了备用入口：
 
 - `setup-new-computer.cmd`：第一次设置，检查 Git/Node，安装依赖，跑类型检查。
 - `start-local-preview.cmd`：打开本地预览。
