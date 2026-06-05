@@ -19,10 +19,11 @@
     "test:shared": "npm --workspace @ledger/shared run test",
     "test:api": "npm --workspace @ledger/api run test",
     "test:web": "npm --workspace @ledger/web run test",
-    "typecheck": "npm-run-all typecheck:shared typecheck:api typecheck:web",
+    "typecheck": "npm-run-all typecheck:shared build:shared prisma:generate:api typecheck:api typecheck:web",
     "typecheck:shared": "npm --workspace @ledger/shared run typecheck",
     "typecheck:api": "npm --workspace @ledger/api run typecheck",
-    "typecheck:web": "npm --workspace @ledger/web run typecheck"
+    "typecheck:web": "npm --workspace @ledger/web run typecheck",
+    "prisma:generate:api": "npm --workspace @ledger/api run prisma:generate"
   },
   "devDependencies": {
     "npm-run-all": "^4.1.5",
