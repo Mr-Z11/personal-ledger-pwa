@@ -22,8 +22,8 @@ find backups -type f -name 'ledger-*.sql.gz' -mtime +"$BACKUP_RETENTION_DAYS" -p
 echo "[$(date --iso-8601=seconds)] pruning unused docker images older than ${IMAGE_PRUNE_UNTIL}"
 docker image prune -af --filter "until=${IMAGE_PRUNE_UNTIL}"
 
-echo "[$(date --iso-8601=seconds)] pruning unused docker build cache older than ${IMAGE_PRUNE_UNTIL}"
-docker builder prune -af --filter "until=${IMAGE_PRUNE_UNTIL}"
+echo "[$(date --iso-8601=seconds)] pruning unused docker build cache"
+docker builder prune -af
 
 echo "[$(date --iso-8601=seconds)] docker disk usage"
 docker system df
