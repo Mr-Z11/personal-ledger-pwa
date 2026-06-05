@@ -40,18 +40,18 @@ import { clearOutbox, db, enqueue, readOutboxPayload, resetLocalData, saveSnapsh
 type View = "overview" | "entry" | "transactions" | "accounts" | "budget" | "reports" | "trash";
 
 const navItems: { id: View; label: string; icon: typeof Home }[] = [
-  { id: "overview", label: "总览", icon: Home },
-  { id: "transactions", label: "流水", icon: ListFilter },
-  { id: "accounts", label: "账户", icon: Banknote },
-  { id: "budget", label: "预算", icon: CalendarDays },
-  { id: "reports", label: "报表", icon: PieChartIcon },
-  { id: "trash", label: "回收站", icon: Trash2 }
+  { id: "overview", label: "鎬昏", icon: Home },
+  { id: "transactions", label: "娴佹按", icon: ListFilter },
+  { id: "accounts", label: "璐︽埛", icon: Banknote },
+  { id: "budget", label: "棰勭畻", icon: CalendarDays },
+  { id: "reports", label: "鎶ヨ〃", icon: PieChartIcon },
+  { id: "trash", label: "鍥炴敹绔?, icon: Trash2 }
 ];
 
 const typeLabels: Record<TransactionType, string> = {
-  expense: "支出",
-  income: "收入",
-  transfer: "转账"
+  expense: "鏀嚭",
+  income: "鏀跺叆",
+  transfer: "杞处"
 };
 
 const REPORT_PALETTE = [
@@ -121,7 +121,7 @@ function categoryPath(category: Category | undefined, categories: Category[]) {
   if (!category) return "";
   const parent = category.parentId ? categories.find((item) => item.id === category.parentId) : undefined;
   if (parent) return `${parent.name} > ${category.name}`;
-  return category.name === "其他" ? category.name : `其他 > ${category.name}`;
+  return category.name === "鍏朵粬" ? category.name : `鍏朵粬 > ${category.name}`;
 }
 
 function selectableCategories(categories: Category[], kind: Category["kind"]) {
@@ -148,12 +148,12 @@ function makeCategory(input: {
 }
 
 function otherCategory(categories: Category[], kind: Category["kind"]) {
-  return activeOnly(categories).find((category) => category.kind === kind && !category.parentId && category.name === "其他");
+  return activeOnly(categories).find((category) => category.kind === kind && !category.parentId && category.name === "鍏朵粬");
 }
 
 function viewTitle(view: View) {
-  if (view === "entry") return "记一笔";
-  return navItems.find((item) => item.id === view)?.label ?? "总览";
+  if (view === "entry") return "璁颁竴绗?;
+  return navItems.find((item) => item.id === view)?.label ?? "鎬昏";
 }
 
 function authHeaders(token: string | null): Record<string, string> {
@@ -164,7 +164,7 @@ export function App() {
   const [token, setToken] = useState(() => localStorage.getItem("ledger-token"));
   const [userName, setUserName] = useState(() => localStorage.getItem("ledger-user") ?? "");
   const [view, setView] = useState<View>("overview");
-  const [message, setMessage] = useState("准备同步");
+  const [message, setMessage] = useState("鍑嗗鍚屾");
   const [busy, setBusy] = useState(false);
   const [accounts, setAccounts] = useState<Account[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
@@ -203,7 +203,7 @@ export function App() {
     if (!nextToken) return;
     if (nextToken.startsWith("local-preview:")) {
       await refreshLocal();
-      setMessage("本地预览模式");
+      setMessage("鏈湴棰勮妯″紡");
       return;
     }
     setBusy(true);
@@ -211,9 +211,9 @@ export function App() {
       const snapshot = await api.bootstrap(nextToken);
       await saveSnapshot(snapshot);
       await refreshLocal();
-      setMessage("云端数据已更新");
+      setMessage("浜戠鏁版嵁宸叉洿鏂?);
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : "同步失败，已保留本地数据");
+      setMessage(error instanceof Error ? error.message : "鍚屾澶辫触锛屽凡淇濈暀鏈湴鏁版嵁");
     } finally {
       setBusy(false);
     }
@@ -223,7 +223,7 @@ export function App() {
     if (!token) return;
     if (isLocalPreview) {
       await refreshLocal();
-      setMessage("本地预览数据已保存");
+      setMessage("鏈湴棰勮鏁版嵁宸蹭繚瀛?);
       return;
     }
     setBusy(true);
@@ -244,9 +244,9 @@ export function App() {
         await saveSnapshot(pulled);
       }
       await refreshLocal();
-      setMessage("同步完成");
+      setMessage("鍚屾瀹屾垚");
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : "离线中，稍后自动同步");
+      setMessage(error instanceof Error ? error.message : "绂荤嚎涓紝绋嶅悗鑷姩鍚屾");
     } finally {
       setBusy(false);
     }
@@ -293,10 +293,10 @@ export function App() {
     <div className="shell">
       <aside className="sidebar">
         <div className="brand">
-          <div className="brand-mark">¥</div>
+          <div className="brand-mark">楼</div>
           <div>
             <strong>Ledger Box</strong>
-            <span>{userName || "个人账本"}</span>
+            <span>{userName || "涓汉璐︽湰"}</span>
           </div>
         </div>
         <nav>
@@ -311,15 +311,15 @@ export function App() {
           })}
         </nav>
         <div className="sync-card">
-          <span>{isLocalPreview ? "本地预览" : navigator.onLine ? "在线" : "离线"} · 待同步 {isLocalPreview ? 0 : outboxCount}</span>
+          <span>{isLocalPreview ? "鏈湴棰勮" : navigator.onLine ? "鍦ㄧ嚎" : "绂荤嚎"} 路 寰呭悓姝?{isLocalPreview ? 0 : outboxCount}</span>
           <small>{lastSync ? new Date(lastSync).toLocaleString() : message}</small>
-          <button className="icon-button" onClick={syncNow} disabled={busy} title="立即同步">
+          <button className="icon-button" onClick={syncNow} disabled={busy} title="绔嬪嵆鍚屾">
             <RefreshCw size={18} className={busy ? "spin" : ""} />
           </button>
         </div>
         <button className="ghost danger" onClick={signOut}>
           <LogOut size={18} />
-          退出
+          閫€鍑?
         </button>
       </aside>
 
@@ -330,10 +330,10 @@ export function App() {
             <h1>{viewTitle(view)}</h1>
           </div>
           <div className="top-actions">
-            <button className="icon-button" onClick={() => void exportCsv(token)} title="导出 CSV">
+            <button className="icon-button" onClick={() => void exportCsv(token)} title="瀵煎嚭 CSV">
               <Download size={18} />
             </button>
-            <label className="icon-button" title="导入 CSV">
+            <label className="icon-button" title="瀵煎叆 CSV">
               <Upload size={18} />
               <input type="file" accept=".csv,text/csv" hidden onChange={(event) => {
                 const file = event.currentTarget.files?.[0];
@@ -374,7 +374,7 @@ export function App() {
             await saveLocalAndQueue("transactions", restored);
           }} />
         )}
-        <button className="floating entry-fab" onClick={() => setView("entry")} title="记一笔"><Plus size={30} /></button>
+        <button className="floating entry-fab" onClick={() => setView("entry")} title="璁颁竴绗?><Plus size={30} /></button>
       </main>
     </div>
   );
@@ -396,7 +396,7 @@ function AuthScreen({ onAuth }: { onAuth: (result: Awaited<ReturnType<typeof api
       const result = mode === "login" ? await api.login({ email, password }) : await api.register({ email, password, name });
       onAuth(result);
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "登录失败");
+      setError(caught instanceof Error ? caught.message : "鐧诲綍澶辫触");
     } finally {
       setBusy(false);
     }
@@ -406,20 +406,20 @@ function AuthScreen({ onAuth }: { onAuth: (result: Awaited<ReturnType<typeof api
     <main className="auth">
       <section className="auth-panel">
         <div className="brand large">
-          <div className="brand-mark">¥</div>
+          <div className="brand-mark">楼</div>
           <div>
             <strong>Ledger Box</strong>
-            <span>云端优先的个人记账本</span>
+            <span>浜戠浼樺厛鐨勪釜浜鸿璐︽湰</span>
           </div>
         </div>
         <form onSubmit={submit} className="form-stack">
-          {mode === "register" && <input value={name} onChange={(event) => setName(event.target.value)} placeholder="昵称" />}
-          <input value={email} onChange={(event) => setEmail(event.target.value)} placeholder="邮箱" type="email" required />
-          <input value={password} onChange={(event) => setPassword(event.target.value)} placeholder="密码，至少 8 位" type="password" required minLength={8} />
+          {mode === "register" && <input value={name} onChange={(event) => setName(event.target.value)} placeholder="鏄电О" />}
+          <input value={email} onChange={(event) => setEmail(event.target.value)} placeholder="閭" type="email" required />
+          <input value={password} onChange={(event) => setPassword(event.target.value)} placeholder="瀵嗙爜锛岃嚦灏?8 浣? type="password" required minLength={8} />
           {error && <p className="error">{error}</p>}
-          <button className="primary" disabled={busy}>{busy ? "处理中" : mode === "login" ? "登录" : "创建账本"}</button>
+          <button className="primary" disabled={busy}>{busy ? "澶勭悊涓? : mode === "login" ? "鐧诲綍" : "鍒涘缓璐︽湰"}</button>
           <button type="button" className="ghost" onClick={() => setMode(mode === "login" ? "register" : "login")}>
-            {mode === "login" ? "第一次使用，创建账号" : "已有账号，返回登录"}
+            {mode === "login" ? "绗竴娆′娇鐢紝鍒涘缓璐﹀彿" : "宸叉湁璐﹀彿锛岃繑鍥炵櫥褰?}
           </button>
         </form>
       </section>
@@ -435,23 +435,23 @@ function Overview({ summary, totalAssets, accounts, transactions }: {
 }) {
   return (
     <section className="grid overview-grid">
-      <Metric title="本月收入" value={summary.incomeCents} icon={ArrowDownLeft} tone="good" />
-      <Metric title="本月支出" value={summary.expenseCents} icon={ArrowUpRight} tone="warn" />
-      <Metric title="本月结余" value={summary.netCents} icon={CircleDollarSign} tone="ink" />
-      <Metric title="总资产" value={totalAssets} icon={Banknote} tone="blue" />
+      <Metric title="鏈湀鏀跺叆" value={summary.incomeCents} icon={ArrowDownLeft} tone="good" />
+      <Metric title="鏈湀鏀嚭" value={summary.expenseCents} icon={ArrowUpRight} tone="warn" />
+      <Metric title="鏈湀缁撲綑" value={summary.netCents} icon={CircleDollarSign} tone="ink" />
+      <Metric title="鎬昏祫浜? value={totalAssets} icon={Banknote} tone="blue" />
       <div className="panel wide">
-        <h2>账户余额</h2>
+        <h2>璐︽埛浣欓</h2>
         <div className="account-strip">
           {accounts.map((account) => (
             <div className="mini-card" key={account.id} style={{ borderColor: account.color }}>
               <span>{account.name}</span>
-              <strong>¥{centsToYuan(calculateAccountBalance(account, transactions))}</strong>
+              <strong>楼{centsToYuan(calculateAccountBalance(account, transactions))}</strong>
             </div>
           ))}
         </div>
       </div>
       <div className="panel">
-        <h2>最近流水</h2>
+        <h2>鏈€杩戞祦姘?/h2>
         <TransactionRows transactions={transactions.slice(0, 6)} accounts={accounts} categories={[]} compact />
       </div>
     </section>
@@ -463,7 +463,7 @@ function Metric({ title, value, icon: Icon, tone }: { title: string; value: numb
     <div className={`metric ${tone}`}>
       <Icon size={22} />
       <span>{title}</span>
-      <strong>¥{centsToYuan(value)}</strong>
+      <strong>楼{centsToYuan(value)}</strong>
     </div>
   );
 }
@@ -546,18 +546,18 @@ function EntryForm({ accounts, categories, onSave, onSaveCategory, editing, onCa
         ))}
       </div>
       <form className="form-grid" onSubmit={submit}>
-        <label>金额<input value={amount} onChange={(event) => setAmount(event.target.value)} placeholder="0.00" inputMode="decimal" required /></label>
-        <label>{type === "income" ? "收款账户" : "付款账户"}<select value={accountId} onChange={(event) => setAccountId(event.target.value)}>{accounts.map((account) => <option key={account.id} value={account.id}>{account.name}</option>)}</select></label>
+        <label>閲戦<input value={amount} onChange={(event) => setAmount(event.target.value)} placeholder="0.00" inputMode="decimal" required /></label>
+        <label>{type === "income" ? "鏀舵璐︽埛" : "浠樻璐︽埛"}<select value={accountId} onChange={(event) => setAccountId(event.target.value)}>{accounts.map((account) => <option key={account.id} value={account.id}>{account.name}</option>)}</select></label>
         {type === "transfer" ? (
-          <label>转入账户<select value={toAccountId} onChange={(event) => setToAccountId(event.target.value)}>{accounts.filter((item) => item.id !== accountId).map((account) => <option key={account.id} value={account.id}>{account.name}</option>)}</select></label>
+          <label>杞叆璐︽埛<select value={toAccountId} onChange={(event) => setToAccountId(event.target.value)}>{accounts.filter((item) => item.id !== accountId).map((account) => <option key={account.id} value={account.id}>{account.name}</option>)}</select></label>
         ) : (
           <CategoryPicker categories={categories} kind={categoryKind} value={categoryId} onChange={setCategoryId} onCreate={onSaveCategory} />
         )}
-        <label>时间<input value={occurredAt} onChange={(event) => setOccurredAt(event.target.value)} type="datetime-local" /></label>
-        <label>商户<input value={merchant} onChange={(event) => setMerchant(event.target.value)} placeholder="超市、餐厅、客户..." /></label>
-        <label className="full">备注<input value={note} onChange={(event) => setNote(event.target.value)} placeholder="补充说明" /></label>
-        <button className="primary full">{editing ? "保存修改" : "保存流水"}</button>
-        {editing && onCancel && <button type="button" className="ghost full" onClick={onCancel}><X size={16} />取消编辑</button>}
+        <label>鏃堕棿<input value={occurredAt} onChange={(event) => setOccurredAt(event.target.value)} type="datetime-local" /></label>
+        <label>鍟嗘埛<input value={merchant} onChange={(event) => setMerchant(event.target.value)} placeholder="瓒呭競銆侀鍘呫€佸鎴?.." /></label>
+        <label className="full">澶囨敞<input value={note} onChange={(event) => setNote(event.target.value)} placeholder="琛ュ厖璇存槑" /></label>
+        <button className="primary full">{editing ? "淇濆瓨淇敼" : "淇濆瓨娴佹按"}</button>
+        {editing && onCancel && <button type="button" className="ghost full" onClick={onCancel}><X size={16} />鍙栨秷缂栬緫</button>}
       </form>
     </section>
   );
@@ -584,7 +584,7 @@ function CategoryPicker({ categories, kind, value, onChange, onCreate }: {
     if (!name) return;
     let parent = otherCategory(categories, kind);
     if (!parent) {
-      parent = makeCategory({ name: "其他", kind, parentId: null, icon: "folder", color: kind === "expense" ? "#6b6f3f" : "#2f7d4f" });
+      parent = makeCategory({ name: "鍏朵粬", kind, parentId: null, icon: "folder", color: kind === "expense" ? "#6b6f3f" : "#2f7d4f" });
       await onCreate(parent);
     }
     const child = makeCategory({ name, kind, parentId: parent.id });
@@ -595,8 +595,8 @@ function CategoryPicker({ categories, kind, value, onChange, onCreate }: {
 
   return (
     <label className="category-picker full">
-      分类
-      <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="搜索或新增分类" />
+      鍒嗙被
+      <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="鎼滅储鎴栨柊澧炲垎绫? />
       <div className="category-chip-list">
         {!normalizedQuery && selectedCategory && (
           <button type="button" className="category-chip active" onClick={() => onChange(selectedCategory.id)}>
@@ -610,7 +610,7 @@ function CategoryPicker({ categories, kind, value, onChange, onCreate }: {
         ))}
         {canCreate && (
           <button type="button" className="category-chip create" onClick={() => void createQuickCategory()}>
-            新增：其他 &gt; {query.trim()}
+            鏂板锛氬叾浠?&gt; {query.trim()}
           </button>
         )}
       </div>
@@ -638,17 +638,17 @@ function TransactionList({ transactions, accounts, categories, onDelete, onEdit,
   return (
     <section className="panel">
       <div className="filters">
-        <label className="search"><Search size={16} /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="搜索流水" /></label>
+        <label className="search"><Search size={16} /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="鎼滅储娴佹按" /></label>
         <select value={type} onChange={(event) => setType(event.target.value as TransactionType | "all")}>
-          <option value="all">全部</option>
-          <option value="expense">支出</option>
-          <option value="income">收入</option>
-          <option value="transfer">转账</option>
+          <option value="all">鍏ㄩ儴</option>
+          <option value="expense">鏀嚭</option>
+          <option value="income">鏀跺叆</option>
+          <option value="transfer">杞处</option>
         </select>
       </div>
       {editingTransaction && (
         <div className="edit-panel">
-          <h2>编辑流水</h2>
+          <h2>缂栬緫娴佹按</h2>
           <EntryForm accounts={activeOnly(accounts)} categories={activeOnly(categories)} editing={editingTransaction} onSave={onSaveEdit} onSaveCategory={onSaveCategory} onCancel={onCancelEdit} />
         </div>
       )}
@@ -666,24 +666,32 @@ function TransactionRows({ transactions, accounts, categories, onDelete, onEdit,
   onRestore?: (item: Transaction) => Promise<void>;
   compact?: boolean;
 }) {
-  if (transactions.length === 0) return <p className="empty">暂无记录</p>;
+  if (transactions.length === 0) return <p className="empty">鏆傛棤璁板綍</p>;
   return (
     <div className="rows">
       {transactions.map((item) => {
         const account = accounts.find((entry) => entry.id === item.accountId);
         const category = categories.find((entry) => entry.id === item.categoryId);
         const sign = item.type === "expense" ? "-" : item.type === "income" ? "+" : "";
+        const title = item.merchant || category?.name || typeLabels[item.type];
+        const meta = `${new Date(item.occurredAt).toLocaleDateString()} 路 ${account?.name ?? ""}${category ? ` 路 ${category.name}` : ""}`;
         return (
           <article className="row" key={item.id}>
-            <div className={`row-icon ${item.type}`}>{item.type === "transfer" ? <ArrowRightLeft size={18} /> : item.type === "income" ? <ArrowDownLeft size={18} /> : <ArrowUpRight size={18} />}</div>
-            <div>
-              <strong>{item.merchant || category?.name || typeLabels[item.type]}</strong>
-              <span>{new Date(item.occurredAt).toLocaleDateString()} · {account?.name}{category ? ` · ${category.name}` : ""}</span>
+            <div className={`row-icon ${item.type}`}>{item.type === "transfer" ? <ArrowRightLeft size={15} /> : item.type === "income" ? <ArrowDownLeft size={15} /> : <ArrowUpRight size={15} />}</div>
+            <div className="row-main">
+              <strong>{title}</strong>
+              <span>{meta}</span>
             </div>
-            <b>{sign}¥{centsToYuan(item.amountCents)}</b>
-            {!compact && onEdit && <button className="icon-button" onClick={() => onEdit(item)} title="编辑"><Pencil size={16} /></button>}
-            {!compact && onDelete && <button className="icon-button" onClick={() => onDelete(item)} title="删除"><Trash2 size={16} /></button>}
-            {!compact && onRestore && <button className="icon-button" onClick={() => onRestore(item)} title="恢复"><Undo2 size={16} /></button>}
+            <div className="row-side">
+              <b>{sign}楼{centsToYuan(item.amountCents)}</b>
+              {!compact && (
+                <div className="row-actions">
+                  {onEdit && <button className="icon-button mini" onClick={() => onEdit(item)} title="缂栬緫"><Pencil size={14} /></button>}
+                  {onDelete && <button className="icon-button mini" onClick={() => onDelete(item)} title="鍒犻櫎"><Trash2 size={14} /></button>}
+                  {onRestore && <button className="icon-button mini" onClick={() => onRestore(item)} title="鎭㈠"><Undo2 size={14} /></button>}
+                </div>
+              )}
+            </div>
           </article>
         );
       })}
@@ -724,14 +732,14 @@ function AccountsPanel({ accounts, transactions, onSave }: { accounts: Account[]
   return (
     <>
       <div className="panel management-panel">
-        <h2>账户</h2>
+        <h2>璐︽埛</h2>
         <div className="account-list">
           {accounts.map((account) => (
             <div className="account-line" key={account.id}>
               <i style={{ background: account.color }} />
               <span>{account.name}</span>
-              <strong>¥{centsToYuan(calculateAccountBalance(account, transactions))}</strong>
-              <button className="icon-button" onClick={() => editAccount(account)} title="编辑账户"><Pencil size={16} /></button>
+              <strong>楼{centsToYuan(calculateAccountBalance(account, transactions))}</strong>
+              <button className="icon-button" onClick={() => editAccount(account)} title="缂栬緫璐︽埛"><Pencil size={16} /></button>
             </div>
           ))}
         </div>
@@ -753,26 +761,26 @@ function AccountsPanel({ accounts, transactions, onSave }: { accounts: Account[]
         setColor("#1f5f74");
         setEditing(null);
       }}>
-        <h2>{editing ? "编辑账户" : "新增账户"}</h2>
-        <input value={name} onChange={(event) => setName(event.target.value)} placeholder="账户名称" required />
+        <h2>{editing ? "缂栬緫璐︽埛" : "鏂板璐︽埛"}</h2>
+        <input value={name} onChange={(event) => setName(event.target.value)} placeholder="璐︽埛鍚嶇О" required />
         <select value={type} onChange={(event) => setType(event.target.value as Account["type"])}>
-          <option value="bank">银行卡</option>
-          <option value="cash">现金</option>
-          <option value="credit">信用卡</option>
-          <option value="alipay">支付宝</option>
-          <option value="wechat">微信</option>
-          <option value="investment">投资</option>
-          <option value="other">其他</option>
+          <option value="bank">閾惰鍗?/option>
+          <option value="cash">鐜伴噾</option>
+          <option value="credit">淇＄敤鍗?/option>
+          <option value="alipay">鏀粯瀹?/option>
+          <option value="wechat">寰俊</option>
+          <option value="investment">鎶曡祫</option>
+          <option value="other">鍏朵粬</option>
         </select>
-        <input value={opening} onChange={(event) => setOpening(event.target.value)} placeholder="初始余额" inputMode="decimal" />
+        <input value={opening} onChange={(event) => setOpening(event.target.value)} placeholder="鍒濆浣欓" inputMode="decimal" />
         <input value={color} onChange={(event) => setColor(event.target.value)} type="color" />
-        <button className="primary">保存账户</button>
+        <button className="primary">淇濆瓨璐︽埛</button>
         {editing && <button type="button" className="ghost" onClick={() => {
           setEditing(null);
           setName("");
           setOpening("0");
           setColor("#1f5f74");
-        }}>取消编辑</button>}
+        }}>鍙栨秷缂栬緫</button>}
       </form>
     </>
   );
@@ -800,7 +808,7 @@ function CategoriesPanel({ categories, onSave }: { categories: Category[]; onSav
     if (!editing && parentId === "__other__") {
       let parent = otherCategory(activeCategories, kind);
       if (!parent) {
-        parent = makeCategory({ name: "其他", kind, parentId: null, icon: "folder", color: kind === "expense" ? "#6b6f3f" : "#2f7d4f" });
+        parent = makeCategory({ name: "鍏朵粬", kind, parentId: null, icon: "folder", color: kind === "expense" ? "#6b6f3f" : "#2f7d4f" });
         await onSave(parent);
       }
       nextParentId = parent.id;
@@ -822,20 +830,20 @@ function CategoriesPanel({ categories, onSave }: { categories: Category[]; onSav
   return (
     <>
       <div className="panel management-panel">
-        <h2>分类</h2>
+        <h2>鍒嗙被</h2>
         <div className="category-tree">
           {groupedParents.map((parent) => {
             const children = activeCategories.filter((category) => category.parentId === parent.id);
             return (
               <div className="category-group" key={parent.id}>
                 <div className="category-line">
-                  <strong>{parent.kind === "income" ? "收入" : "支出"} · {parent.name}</strong>
-                  <button className="icon-button" onClick={() => editCategory(parent)} title="编辑一级分类"><Pencil size={16} /></button>
+                  <strong>{parent.kind === "income" ? "鏀跺叆" : "鏀嚭"} 路 {parent.name}</strong>
+                  <button className="icon-button" onClick={() => editCategory(parent)} title="缂栬緫涓€绾у垎绫?><Pencil size={16} /></button>
                 </div>
                 {children.map((child) => (
                   <div className="category-line child" key={child.id}>
                     <span>{child.name}</span>
-                    <button className="icon-button" onClick={() => editCategory(child)} title="编辑二级分类"><Pencil size={16} /></button>
+                    <button className="icon-button" onClick={() => editCategory(child)} title="缂栬緫浜岀骇鍒嗙被"><Pencil size={16} /></button>
                   </div>
                 ))}
               </div>
@@ -844,23 +852,23 @@ function CategoriesPanel({ categories, onSave }: { categories: Category[]; onSav
         </div>
       </div>
       <form className="panel form-stack" onSubmit={submit}>
-        <h2>{editing ? "编辑分类" : "新增分类"}</h2>
-        <input value={name} onChange={(event) => setName(event.target.value)} placeholder="分类名称" required />
+        <h2>{editing ? "缂栬緫鍒嗙被" : "鏂板鍒嗙被"}</h2>
+        <input value={name} onChange={(event) => setName(event.target.value)} placeholder="鍒嗙被鍚嶇О" required />
         <select value={kind} onChange={(event) => setKind(event.target.value as Category["kind"])}>
-          <option value="expense">支出</option>
-          <option value="income">收入</option>
+          <option value="expense">鏀嚭</option>
+          <option value="income">鏀跺叆</option>
         </select>
         <select value={parentId} onChange={(event) => setParentId(event.target.value)}>
-          <option value="">作为一级分类</option>
-          {!editing && <option value="__other__">放入其他（默认）</option>}
+          <option value="">浣滀负涓€绾у垎绫?/option>
+          {!editing && <option value="__other__">鏀惧叆鍏朵粬锛堥粯璁わ級</option>}
           {topCategories.map((category) => <option key={category.id} value={category.id}>{category.name}</option>)}
         </select>
-        <button className="primary">保存分类</button>
+        <button className="primary">淇濆瓨鍒嗙被</button>
         {editing && <button type="button" className="ghost" onClick={() => {
           setEditing(null);
           setName("");
           setParentId("__other__");
-        }}>取消编辑</button>}
+        }}>鍙栨秷缂栬緫</button>}
       </form>
     </>
   );
@@ -880,15 +888,15 @@ function BudgetPanel({ budgets, categories, transactions, onSave }: {
   return (
     <section className="grid two">
       <div className="panel">
-        <h2>预算执行</h2>
+        <h2>棰勭畻鎵ц</h2>
         <div className="budget-list">
           {budgets.filter((budget) => budget.month === month).map((budget) => {
             const spent = monthExpenses.filter((item) => !budget.categoryId || item.categoryId === budget.categoryId).reduce((sum, item) => sum + item.amountCents, 0);
             const ratio = Math.min(100, Math.round((spent / budget.amountCents) * 100));
             return (
               <div className="budget-line" key={budget.id}>
-                <span>{budget.categoryId ? categories.find((item) => item.id === budget.categoryId)?.name : "全部支出"}</span>
-                <strong>¥{centsToYuan(spent)} / ¥{centsToYuan(budget.amountCents)}</strong>
+                <span>{budget.categoryId ? categories.find((item) => item.id === budget.categoryId)?.name : "鍏ㄩ儴鏀嚭"}</span>
+                <strong>楼{centsToYuan(spent)} / 楼{centsToYuan(budget.amountCents)}</strong>
                 <div className="bar"><i style={{ width: `${ratio}%` }} /></div>
               </div>
             );
@@ -900,14 +908,14 @@ function BudgetPanel({ budgets, categories, transactions, onSave }: {
         await onSave({ ...entityStamp(), month, categoryId: categoryId || null, amountCents: yuanToCents(amount) });
         setAmount("");
       }}>
-        <h2>新增预算</h2>
+        <h2>鏂板棰勭畻</h2>
         <input value={month} onChange={(event) => setMonth(event.target.value)} type="month" />
         <select value={categoryId} onChange={(event) => setCategoryId(event.target.value)}>
-          <option value="">全部支出</option>
+          <option value="">鍏ㄩ儴鏀嚭</option>
           {expenseCategories.map((category) => <option key={category.id} value={category.id}>{category.name}</option>)}
         </select>
-        <input value={amount} onChange={(event) => setAmount(event.target.value)} placeholder="预算金额" inputMode="decimal" required />
-        <button className="primary">保存预算</button>
+        <input value={amount} onChange={(event) => setAmount(event.target.value)} placeholder="棰勭畻閲戦" inputMode="decimal" required />
+        <button className="primary">淇濆瓨棰勭畻</button>
       </form>
     </section>
   );
@@ -940,8 +948,8 @@ function InteractiveDonut({ data, total, selectedIndex, onSelect, kind }: {
     return (
       <div className="donut-shell empty-donut">
         <div className="donut-center">
-          <strong>¥0.00</strong>
-          <span>{kind === "expense" ? "分类支出" : "分类收入"}</span>
+          <strong>楼0.00</strong>
+          <span>{kind === "expense" ? "鍒嗙被鏀嚭" : "鍒嗙被鏀跺叆"}</span>
         </div>
       </div>
     );
@@ -950,10 +958,10 @@ function InteractiveDonut({ data, total, selectedIndex, onSelect, kind }: {
   return (
     <div className="donut-control">
       <div className="donut-shell">
-        <svg className="donut-svg" viewBox="0 0 220 220" role="img" aria-label="分类占比图" style={{ transform: `rotate(${rotation}deg)` }}>
+        <svg className="donut-svg" viewBox="0 0 220 220" role="img" aria-label="鍒嗙被鍗犳瘮鍥? style={{ transform: `rotate(${rotation}deg)` }}>
           {segments.map((segment) => (
             <path
-              aria-label={`${segment.name} ${segment.ratio}% ¥${centsToYuan(segment.value)}`}
+              aria-label={`${segment.name} ${segment.ratio}% 楼${centsToYuan(segment.value)}`}
               className={segment.index === selectedIndex ? "donut-segment active" : "donut-segment"}
               d={describeDonutSegment(110, 110, 96, 56, segment.start, segment.end)}
               fill={segment.color}
@@ -968,14 +976,14 @@ function InteractiveDonut({ data, total, selectedIndex, onSelect, kind }: {
           ))}
         </svg>
         <div className="donut-center">
-          <strong>¥{centsToYuan(selected?.value ?? 0)}</strong>
-          <span>{selected?.name ?? (kind === "expense" ? "分类支出" : "分类收入")}</span>
+          <strong>楼{centsToYuan(selected?.value ?? 0)}</strong>
+          <span>{selected?.name ?? (kind === "expense" ? "鍒嗙被鏀嚭" : "鍒嗙被鏀跺叆")}</span>
           {selectedSegment && <em>{selectedSegment.ratio}%</em>}
         </div>
       </div>
       <div className="donut-actions">
-        <button type="button" className="ghost" onClick={() => selectOffset(-1)}>上一项</button>
-        <button type="button" className="ghost" onClick={() => selectOffset(1)}>下一项</button>
+        <button type="button" className="ghost" onClick={() => selectOffset(-1)}>涓婁竴椤?/button>
+        <button type="button" className="ghost" onClick={() => selectOffset(1)}>涓嬩竴椤?/button>
       </div>
     </div>
   );
@@ -1011,7 +1019,7 @@ function Reports({ transactions, categories }: { transactions: Transaction[]; ca
       const id = category?.id ?? "uncategorized";
       const current = totals.get(id) ?? {
         id,
-        name: category ? categoryPath(category, categories) : "未分类",
+        name: category ? categoryPath(category, categories) : "鏈垎绫?,
         value: 0,
         color: category?.color ?? "#8a7154"
       };
@@ -1029,7 +1037,7 @@ function Reports({ transactions, categories }: { transactions: Transaction[]; ca
       const id = category?.id ?? "uncategorized";
       const current = totals.get(id) ?? {
         id,
-        name: category ? categoryPath(category, categories) : "未分类",
+        name: category ? categoryPath(category, categories) : "鏈垎绫?,
         value: 0,
         color: "#8a7154"
       };
@@ -1066,69 +1074,69 @@ function Reports({ transactions, categories }: { transactions: Transaction[]; ca
     <section className="report-page">
       <div className="panel report-toolbar">
         <div>
-          <h2>分析报表</h2>
-          <span>{month} · 收入支出与分类结构</span>
+          <h2>鍒嗘瀽鎶ヨ〃</h2>
+          <span>{month} 路 鏀跺叆鏀嚭涓庡垎绫荤粨鏋?/span>
         </div>
         <input value={month} onChange={(event) => setMonth(event.target.value)} type="month" />
       </div>
 
       <div className="report-metrics">
-        <Metric title="月收入" value={monthSummary.incomeCents} icon={ArrowDownLeft} tone="good" />
-        <Metric title="月支出" value={monthSummary.expenseCents} icon={ArrowUpRight} tone="warn" />
-        <Metric title={monthSummary.netCents >= 0 ? "净流入" : "净流出"} value={monthSummary.netCents} icon={CircleDollarSign} tone={monthSummary.netCents >= 0 ? "good" : "warn"} />
+        <Metric title="鏈堟敹鍏? value={monthSummary.incomeCents} icon={ArrowDownLeft} tone="good" />
+        <Metric title="鏈堟敮鍑? value={monthSummary.expenseCents} icon={ArrowUpRight} tone="warn" />
+        <Metric title={monthSummary.netCents >= 0 ? "鍑€娴佸叆" : "鍑€娴佸嚭"} value={monthSummary.netCents} icon={CircleDollarSign} tone={monthSummary.netCents >= 0 ? "good" : "warn"} />
       </div>
 
       <div className="finance-insights">
         <article className={savingsRate >= 20 ? "insight-card good" : savingsRate >= 0 ? "insight-card neutral" : "insight-card warn"}>
-          <span>储蓄率</span>
+          <span>鍌ㄨ搫鐜?/span>
           <strong>{savingsRate}%</strong>
-          <p>{savingsRate >= 20 ? "现金流健康，可以考虑增加长期储蓄或投资预算。" : savingsRate >= 0 ? "仍有结余，建议把固定储蓄目标提高到收入的 20%。" : "本月为净流出，优先检查非必要支出和一次性大额消费。"}</p>
+          <p>{savingsRate >= 20 ? "鐜伴噾娴佸仴搴凤紝鍙互鑰冭檻澧炲姞闀挎湡鍌ㄨ搫鎴栨姇璧勯绠椼€? : savingsRate >= 0 ? "浠嶆湁缁撲綑锛屽缓璁妸鍥哄畾鍌ㄨ搫鐩爣鎻愰珮鍒版敹鍏ョ殑 20%銆? : "鏈湀涓哄噣娴佸嚭锛屼紭鍏堟鏌ラ潪蹇呰鏀嚭鍜屼竴娆℃€уぇ棰濇秷璐广€?}</p>
         </article>
         <article className="insight-card">
-          <span>最大支出项</span>
-          <strong>{topExpense ? topExpense.name : "暂无"}</strong>
-          <p>{topExpense ? `占本月支出的 ${topExpenseRatio}%，金额 ¥${centsToYuan(topExpense.value)}。` : "本月还没有支出数据。"}</p>
+          <span>鏈€澶ф敮鍑洪」</span>
+          <strong>{topExpense ? topExpense.name : "鏆傛棤"}</strong>
+          <p>{topExpense ? `鍗犳湰鏈堟敮鍑虹殑 ${topExpenseRatio}%锛岄噾棰?楼${centsToYuan(topExpense.value)}銆俙 : "鏈湀杩樻病鏈夋敮鍑烘暟鎹€?}</p>
         </article>
         <article className={expenseChange > 15 ? "insight-card warn" : "insight-card neutral"}>
-          <span>支出环比</span>
+          <span>鏀嚭鐜瘮</span>
           <strong>{expenseChange >= 0 ? "+" : ""}{expenseChange}%</strong>
-          <p>{expenseChange > 15 ? "支出增长较快，建议查看分类统计里的前三项。" : "支出变化在可控范围内。"}</p>
+          <p>{expenseChange > 15 ? "鏀嚭澧為暱杈冨揩锛屽缓璁煡鐪嬪垎绫荤粺璁￠噷鐨勫墠涓夐」銆? : "鏀嚭鍙樺寲鍦ㄥ彲鎺ц寖鍥村唴銆?}</p>
         </article>
         <article className="insight-card">
-          <span>收入环比</span>
+          <span>鏀跺叆鐜瘮</span>
           <strong>{incomeChange >= 0 ? "+" : ""}{incomeChange}%</strong>
-          <p>{incomeChange >= 0 ? "收入较上月持平或增长。" : "收入较上月下降，预算上建议更保守。"}</p>
+          <p>{incomeChange >= 0 ? "鏀跺叆杈冧笂鏈堟寔骞虫垨澧為暱銆? : "鏀跺叆杈冧笂鏈堜笅闄嶏紝棰勭畻涓婂缓璁洿淇濆畧銆?}</p>
         </article>
         <article className="insight-card">
-          <span>日均支出</span>
-          <strong>¥{centsToYuan(dailyAverageExpense)}</strong>
-          <p>{isCurrentMonth ? `按当前节奏，月底预计支出 ¥${centsToYuan(projectedExpense)}。` : "这是该月实际日均支出。"}</p>
+          <span>鏃ュ潎鏀嚭</span>
+          <strong>楼{centsToYuan(dailyAverageExpense)}</strong>
+          <p>{isCurrentMonth ? `鎸夊綋鍓嶈妭濂忥紝鏈堝簳棰勮鏀嚭 楼${centsToYuan(projectedExpense)}銆俙 : "杩欐槸璇ユ湀瀹為檯鏃ュ潎鏀嚭銆?}</p>
         </article>
         <article className={concentrationRatio > 65 ? "insight-card warn" : "insight-card neutral"}>
-          <span>前三支出集中度</span>
+          <span>鍓嶄笁鏀嚭闆嗕腑搴?/span>
           <strong>{concentrationRatio}%</strong>
-          <p>{concentrationRatio > 65 ? "支出集中在少数分类，适合优先做专项控制。" : "支出结构相对分散。"}</p>
+          <p>{concentrationRatio > 65 ? "鏀嚭闆嗕腑鍦ㄥ皯鏁板垎绫伙紝閫傚悎浼樺厛鍋氫笓椤规帶鍒躲€? : "鏀嚭缁撴瀯鐩稿鍒嗘暎銆?}</p>
         </article>
         <article className={coverageRatio >= 120 ? "insight-card good" : coverageRatio >= 100 ? "insight-card neutral" : "insight-card warn"}>
-          <span>收入覆盖支出</span>
-          <strong>{coverageRatio >= 999 ? "充足" : `${coverageRatio}%`}</strong>
-          <p>{coverageRatio >= 120 ? "收入明显覆盖支出，现金流余地较好。" : coverageRatio >= 100 ? "收入刚好覆盖支出，建议留出安全垫。" : "收入未覆盖支出，需要减少可变支出或动用预算。"}</p>
+          <span>鏀跺叆瑕嗙洊鏀嚭</span>
+          <strong>{coverageRatio >= 999 ? "鍏呰冻" : `${coverageRatio}%`}</strong>
+          <p>{coverageRatio >= 120 ? "鏀跺叆鏄庢樉瑕嗙洊鏀嚭锛岀幇閲戞祦浣欏湴杈冨ソ銆? : coverageRatio >= 100 ? "鏀跺叆鍒氬ソ瑕嗙洊鏀嚭锛屽缓璁暀鍑哄畨鍏ㄥ灚銆? : "鏀跺叆鏈鐩栨敮鍑猴紝闇€瑕佸噺灏戝彲鍙樻敮鍑烘垨鍔ㄧ敤棰勭畻銆?}</p>
         </article>
         <article className={recentNetAverage >= 0 ? "insight-card good" : "insight-card warn"}>
-          <span>近三月平均净流</span>
-          <strong>{recentNetAverage >= 0 ? "+" : "-"}¥{centsToYuan(Math.abs(recentNetAverage))}</strong>
-          <p>{recentNetAverage >= 0 ? "近期现金流趋势为正。" : "近期平均为净流出，建议压缩非必要支出。"}</p>
+          <span>杩戜笁鏈堝钩鍧囧噣娴?/span>
+          <strong>{recentNetAverage >= 0 ? "+" : "-"}楼{centsToYuan(Math.abs(recentNetAverage))}</strong>
+          <p>{recentNetAverage >= 0 ? "杩戞湡鐜伴噾娴佽秼鍔夸负姝ｃ€? : "杩戞湡骞冲潎涓哄噣娴佸嚭锛屽缓璁帇缂╅潪蹇呰鏀嚭銆?}</p>
         </article>
       </div>
 
       <section className="grid two report-grid">
         <div className="panel chart-panel category-analysis">
           <div className="chart-heading">
-            <h2>分类统计</h2>
+            <h2>鍒嗙被缁熻</h2>
             <div className="segmented compact">
               {(["expense", "income"] as Category["kind"][]).map((item) => (
                 <button key={item} type="button" className={categoryKind === item ? "active" : ""} onClick={() => setCategoryKind(item)}>
-                  {item === "expense" ? "支出" : "收入"}
+                  {item === "expense" ? "鏀嚭" : "鏀跺叆"}
                 </button>
               ))}
             </div>
@@ -1137,7 +1145,7 @@ function Reports({ transactions, categories }: { transactions: Transaction[]; ca
             <InteractiveDonut data={categoryData} total={categoryTotal} selectedIndex={selectedCategoryIndex} onSelect={setSelectedCategoryIndex} kind={categoryKind} />
           </div>
           <div className="donut-list">
-            {categoryData.length === 0 && <p className="empty">本月暂无{categoryKind === "expense" ? "支出" : "收入"}分类数据</p>}
+            {categoryData.length === 0 && <p className="empty">鏈湀鏆傛棤{categoryKind === "expense" ? "鏀嚭" : "鏀跺叆"}鍒嗙被鏁版嵁</p>}
             {categoryData.map((entry, index) => {
               const ratio = Math.round((entry.value / categoryTotal) * 100);
               return (
@@ -1152,7 +1160,7 @@ function Reports({ transactions, categories }: { transactions: Transaction[]; ca
                   }}
                 >
                   <span><i className="dot" style={{ background: entry.color }} />{entry.name}</span>
-                  <strong>¥{centsToYuan(entry.value)} · {ratio}%</strong>
+                  <strong>楼{centsToYuan(entry.value)} 路 {ratio}%</strong>
                   <div className="bar"><i style={{ width: `${ratio}%`, background: entry.color }} /></div>
                 </div>
               );
@@ -1161,20 +1169,20 @@ function Reports({ transactions, categories }: { transactions: Transaction[]; ca
         </div>
 
         <div className="panel chart-panel trend-panel">
-          <h2>月度收入 / 支出 / 净流向</h2>
+          <h2>鏈堝害鏀跺叆 / 鏀嚭 / 鍑€娴佸悜</h2>
           <div className="trend-legend">
-            <span><i className="legend income-bar" />收入</span>
-            <span><i className="legend expense-bar" />支出</span>
-            <span><i className="legend net-positive" />净流入/流出</span>
+            <span><i className="legend income-bar" />鏀跺叆</span>
+            <span><i className="legend expense-bar" />鏀嚭</span>
+            <span><i className="legend net-positive" />鍑€娴佸叆/娴佸嚭</span>
           </div>
           <div className="trend-bars monthly-flow">
           {trendData.map((item) => {
             return (
               <div className="trend-month" key={item.month}>
                 <div className="trend-stack">
-                    <i className="income-bar" title={`收入 ¥${centsToYuan(item.income)}`} style={{ height: `${Math.max(4, (item.income / maxTrend) * 100)}%` }} />
-                    <i className="expense-bar" title={`支出 ¥${centsToYuan(item.expense)}`} style={{ height: `${Math.max(4, (item.expense / maxTrend) * 100)}%` }} />
-                    <i className={item.net >= 0 ? "net-line net-positive" : "net-line net-negative"} title={`${item.net >= 0 ? "净流入" : "净流出"} ¥${centsToYuan(Math.abs(item.net))}`} style={{ height: `${Math.max(4, (Math.abs(item.net) / maxTrend) * 100)}%` }} />
+                    <i className="income-bar" title={`鏀跺叆 楼${centsToYuan(item.income)}`} style={{ height: `${Math.max(4, (item.income / maxTrend) * 100)}%` }} />
+                    <i className="expense-bar" title={`鏀嚭 楼${centsToYuan(item.expense)}`} style={{ height: `${Math.max(4, (item.expense / maxTrend) * 100)}%` }} />
+                    <i className={item.net >= 0 ? "net-line net-positive" : "net-line net-negative"} title={`${item.net >= 0 ? "鍑€娴佸叆" : "鍑€娴佸嚭"} 楼${centsToYuan(Math.abs(item.net))}`} style={{ height: `${Math.max(4, (Math.abs(item.net) / maxTrend) * 100)}%` }} />
                 </div>
                 <span>{item.month.slice(5)}</span>
                 <small className={item.net >= 0 ? "net-positive-text" : "net-negative-text"}>{item.net >= 0 ? "+" : "-"}{centsToYuan(Math.abs(item.net))}</small>
@@ -1205,21 +1213,21 @@ async function importCsv(
   const text = await file.text();
   const parsed = Papa.parse<Record<string, string>>(text, { header: true, skipEmptyLines: true });
   for (const row of parsed.data) {
-    const account = accounts.find((item) => item.name === row["账户"]) ?? accounts[0];
+    const account = accounts.find((item) => item.name === row["璐︽埛"]) ?? accounts[0];
     if (!account) continue;
-    const category = categories.find((item) => item.name === row["分类"]);
-    const amount = row["金额"] ?? "0";
+    const category = categories.find((item) => item.name === row["鍒嗙被"]);
+    const amount = row["閲戦"] ?? "0";
     await saveLocalAndQueue("transactions", {
       ...entityStamp(),
-      type: (row["类型"] as TransactionType) || "expense",
+      type: (row["绫诲瀷"] as TransactionType) || "expense",
       accountId: account.id,
       toAccountId: null,
       categoryId: category?.id ?? null,
       amountCents: yuanToCents(amount),
-      occurredAt: row["日期"] ? new Date(row["日期"]).toISOString() : new Date().toISOString(),
-      merchant: row["商户"] ?? "",
-      note: row["备注"] ?? "",
-      tags: row["标签"] ? row["标签"].split("|").filter(Boolean) : []
+      occurredAt: row["鏃ユ湡"] ? new Date(row["鏃ユ湡"]).toISOString() : new Date().toISOString(),
+      merchant: row["鍟嗘埛"] ?? "",
+      note: row["澶囨敞"] ?? "",
+      tags: row["鏍囩"] ? row["鏍囩"].split("|").filter(Boolean) : []
     });
   }
 }
