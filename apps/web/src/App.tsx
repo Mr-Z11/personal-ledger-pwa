@@ -762,11 +762,11 @@ function TransactionList({ transactions, accounts, categories, onDelete, onEdit,
         </div>
       )}
       {dayGroups.length === 0 && <p className="empty">暂无记录</p>}
-      {dayGroups.map((group) => {
+      {dayGroups.map((group, index) => {
         const collapsed = collapsedDays.has(group.date);
         const netCents = group.incomeCents - group.expenseCents;
         return (
-          <section className="day-group" key={group.date}>
+          <section className={`day-group tone-${index % 4} ${collapsed ? "collapsed" : "open"}`} key={group.date}>
             <button className="day-summary" type="button" onClick={() => toggleDay(group.date)} aria-expanded={!collapsed}>
               <div>
                 <strong>{dateLabel(group.date)}</strong>
@@ -1084,7 +1084,7 @@ function InteractiveDonut({ data, total, selectedIndex, onSelect, kind }: {
     return { ...entry, index, start, end, ratio: Math.round((entry.value / total) * 100) };
   });
   const selectedSegment = segments[selectedIndex];
-  const rotation = selectedSegment ? -((selectedSegment.start + selectedSegment.end) / 2) : 0;
+  const rotation = selectedSegment ? 180 - ((selectedSegment.start + selectedSegment.end) / 2) : 0;
 
   function selectOffset(offset: number) {
     if (data.length === 0) return;
