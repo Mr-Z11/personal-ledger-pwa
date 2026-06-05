@@ -19,6 +19,7 @@ import {
   CalendarDays,
   CircleDollarSign,
   Download,
+  FolderPlus,
   Home,
   ListFilter,
   LogOut,
@@ -86,6 +87,22 @@ function percentDelta(current: number, previous: number) {
 function daysInMonth(value: string) {
   const date = dateFromMonthKey(value);
   return new Date(date.getFullYear(), date.getMonth() + 1, 0).getDate();
+}
+
+function dateKey(value: string) {
+  const date = new Date(value);
+  const year = date.getFullYear();
+  const month = `${date.getMonth() + 1}`.padStart(2, "0");
+  const day = `${date.getDate()}`.padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
+function dateLabel(value: string) {
+  return new Date(`${value}T00:00:00`).toLocaleDateString("zh-CN", {
+    month: "long",
+    day: "numeric",
+    weekday: "short"
+  });
 }
 
 function polarToCartesian(cx: number, cy: number, radius: number, angle: number) {
@@ -173,6 +190,7 @@ export function App() {
   const [outboxCount, setOutboxCount] = useState(0);
   const [lastSync, setLastSync] = useState<string | undefined>();
   const [editingTransaction, setEditingTransaction] = useState<Transaction | null>(null);
+  const [quickCategoryOpen, setQuickCategoryOpen] = useState(false);
 
   const refreshLocal = useCallback(async () => {
     const [nextAccounts, nextCategories, nextTransactions, nextBudgets, nextOutboxCount, nextLastSync] = await Promise.all([
@@ -360,7 +378,10 @@ export function App() {
           }} onSaveCategory={(item) => saveLocalAndQueue("categories", item)} />
         )}
         {view === "accounts" && (
-          <ManagementPanel accounts={activeAccounts} categories={activeCategories} transactions={activeTransactions} onSaveAccount={(item) => saveLocalAndQueue("accounts", item)} onSaveCategory={(item) => saveLocalAndQueue("categories", item)} />
+          <ManagementPanel accounts={activeAccounts} categories={activeCategories} transactions={activeTransactions} onSaveAccount={(item) => saveLocalAndQueue("accounts", item)} onDeleteAccount={async (item) => {
+            const deleted = { ...item, deletedAt: new Date().toISOString(), updatedAt: new Date().toISOString(), version: item.version + 1 };
+            await saveLocalAndQueue("accounts", deleted);
+          }} onSaveCategory={(item) => saveLocalAndQueue("categories", item)} />
         )}
         {view === "budget" && (
           <BudgetPanel budgets={activeOnly(budgets)} categories={activeCategories} transactions={activeTransactions} onSave={(item) => saveLocalAndQueue("budgets", item)} />
@@ -373,6 +394,14 @@ export function App() {
             const restored = { ...item, deletedAt: null, updatedAt: new Date().toISOString(), version: item.version + 1 };
             await saveLocalAndQueue("transactions", restored);
           }} />
+        )}
+        <button className="floating category-fab" onClick={() => setQuickCategoryOpen((value) => !value)} title="快速增加分类"><FolderPlus size={23} /></button>
+        {quickCategoryOpen && (
+          <QuickCategoryForm
+            categories={activeCategories}
+            onSave={(item) => saveLocalAndQueue("categories", item)}
+            onClose={() => setQuickCategoryOpen(false)}
+          />
         )}
         <button className="floating entry-fab" onClick={() => setView("entry")} title="记一笔"><Plus size={30} /></button>
       </main>
@@ -618,6 +647,63 @@ function CategoryPicker({ categories, kind, value, onChange, onCreate }: {
   );
 }
 
+function QuickCategoryForm({ categories, onSave, onClose }: { categories: Category[]; onSave: (item: Category) => Promise<void>; onClose: () => void }) {
+  const [name, setName] = useState("");
+  const [kind, setKind] = useState<Category["kind"]>("expense");
+  const [parentId, setParentId] = useState("__other__");
+  const [saving, setSaving] = useState(false);
+  const activeCategories = activeOnly(categories);
+  const parentOptions = activeCategories.filter((category) => !category.parentId && category.kind === kind);
+
+  async function submit(event: React.FormEvent) {
+    event.preventDefault();
+    if (!name.trim()) return;
+    setSaving(true);
+    try {
+      let nextParentId: string | null = parentId || null;
+      if (parentId === "__other__") {
+        let parent = otherCategory(activeCategories, kind);
+        if (!parent) {
+          parent = makeCategory({ name: "其他", kind, parentId: null, icon: "folder", color: kind === "expense" ? "#6b6f3f" : "#2f7d4f" });
+          await onSave(parent);
+        }
+        nextParentId = parent.id;
+      }
+      await onSave(makeCategory({ name: name.trim(), kind, parentId: nextParentId }));
+      setName("");
+      setParentId("__other__");
+      onClose();
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <form className="quick-category-form" onSubmit={submit}>
+      <div className="quick-form-head">
+        <strong>快速分类</strong>
+        <button className="icon-button mini" type="button" onClick={onClose} title="关闭"><X size={14} /></button>
+      </div>
+      <input value={name} onChange={(event) => setName(event.target.value)} placeholder="分类名称" autoFocus />
+      <div className="quick-form-row">
+        <select value={kind} onChange={(event) => {
+          setKind(event.target.value as Category["kind"]);
+          setParentId("__other__");
+        }}>
+          <option value="expense">支出</option>
+          <option value="income">收入</option>
+        </select>
+        <select value={parentId} onChange={(event) => setParentId(event.target.value)}>
+          <option value="__other__">放入其他</option>
+          <option value="">一级分类</option>
+          {parentOptions.map((category) => <option key={category.id} value={category.id}>{category.name}</option>)}
+        </select>
+      </div>
+      <button className="primary" disabled={saving}>{saving ? "保存中" : "保存分类"}</button>
+    </form>
+  );
+}
+
 function TransactionList({ transactions, accounts, categories, onDelete, onEdit, editingTransaction, onCancelEdit, onSaveEdit, onSaveCategory }: {
   transactions: Transaction[];
   accounts: Account[];
@@ -631,10 +717,33 @@ function TransactionList({ transactions, accounts, categories, onDelete, onEdit,
 }) {
   const [query, setQuery] = useState("");
   const [type, setType] = useState<TransactionType | "all">("all");
+  const [collapsedDays, setCollapsedDays] = useState<Set<string>>(() => new Set());
   const filtered = transactions.filter((item) => {
     const haystack = [item.note, item.merchant, accounts.find((account) => account.id === item.accountId)?.name, categories.find((category) => category.id === item.categoryId)?.name].join(" ");
     return (type === "all" || item.type === type) && haystack.toLowerCase().includes(query.toLowerCase());
   });
+  const dayGroups = useMemo(() => {
+    const groups = new Map<string, { date: string; transactions: Transaction[]; incomeCents: number; expenseCents: number }>();
+    filtered.forEach((item) => {
+      const key = dateKey(item.occurredAt);
+      const group = groups.get(key) ?? { date: key, transactions: [], incomeCents: 0, expenseCents: 0 };
+      group.transactions.push(item);
+      if (item.type === "income") group.incomeCents += item.amountCents;
+      if (item.type === "expense") group.expenseCents += item.amountCents;
+      groups.set(key, group);
+    });
+    return Array.from(groups.values()).sort((left, right) => right.date.localeCompare(left.date));
+  }, [filtered]);
+
+  function toggleDay(date: string) {
+    setCollapsedDays((current) => {
+      const next = new Set(current);
+      if (next.has(date)) next.delete(date);
+      else next.add(date);
+      return next;
+    });
+  }
+
   return (
     <section className="panel">
       <div className="filters">
@@ -652,7 +761,30 @@ function TransactionList({ transactions, accounts, categories, onDelete, onEdit,
           <EntryForm accounts={activeOnly(accounts)} categories={activeOnly(categories)} editing={editingTransaction} onSave={onSaveEdit} onSaveCategory={onSaveCategory} onCancel={onCancelEdit} />
         </div>
       )}
-      <TransactionRows transactions={filtered} accounts={accounts} categories={categories} onDelete={onDelete} onEdit={onEdit} />
+      {dayGroups.length === 0 && <p className="empty">暂无记录</p>}
+      {dayGroups.map((group) => {
+        const collapsed = collapsedDays.has(group.date);
+        const netCents = group.incomeCents - group.expenseCents;
+        return (
+          <section className="day-group" key={group.date}>
+            <button className="day-summary" type="button" onClick={() => toggleDay(group.date)} aria-expanded={!collapsed}>
+              <div>
+                <strong>{dateLabel(group.date)}</strong>
+                <span>{group.transactions.length} 笔</span>
+              </div>
+              <div className="day-totals">
+                <span className="income">收 ¥{centsToYuan(group.incomeCents)}</span>
+                <span className="expense">支 ¥{centsToYuan(group.expenseCents)}</span>
+                <b className={netCents >= 0 ? "income" : "expense"}>{netCents >= 0 ? "+" : "-"}¥{centsToYuan(Math.abs(netCents))}</b>
+              </div>
+              <span className="fold-indicator">{collapsed ? "展开" : "折叠"}</span>
+            </button>
+            {!collapsed && (
+              <TransactionRows transactions={group.transactions} accounts={accounts} categories={categories} onDelete={onDelete} onEdit={onEdit} />
+            )}
+          </section>
+        );
+      })}
     </section>
   );
 }
@@ -699,22 +831,23 @@ function TransactionRows({ transactions, accounts, categories, onDelete, onEdit,
   );
 }
 
-function ManagementPanel({ accounts, categories, transactions, onSaveAccount, onSaveCategory }: {
+function ManagementPanel({ accounts, categories, transactions, onSaveAccount, onDeleteAccount, onSaveCategory }: {
   accounts: Account[];
   categories: Category[];
   transactions: Transaction[];
   onSaveAccount: (item: Account) => Promise<void>;
+  onDeleteAccount: (item: Account) => Promise<void>;
   onSaveCategory: (item: Category) => Promise<void>;
 }) {
   return (
     <section className="grid two">
-      <AccountsPanel accounts={accounts} transactions={transactions} onSave={onSaveAccount} />
+      <AccountsPanel accounts={accounts} transactions={transactions} onSave={onSaveAccount} onDelete={onDeleteAccount} />
       <CategoriesPanel categories={categories} onSave={onSaveCategory} />
     </section>
   );
 }
 
-function AccountsPanel({ accounts, transactions, onSave }: { accounts: Account[]; transactions: Transaction[]; onSave: (item: Account) => Promise<void> }) {
+function AccountsPanel({ accounts, transactions, onSave, onDelete }: { accounts: Account[]; transactions: Transaction[]; onSave: (item: Account) => Promise<void>; onDelete: (item: Account) => Promise<void> }) {
   const [name, setName] = useState("");
   const [type, setType] = useState<Account["type"]>("bank");
   const [opening, setOpening] = useState("0");
@@ -729,6 +862,19 @@ function AccountsPanel({ accounts, transactions, onSave }: { accounts: Account[]
     setColor(account.color);
   }
 
+  async function deleteAccount(account: Account) {
+    const balance = calculateAccountBalance(account, transactions);
+    const confirmed = window.confirm(`删除账户“${account.name}”？历史流水会保留，只是不再作为可选账户显示。当前余额：¥${centsToYuan(balance)}`);
+    if (!confirmed) return;
+    if (editing?.id === account.id) {
+      setEditing(null);
+      setName("");
+      setOpening("0");
+      setColor("#1f5f74");
+    }
+    await onDelete(account);
+  }
+
   return (
     <>
       <div className="panel management-panel">
@@ -740,6 +886,7 @@ function AccountsPanel({ accounts, transactions, onSave }: { accounts: Account[]
               <span>{account.name}</span>
               <strong>¥{centsToYuan(calculateAccountBalance(account, transactions))}</strong>
               <button className="icon-button" onClick={() => editAccount(account)} title="编辑账户"><Pencil size={16} /></button>
+              <button className="icon-button danger" onClick={() => void deleteAccount(account)} title="删除账户"><Trash2 size={16} /></button>
             </div>
           ))}
         </div>
