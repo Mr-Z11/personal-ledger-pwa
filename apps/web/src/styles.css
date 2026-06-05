@@ -591,6 +591,36 @@ select {
   margin-top: 0.8rem;
 }
 
+.account-net-card {
+  margin-top: 0.8rem;
+  padding: 0.9rem;
+  border-radius: 0.65rem;
+  display: grid;
+  gap: 0.18rem;
+  background: rgba(49, 71, 58, 0.08);
+  border: 1px solid rgba(49, 71, 58, 0.12);
+}
+
+.account-net-card span,
+.account-net-card small {
+  color: rgba(36, 49, 39, 0.62);
+  font-size: 0.82rem;
+}
+
+.account-net-card strong {
+  font-size: 1.55rem;
+  line-height: 1.15;
+  overflow-wrap: anywhere;
+}
+
+.account-net-card.positive strong {
+  color: #2f7d4f;
+}
+
+.account-net-card.negative strong {
+  color: #d45b3f;
+}
+
 .account-line,
 .category-line {
   display: grid;
@@ -1116,7 +1146,7 @@ select {
   }
 
   nav {
-    grid-template-columns: repeat(6, 1fr);
+    grid-template-columns: repeat(7, 1fr);
     gap: 0.18rem;
   }
 

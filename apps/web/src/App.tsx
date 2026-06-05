@@ -28,6 +28,7 @@ import {
   Plus,
   RefreshCw,
   Search,
+  Settings2,
   Trash2,
   Undo2,
   Upload,
@@ -38,7 +39,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { api } from "./api";
 import { clearOutbox, db, enqueue, readOutboxPayload, resetLocalData, saveSnapshot } from "./db";
 
-type View = "overview" | "entry" | "transactions" | "accounts" | "budget" | "reports" | "trash";
+type View = "overview" | "entry" | "transactions" | "accounts" | "budget" | "reports" | "settings" | "trash";
 
 const navItems: { id: View; label: string; icon: typeof Home }[] = [
   { id: "overview", label: "总览", icon: Home },
@@ -46,6 +47,7 @@ const navItems: { id: View; label: string; icon: typeof Home }[] = [
   { id: "accounts", label: "账户", icon: Banknote },
   { id: "budget", label: "预算", icon: CalendarDays },
   { id: "reports", label: "报表", icon: PieChartIcon },
+  { id: "settings", label: "设置", icon: Settings2 },
   { id: "trash", label: "回收站", icon: Trash2 }
 ];
 
@@ -378,16 +380,19 @@ export function App() {
           }} onSaveCategory={(item) => saveLocalAndQueue("categories", item)} />
         )}
         {view === "accounts" && (
-          <ManagementPanel accounts={activeAccounts} categories={activeCategories} transactions={activeTransactions} onSaveAccount={(item) => saveLocalAndQueue("accounts", item)} onDeleteAccount={async (item) => {
+          <AccountsPanel accounts={activeAccounts} transactions={activeTransactions} onSave={(item) => saveLocalAndQueue("accounts", item)} onDelete={async (item) => {
             const deleted = { ...item, deletedAt: new Date().toISOString(), updatedAt: new Date().toISOString(), version: item.version + 1 };
             await saveLocalAndQueue("accounts", deleted);
-          }} onSaveCategory={(item) => saveLocalAndQueue("categories", item)} />
+          }} />
         )}
         {view === "budget" && (
           <BudgetPanel budgets={activeOnly(budgets)} categories={activeCategories} transactions={activeTransactions} onSave={(item) => saveLocalAndQueue("budgets", item)} />
         )}
         {view === "reports" && (
           <Reports transactions={activeTransactions} categories={activeCategories} />
+        )}
+        {view === "settings" && (
+          <SettingsPanel categories={activeCategories} onSaveCategory={(item) => saveLocalAndQueue("categories", item)} />
         )}
         {view === "trash" && (
           <Trash transactions={transactions.filter((item) => item.deletedAt)} accounts={accounts} categories={categories} onRestore={async (item) => {
@@ -831,17 +836,12 @@ function TransactionRows({ transactions, accounts, categories, onDelete, onEdit,
   );
 }
 
-function ManagementPanel({ accounts, categories, transactions, onSaveAccount, onDeleteAccount, onSaveCategory }: {
-  accounts: Account[];
+function SettingsPanel({ categories, onSaveCategory }: {
   categories: Category[];
-  transactions: Transaction[];
-  onSaveAccount: (item: Account) => Promise<void>;
-  onDeleteAccount: (item: Account) => Promise<void>;
   onSaveCategory: (item: Category) => Promise<void>;
 }) {
   return (
     <section className="grid two">
-      <AccountsPanel accounts={accounts} transactions={transactions} onSave={onSaveAccount} onDelete={onDeleteAccount} />
       <CategoriesPanel categories={categories} onSave={onSaveCategory} />
     </section>
   );
@@ -853,6 +853,7 @@ function AccountsPanel({ accounts, transactions, onSave, onDelete }: { accounts:
   const [opening, setOpening] = useState("0");
   const [color, setColor] = useState("#1f5f74");
   const [editing, setEditing] = useState<Account | null>(null);
+  const netAssets = accounts.reduce((sum, account) => sum + calculateAccountBalance(account, transactions), 0);
 
   function editAccount(account: Account) {
     setEditing(account);
@@ -876,9 +877,14 @@ function AccountsPanel({ accounts, transactions, onSave, onDelete }: { accounts:
   }
 
   return (
-    <>
+    <section className="grid two">
       <div className="panel management-panel">
         <h2>账户</h2>
+        <div className={`account-net-card ${netAssets >= 0 ? "positive" : "negative"}`}>
+          <span>净资产</span>
+          <strong>¥{centsToYuan(netAssets)}</strong>
+          <small>所有账户余额合计</small>
+        </div>
         <div className="account-list">
           {accounts.map((account) => (
             <div className="account-line" key={account.id}>
@@ -929,7 +935,7 @@ function AccountsPanel({ accounts, transactions, onSave, onDelete }: { accounts:
           setColor("#1f5f74");
         }}>取消编辑</button>}
       </form>
-    </>
+    </section>
   );
 }
 
