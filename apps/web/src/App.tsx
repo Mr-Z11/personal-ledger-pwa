@@ -855,53 +855,128 @@ function BudgetPanel({ budgets, categories, transactions, onSave }: {
 }
 
 function Reports({ transactions, categories }: { transactions: Transaction[]; categories: Category[] }) {
-  const categoryData = useMemo(() => {
-    return categories.filter((category) => category.kind === "expense").map((category) => ({
-      name: category.name,
-      value: transactions.filter((item) => item.type === "expense" && item.categoryId === category.id).reduce((sum, item) => sum + item.amountCents, 0),
-      color: category.color
-    })).filter((item) => item.value > 0);
-  }, [transactions, categories]);
+  const [month, setMonth] = useState(monthKey());
+  const [categoryKind, setCategoryKind] = useState<Category["kind"]>("expense");
+  const reportTransactions = transactions.filter((item) => item.occurredAt.startsWith(month));
+  const monthSummary = summarizeMonth(transactions, month);
+  const categoryTotal = Math.max(1, reportTransactions
+    .filter((item) => item.type === categoryKind)
+    .reduce((sum, item) => sum + item.amountCents, 0));
 
-  const trendData = Array.from({ length: 6 }, (_, index) => {
+  const categoryData = useMemo(() => {
+    const totals = new Map<string, { id: string; name: string; value: number; color: string }>();
+    reportTransactions.filter((item) => item.type === categoryKind).forEach((item) => {
+      const category = categories.find((entry) => entry.id === item.categoryId);
+      const id = category?.id ?? "uncategorized";
+      const current = totals.get(id) ?? {
+        id,
+        name: category ? categoryPath(category, categories) : "未分类",
+        value: 0,
+        color: category?.color ?? "#8a7154"
+      };
+      current.value += item.amountCents;
+      totals.set(id, current);
+    });
+    return Array.from(totals.values()).sort((left, right) => right.value - left.value);
+  }, [reportTransactions, categories, categoryKind]);
+
+  const donutGradient = categoryData.length
+    ? `conic-gradient(${categoryData.map((entry, index) => {
+      const start = categoryData.slice(0, index).reduce((sum, item) => sum + item.value, 0) / categoryTotal * 100;
+      const end = (categoryData.slice(0, index).reduce((sum, item) => sum + item.value, 0) + entry.value) / categoryTotal * 100;
+      return `${entry.color} ${start}% ${end}%`;
+    }).join(", ")})`
+    : "conic-gradient(rgba(49, 71, 58, 0.12) 0 100%)";
+
+  const trendData = Array.from({ length: 12 }, (_, index) => {
     const date = new Date();
-    date.setMonth(date.getMonth() - (5 - index));
-    const month = monthKey(date);
-    const summary = summarizeMonth(transactions, month);
-    return { month, income: summary.incomeCents / 100, expense: summary.expenseCents / 100 };
+    date.setMonth(date.getMonth() - (11 - index));
+    const key = monthKey(date);
+    const summary = summarizeMonth(transactions, key);
+    return {
+      month: key,
+      income: summary.incomeCents,
+      expense: summary.expenseCents,
+      net: summary.netCents
+    };
   });
+  const maxTrend = Math.max(1, ...trendData.map((entry) => Math.max(entry.income, entry.expense, Math.abs(entry.net))));
 
   return (
-    <section className="grid two">
-      <div className="panel chart-panel">
-        <h2>分类占比</h2>
-        <div className="donut-list">
-          {categoryData.map((entry) => (
-            <div className="budget-line" key={entry.name}>
-              <span><i className="dot" style={{ background: entry.color }} />{entry.name}</span>
-              <strong>¥{centsToYuan(entry.value)}</strong>
-              <div className="bar"><i style={{ width: `${Math.round((entry.value / Math.max(1, categoryData.reduce((sum, item) => sum + item.value, 0))) * 100)}%`, background: entry.color }} /></div>
-            </div>
-          ))}
+    <section className="report-page">
+      <div className="panel report-toolbar">
+        <div>
+          <h2>分析报表</h2>
+          <span>{month} · 收入支出与分类结构</span>
         </div>
+        <input value={month} onChange={(event) => setMonth(event.target.value)} type="month" />
       </div>
-      <div className="panel chart-panel">
-        <h2>半年趋势</h2>
-        <div className="trend-bars">
+
+      <div className="report-metrics">
+        <Metric title="月收入" value={monthSummary.incomeCents} icon={ArrowDownLeft} tone="good" />
+        <Metric title="月支出" value={monthSummary.expenseCents} icon={ArrowUpRight} tone="warn" />
+        <Metric title={monthSummary.netCents >= 0 ? "净流入" : "净流出"} value={monthSummary.netCents} icon={CircleDollarSign} tone={monthSummary.netCents >= 0 ? "good" : "warn"} />
+      </div>
+
+      <section className="grid two report-grid">
+        <div className="panel chart-panel category-analysis">
+          <div className="chart-heading">
+            <h2>分类统计</h2>
+            <div className="segmented compact">
+              {(["expense", "income"] as Category["kind"][]).map((item) => (
+                <button key={item} type="button" className={categoryKind === item ? "active" : ""} onClick={() => setCategoryKind(item)}>
+                  {item === "expense" ? "支出" : "收入"}
+                </button>
+              ))}
+            </div>
+          </div>
+          <div className="donut-wrap">
+            <div className="donut-chart" style={{ background: donutGradient }}>
+              <div>
+                <strong>¥{centsToYuan(categoryTotal === 1 && categoryData.length === 0 ? 0 : categoryTotal)}</strong>
+                <span>{categoryKind === "expense" ? "分类支出" : "分类收入"}</span>
+              </div>
+            </div>
+          </div>
+          <div className="donut-list">
+            {categoryData.length === 0 && <p className="empty">本月暂无{categoryKind === "expense" ? "支出" : "收入"}分类数据</p>}
+            {categoryData.map((entry) => {
+              const ratio = Math.round((entry.value / categoryTotal) * 100);
+              return (
+                <div className="budget-line" key={entry.id}>
+                  <span><i className="dot" style={{ background: entry.color }} />{entry.name}</span>
+                  <strong>¥{centsToYuan(entry.value)} · {ratio}%</strong>
+                  <div className="bar"><i style={{ width: `${ratio}%`, background: entry.color }} /></div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+
+        <div className="panel chart-panel trend-panel">
+          <h2>月度收入 / 支出 / 净流向</h2>
+          <div className="trend-legend">
+            <span><i className="legend income-bar" />收入</span>
+            <span><i className="legend expense-bar" />支出</span>
+            <span><i className="legend net-positive" />净流入/流出</span>
+          </div>
+          <div className="trend-bars monthly-flow">
           {trendData.map((item) => {
-            const max = Math.max(1, ...trendData.map((entry) => Math.max(entry.income, entry.expense)));
             return (
               <div className="trend-month" key={item.month}>
                 <div className="trend-stack">
-                  <i className="income-bar" style={{ height: `${(item.income / max) * 100}%` }} />
-                  <i className="expense-bar" style={{ height: `${(item.expense / max) * 100}%` }} />
+                    <i className="income-bar" title={`收入 ¥${centsToYuan(item.income)}`} style={{ height: `${Math.max(4, (item.income / maxTrend) * 100)}%` }} />
+                    <i className="expense-bar" title={`支出 ¥${centsToYuan(item.expense)}`} style={{ height: `${Math.max(4, (item.expense / maxTrend) * 100)}%` }} />
+                    <i className={item.net >= 0 ? "net-line net-positive" : "net-line net-negative"} title={`${item.net >= 0 ? "净流入" : "净流出"} ¥${centsToYuan(Math.abs(item.net))}`} style={{ height: `${Math.max(4, (Math.abs(item.net) / maxTrend) * 100)}%` }} />
                 </div>
                 <span>{item.month.slice(5)}</span>
+                <small className={item.net >= 0 ? "net-positive-text" : "net-negative-text"}>{item.net >= 0 ? "+" : "-"}{centsToYuan(Math.abs(item.net))}</small>
               </div>
             );
           })}
+          </div>
         </div>
-      </div>
+      </section>
     </section>
   );
 }

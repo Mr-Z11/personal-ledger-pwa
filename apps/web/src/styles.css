@@ -355,6 +355,18 @@ select {
   box-shadow: 0 0.35rem 1rem rgba(36, 49, 39, 0.08);
 }
 
+.segmented.compact {
+  grid-template-columns: repeat(2, minmax(4rem, 1fr));
+  margin: 0;
+  padding: 0.2rem;
+}
+
+.segmented.compact button {
+  min-height: 2.2rem;
+  font-size: 0.86rem;
+  font-weight: 800;
+}
+
 .filters {
   display: grid;
   grid-template-columns: 1fr 9rem;
@@ -529,19 +541,132 @@ select {
   min-height: 22rem;
 }
 
+.report-page {
+  display: grid;
+  gap: 1rem;
+}
+
+.report-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.report-toolbar span {
+  display: block;
+  margin-top: 0.25rem;
+  color: rgba(36, 49, 39, 0.62);
+  font-size: 0.88rem;
+}
+
+.report-toolbar input {
+  width: min(100%, 12rem);
+}
+
+.report-metrics {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 1rem;
+}
+
+.report-grid {
+  align-items: start;
+}
+
+.chart-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.donut-wrap {
+  display: grid;
+  place-items: center;
+  padding: 1.2rem 0 0.6rem;
+}
+
+.donut-chart {
+  width: min(15rem, 70vw);
+  aspect-ratio: 1;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  box-shadow: inset 0 0 0 1px rgba(49, 71, 58, 0.08), 0 1rem 2rem rgba(36, 49, 39, 0.12);
+}
+
+.donut-chart > div {
+  width: 58%;
+  aspect-ratio: 1;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  align-content: center;
+  gap: 0.18rem;
+  text-align: center;
+  background: #fffaf0;
+  color: #243127;
+  box-shadow: 0 0.8rem 1.8rem rgba(36, 49, 39, 0.12);
+}
+
+.donut-chart strong {
+  max-width: 100%;
+  padding: 0 0.6rem;
+  overflow-wrap: anywhere;
+  font-size: clamp(1rem, 4vw, 1.45rem);
+}
+
+.donut-chart span {
+  color: rgba(36, 49, 39, 0.62);
+  font-size: 0.8rem;
+  font-weight: 800;
+}
+
 .donut-list {
   display: grid;
   gap: 1rem;
   margin-top: 1rem;
 }
 
+.trend-panel {
+  overflow: hidden;
+}
+
+.trend-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.55rem 0.9rem;
+  margin-top: 0.65rem;
+  color: rgba(36, 49, 39, 0.68);
+  font-size: 0.84rem;
+  font-weight: 800;
+}
+
+.trend-legend span {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.legend {
+  width: 0.75rem;
+  height: 0.75rem;
+  border-radius: 0.2rem;
+}
+
 .trend-bars {
   min-height: 17rem;
   display: grid;
-  grid-template-columns: repeat(6, 1fr);
+  grid-template-columns: repeat(12, minmax(1.8rem, 1fr));
   gap: 0.7rem;
   align-items: end;
   margin-top: 1.2rem;
+}
+
+.monthly-flow {
+  overflow-x: auto;
+  padding-bottom: 0.2rem;
 }
 
 .trend-month {
@@ -558,11 +683,13 @@ select {
   display: flex;
   align-items: end;
   justify-content: center;
-  gap: 0.25rem;
+  gap: 0.18rem;
+  padding: 0.45rem 0.2rem 0;
+  border-bottom: 1px solid rgba(49, 71, 58, 0.12);
 }
 
 .trend-stack i {
-  width: 0.8rem;
+  width: 0.5rem;
   min-height: 0.2rem;
   border-radius: 999px 999px 0 0;
 }
@@ -573,6 +700,32 @@ select {
 
 .expense-bar {
   background: #d45b3f;
+}
+
+.net-line {
+  opacity: 0.82;
+}
+
+.net-positive {
+  background: #d6b25e;
+}
+
+.net-negative {
+  background: #9e4b3e;
+}
+
+.net-positive-text,
+.net-negative-text {
+  font-size: 0.68rem;
+  font-weight: 800;
+}
+
+.net-positive-text {
+  color: #2f7d4f;
+}
+
+.net-negative-text {
+  color: #d45b3f;
 }
 
 .floating,
@@ -686,6 +839,20 @@ select {
   .overview-grid,
   .two {
     grid-template-columns: 1fr;
+  }
+
+  .report-metrics {
+    grid-template-columns: 1fr;
+  }
+
+  .report-toolbar,
+  .chart-heading {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .report-toolbar input {
+    width: 100%;
   }
 
   .wide {
