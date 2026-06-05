@@ -8,7 +8,7 @@ Improve daily transaction browsing, add soft-delete for accounts, and add a smal
 - [complete] Add daily grouped transaction totals with collapsible details.
 - [complete] Add account soft-delete action and wire it through local queue sync.
 - [complete] Add compact left floating quick-category form.
-- [in_progress] Verify typecheck/build and deploy if successful.
+- [complete] Verify typecheck/build and deploy if successful.
 
 ## Notes
 - Keep all data changes through `saveLocalAndQueue` so offline edits queue and later sync to the server.
@@ -18,3 +18,10 @@ Improve daily transaction browsing, add soft-delete for accounts, and add a smal
 - `TransactionList` now groups filtered transactions by local day and each group header toggles visibility.
 - Account delete is a soft delete and retains historical transactions.
 - Quick category creation defaults new second-level categories into `其他` and creates that parent if missing.
+
+## Verification
+- `npm.cmd run typecheck` passed.
+- `npm.cmd run build` passed.
+- `npm.cmd run test` passed.
+- GitHub Actions passed for `7a74d0d`.
+- Server deployed and `/api/health` returned `{"ok":true}`.

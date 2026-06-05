@@ -5,4 +5,4 @@
 - Implemented transaction daily summaries with collapsible detail rows.
 - Implemented account soft delete via the existing local queue sync path.
 - Added a compact left floating quick-category form.
-
+- Verification passed: typecheck, build, tests, GitHub Actions, server deploy, HTTPS health check.
