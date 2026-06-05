@@ -37,3 +37,12 @@ npm run dev
 cd /root/personal-ledger-pwa
 bash deploy/update-server.sh
 ```
+
+服务器维护任务：
+
+```bash
+cd /root/personal-ledger-pwa
+bash deploy/install-maintenance-cron.sh
+```
+
+它会每天自动备份数据库，并清理未使用的旧 Docker 镜像。

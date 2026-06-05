@@ -93,13 +93,27 @@ bash deploy/update-server.sh
 docker compose -f docker-compose.yml -f docker-compose.build.yml build
 ```
 
-## 6. 备份
+## 6. 自动备份和旧镜像清理
 
-手动备份：
+安装每日维护任务：
 
 ```bash
-mkdir -p backups
-docker compose exec postgres pg_dump -U "$POSTGRES_USER" "$POSTGRES_DB" > "backups/ledger-$(date +%F).sql"
+cd /root/personal-ledger-pwa
+bash deploy/install-maintenance-cron.sh
 ```
 
-建议后续加 cron 每天执行一次，并把 `backups/` 保持在 `.gitignore` 中。
+默认每天凌晨 `03:15` 执行：
+
+- 备份 PostgreSQL 到 `backups/ledger-YYYYMMDD-HHMMSS.sql.gz`。
+- 保留最近 30 天备份，删除更旧的备份。
+- 清理 7 天以上且未被容器使用的旧 Docker 镜像。
+- 维护日志写入 `logs/maintenance.log`。
+
+手动执行一次：
+
+```bash
+cd /root/personal-ledger-pwa
+bash deploy/maintenance.sh
+```
+
+`backups/` 和 `logs/` 已在 `.gitignore` 中，不会进入 GitHub。

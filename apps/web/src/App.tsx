@@ -514,9 +514,10 @@ function CategoryPicker({ categories, kind, value, onChange, onCreate }: {
   const [query, setQuery] = useState("");
   const options = selectableCategories(categories, kind);
   const normalizedQuery = query.trim().toLowerCase();
+  const selectedCategory = options.find((category) => category.id === value);
   const matches = normalizedQuery
     ? options.filter((category) => categoryPath(category, categories).toLowerCase().includes(normalizedQuery))
-    : options;
+    : [];
   const canCreate = query.trim().length > 0 && !options.some((category) => category.name.toLowerCase() === normalizedQuery);
 
   async function createQuickCategory() {
@@ -538,6 +539,11 @@ function CategoryPicker({ categories, kind, value, onChange, onCreate }: {
       分类
       <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="搜索或新增分类" />
       <div className="category-chip-list">
+        {!normalizedQuery && selectedCategory && (
+          <button type="button" className="category-chip active" onClick={() => onChange(selectedCategory.id)}>
+            {categoryPath(selectedCategory, categories)}
+          </button>
+        )}
         {matches.map((category) => (
           <button type="button" className={value === category.id ? "category-chip active" : "category-chip"} key={category.id} onClick={() => onChange(category.id)}>
             {categoryPath(category, categories)}

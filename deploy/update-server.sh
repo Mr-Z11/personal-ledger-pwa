@@ -9,7 +9,7 @@ cd "$APP_DIR"
 git fetch --depth=1 origin "$BRANCH"
 git reset --hard "origin/$BRANCH"
 
-mkdir -p data/postgres data/caddy-data data/caddy-config backups uploads
+mkdir -p data/postgres data/caddy-data data/caddy-config backups uploads logs
 
 # Keep updates light: pull prebuilt images, never build on the small server.
 docker compose pull
