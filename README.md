@@ -4,6 +4,19 @@
 
 ## 快速开始
 
+## 换电脑维护
+
+Windows 新电脑 clone 仓库后，优先用这些双击入口：
+
+- `setup-new-computer.cmd`：第一次设置，检查 Git/Node，安装依赖，跑类型检查。
+- `start-local-preview.cmd`：打开本地预览。
+- `publish-to-github.cmd`：检查、构建、提交并推送到 GitHub。
+- `deploy-server.cmd`：轻量更新云服务器，并检查线上健康状态。
+
+云服务器真实数据、备份、日志仍只保存在服务器，不会进入 GitHub。
+
+## 开发命令
+
 ```bash
 npm install
 npm run build
