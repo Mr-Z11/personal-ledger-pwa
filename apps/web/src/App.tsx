@@ -22,6 +22,7 @@ import {
   Home,
   ListFilter,
   LogOut,
+  Pencil,
   PieChartIcon,
   Plus,
   RefreshCw,
@@ -29,7 +30,8 @@ import {
   Settings2,
   Trash2,
   Undo2,
-  Upload
+  Upload,
+  X
 } from "lucide-react";
 import Papa from "papaparse";
 import { useCallback, useEffect, useMemo, useState } from "react";
@@ -74,6 +76,7 @@ export function App() {
   const [budgets, setBudgets] = useState<Budget[]>([]);
   const [outboxCount, setOutboxCount] = useState(0);
   const [lastSync, setLastSync] = useState<string | undefined>();
+  const [editingTransaction, setEditingTransaction] = useState<Transaction | null>(null);
 
   const refreshLocal = useCallback(async () => {
     const [nextAccounts, nextCategories, nextTransactions, nextBudgets, nextOutboxCount, nextLastSync] = await Promise.all([
@@ -255,6 +258,9 @@ export function App() {
           <TransactionList transactions={activeTransactions} accounts={accounts} categories={categories} onDelete={async (item) => {
             const deleted = { ...item, deletedAt: new Date().toISOString(), updatedAt: new Date().toISOString(), version: item.version + 1 };
             await saveLocalAndQueue("transactions", deleted);
+          }} onEdit={(item) => setEditingTransaction(item)} editingTransaction={editingTransaction} onCancelEdit={() => setEditingTransaction(null)} onSaveEdit={async (item) => {
+            await saveLocalAndQueue("transactions", item);
+            setEditingTransaction(null);
           }} />
         )}
         {view === "accounts" && (
@@ -366,17 +372,41 @@ function Metric({ title, value, icon: Icon, tone }: { title: string; value: numb
   );
 }
 
-function EntryForm({ accounts, categories, onSave }: { accounts: Account[]; categories: Category[]; onSave: (item: Transaction) => Promise<void> }) {
-  const [type, setType] = useState<TransactionType>("expense");
-  const [accountId, setAccountId] = useState(accounts[0]?.id ?? "");
-  const [toAccountId, setToAccountId] = useState(accounts[1]?.id ?? "");
-  const [categoryId, setCategoryId] = useState("");
-  const [amount, setAmount] = useState("");
-  const [merchant, setMerchant] = useState("");
-  const [note, setNote] = useState("");
-  const [occurredAt, setOccurredAt] = useState(() => new Date().toISOString().slice(0, 16));
+function toDatetimeLocal(value: string) {
+  const date = new Date(value);
+  const offsetMs = date.getTimezoneOffset() * 60_000;
+  return new Date(date.getTime() - offsetMs).toISOString().slice(0, 16);
+}
+
+function EntryForm({ accounts, categories, onSave, editing, onCancel }: {
+  accounts: Account[];
+  categories: Category[];
+  onSave: (item: Transaction) => Promise<void>;
+  editing?: Transaction | null;
+  onCancel?: () => void;
+}) {
+  const [type, setType] = useState<TransactionType>(editing?.type ?? "expense");
+  const [accountId, setAccountId] = useState(editing?.accountId ?? accounts[0]?.id ?? "");
+  const [toAccountId, setToAccountId] = useState(editing?.toAccountId ?? accounts[1]?.id ?? "");
+  const [categoryId, setCategoryId] = useState(editing?.categoryId ?? "");
+  const [amount, setAmount] = useState(editing ? centsToYuan(editing.amountCents) : "");
+  const [merchant, setMerchant] = useState(editing?.merchant ?? "");
+  const [note, setNote] = useState(editing?.note ?? "");
+  const [occurredAt, setOccurredAt] = useState(() => editing ? toDatetimeLocal(editing.occurredAt) : new Date().toISOString().slice(0, 16));
 
   const filteredCategories = categories.filter((category) => category.kind === (type === "income" ? "income" : "expense"));
+
+  useEffect(() => {
+    if (!editing) return;
+    setType(editing.type);
+    setAccountId(editing.accountId);
+    setToAccountId(editing.toAccountId ?? "");
+    setCategoryId(editing.categoryId ?? "");
+    setAmount(centsToYuan(editing.amountCents));
+    setMerchant(editing.merchant ?? "");
+    setNote(editing.note ?? "");
+    setOccurredAt(toDatetimeLocal(editing.occurredAt));
+  }, [editing]);
 
   useEffect(() => {
     if (!accountId && accounts[0]) setAccountId(accounts[0].id);
@@ -386,7 +416,7 @@ function EntryForm({ accounts, categories, onSave }: { accounts: Account[]; cate
   async function submit(event: React.FormEvent) {
     event.preventDefault();
     const item: Transaction = {
-      ...entityStamp(),
+      ...(editing ?? entityStamp()),
       type,
       accountId,
       toAccountId: type === "transfer" ? toAccountId : null,
@@ -395,12 +425,17 @@ function EntryForm({ accounts, categories, onSave }: { accounts: Account[]; cate
       occurredAt: new Date(occurredAt).toISOString(),
       merchant,
       note,
-      tags: []
+      tags: editing?.tags ?? [],
+      version: editing ? editing.version + 1 : 1,
+      updatedAt: new Date().toISOString(),
+      deletedAt: null
     };
     await onSave(item);
-    setAmount("");
-    setMerchant("");
-    setNote("");
+    if (!editing) {
+      setAmount("");
+      setMerchant("");
+      setNote("");
+    }
   }
 
   return (
@@ -412,7 +447,7 @@ function EntryForm({ accounts, categories, onSave }: { accounts: Account[]; cate
       </div>
       <form className="form-grid" onSubmit={submit}>
         <label>金额<input value={amount} onChange={(event) => setAmount(event.target.value)} placeholder="0.00" inputMode="decimal" required /></label>
-        <label>付款账户<select value={accountId} onChange={(event) => setAccountId(event.target.value)}>{accounts.map((account) => <option key={account.id} value={account.id}>{account.name}</option>)}</select></label>
+        <label>{type === "income" ? "收款账户" : "付款账户"}<select value={accountId} onChange={(event) => setAccountId(event.target.value)}>{accounts.map((account) => <option key={account.id} value={account.id}>{account.name}</option>)}</select></label>
         {type === "transfer" ? (
           <label>转入账户<select value={toAccountId} onChange={(event) => setToAccountId(event.target.value)}>{accounts.filter((item) => item.id !== accountId).map((account) => <option key={account.id} value={account.id}>{account.name}</option>)}</select></label>
         ) : (
@@ -421,17 +456,22 @@ function EntryForm({ accounts, categories, onSave }: { accounts: Account[]; cate
         <label>时间<input value={occurredAt} onChange={(event) => setOccurredAt(event.target.value)} type="datetime-local" /></label>
         <label>商户<input value={merchant} onChange={(event) => setMerchant(event.target.value)} placeholder="超市、餐厅、客户..." /></label>
         <label className="full">备注<input value={note} onChange={(event) => setNote(event.target.value)} placeholder="补充说明" /></label>
-        <button className="primary full">保存流水</button>
+        <button className="primary full">{editing ? "保存修改" : "保存流水"}</button>
+        {editing && onCancel && <button type="button" className="ghost full" onClick={onCancel}><X size={16} />取消编辑</button>}
       </form>
     </section>
   );
 }
 
-function TransactionList({ transactions, accounts, categories, onDelete }: {
+function TransactionList({ transactions, accounts, categories, onDelete, onEdit, editingTransaction, onCancelEdit, onSaveEdit }: {
   transactions: Transaction[];
   accounts: Account[];
   categories: Category[];
   onDelete: (item: Transaction) => Promise<void>;
+  onEdit: (item: Transaction) => void;
+  editingTransaction: Transaction | null;
+  onCancelEdit: () => void;
+  onSaveEdit: (item: Transaction) => Promise<void>;
 }) {
   const [query, setQuery] = useState("");
   const [type, setType] = useState<TransactionType | "all">("all");
@@ -450,16 +490,23 @@ function TransactionList({ transactions, accounts, categories, onDelete }: {
           <option value="transfer">转账</option>
         </select>
       </div>
-      <TransactionRows transactions={filtered} accounts={accounts} categories={categories} onDelete={onDelete} />
+      {editingTransaction && (
+        <div className="edit-panel">
+          <h2>编辑流水</h2>
+          <EntryForm accounts={activeOnly(accounts)} categories={activeOnly(categories)} editing={editingTransaction} onSave={onSaveEdit} onCancel={onCancelEdit} />
+        </div>
+      )}
+      <TransactionRows transactions={filtered} accounts={accounts} categories={categories} onDelete={onDelete} onEdit={onEdit} />
     </section>
   );
 }
 
-function TransactionRows({ transactions, accounts, categories, onDelete, onRestore, compact = false }: {
+function TransactionRows({ transactions, accounts, categories, onDelete, onEdit, onRestore, compact = false }: {
   transactions: Transaction[];
   accounts: Account[];
   categories: Category[];
   onDelete?: (item: Transaction) => Promise<void>;
+  onEdit?: (item: Transaction) => void;
   onRestore?: (item: Transaction) => Promise<void>;
   compact?: boolean;
 }) {
@@ -478,6 +525,7 @@ function TransactionRows({ transactions, accounts, categories, onDelete, onResto
               <span>{new Date(item.occurredAt).toLocaleDateString()} · {account?.name}{category ? ` · ${category.name}` : ""}</span>
             </div>
             <b>{sign}¥{centsToYuan(item.amountCents)}</b>
+            {!compact && onEdit && <button className="icon-button" onClick={() => onEdit(item)} title="编辑"><Pencil size={16} /></button>}
             {!compact && onDelete && <button className="icon-button" onClick={() => onDelete(item)} title="删除"><Trash2 size={16} /></button>}
             {!compact && onRestore && <button className="icon-button" onClick={() => onRestore(item)} title="恢复"><Undo2 size={16} /></button>}
           </article>

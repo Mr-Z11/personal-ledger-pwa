@@ -369,12 +369,25 @@ select {
 .row {
   min-height: 4.2rem;
   display: grid;
-  grid-template-columns: 2.45rem minmax(0, 1fr) auto auto;
+  grid-template-columns: 2.45rem minmax(0, 1fr) auto auto auto;
   align-items: center;
   gap: 0.65rem;
   padding: 0.55rem;
   border-radius: 0.55rem;
   background: rgba(255, 255, 255, 0.46);
+}
+
+.edit-panel {
+  margin: 0.75rem 0 1rem;
+  padding: 0.85rem;
+  border: 1px solid rgba(49, 71, 58, 0.1);
+  border-radius: 0.55rem;
+  background: rgba(255, 255, 255, 0.38);
+}
+
+.edit-panel h2 {
+  font-size: 1rem;
+  margin: 0 0 0.75rem;
 }
 
 .row-icon {
@@ -596,11 +609,11 @@ select {
   }
 
   .row {
-    grid-template-columns: 2.45rem minmax(0, 1fr) auto;
+    grid-template-columns: 2.45rem minmax(0, 1fr) auto auto auto;
   }
 
   .row .icon-button {
-    grid-column: 3;
+    grid-column: auto;
   }
 }
 
