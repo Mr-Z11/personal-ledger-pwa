@@ -56,6 +56,7 @@ model Category {
   ledgerId     String
   name         String
   kind         String
+  parentId     String?
   icon         String
   color        String
   version      Int           @default(1)
@@ -67,6 +68,7 @@ model Category {
   budgets      Budget[]
 
   @@index([ledgerId])
+  @@index([ledgerId, parentId])
 }
 
 model Transaction {

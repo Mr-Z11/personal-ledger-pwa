@@ -408,15 +408,17 @@ select {
 }
 
 .account-list,
-.budget-list {
+.budget-list,
+.category-tree {
   display: grid;
   gap: 0.6rem;
   margin-top: 0.8rem;
 }
 
-.account-line {
+.account-line,
+.category-line {
   display: grid;
-  grid-template-columns: auto 1fr auto;
+  grid-template-columns: auto 1fr auto auto;
   align-items: center;
   gap: 0.55rem;
   padding: 0.75rem;
@@ -428,6 +430,50 @@ select {
   width: 0.75rem;
   height: 0.75rem;
   border-radius: 50%;
+}
+
+.category-group {
+  display: grid;
+  gap: 0.35rem;
+}
+
+.category-line {
+  grid-template-columns: 1fr auto;
+}
+
+.category-line.child {
+  margin-left: 0.9rem;
+  background: rgba(255, 255, 255, 0.32);
+}
+
+.category-picker {
+  gap: 0.5rem;
+}
+
+.category-chip-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.45rem;
+}
+
+.category-chip {
+  min-height: 2.2rem;
+  border: 1px solid rgba(49, 71, 58, 0.14);
+  border-radius: 999px;
+  padding: 0 0.75rem;
+  background: rgba(255, 250, 240, 0.9);
+  color: #31473a;
+}
+
+.category-chip.active {
+  border-color: #31473a;
+  background: #31473a;
+  color: #fff7df;
+}
+
+.category-chip.create {
+  border-style: dashed;
+  color: #1f5f74;
 }
 
 .budget-line {
@@ -523,8 +569,8 @@ select {
 }
 
 .floating {
-  width: 3.2rem;
-  height: 3.2rem;
+  width: 4.25rem;
+  height: 4.25rem;
   border: 0;
   border-radius: 50%;
   display: grid;
@@ -532,6 +578,11 @@ select {
   background: #d6b25e;
   color: #243127;
   box-shadow: 0 1rem 2rem rgba(36, 49, 39, 0.24);
+}
+
+.entry-fab {
+  bottom: max(1.25rem, env(safe-area-inset-bottom));
+  right: max(1.25rem, env(safe-area-inset-right));
 }
 
 .floating-form {
@@ -556,7 +607,7 @@ select {
 @media (max-width: 940px) {
   .shell {
     grid-template-columns: 1fr;
-    padding-bottom: 4.8rem;
+    padding-bottom: 5.4rem;
   }
 
   .sidebar {
@@ -576,7 +627,7 @@ select {
   }
 
   nav {
-    grid-template-columns: repeat(7, 1fr);
+    grid-template-columns: repeat(6, 1fr);
     gap: 0.2rem;
   }
 
@@ -614,6 +665,10 @@ select {
 
   .row .icon-button {
     grid-column: auto;
+  }
+
+  .entry-fab {
+    bottom: calc(4.2rem + max(0.75rem, env(safe-area-inset-bottom)));
   }
 }
 

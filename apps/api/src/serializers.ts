@@ -33,6 +33,7 @@ export function serializeCategory(category: {
   id: string;
   name: string;
   kind: string;
+  parentId?: string | null;
   icon: string;
   color: string;
   version: number;
@@ -43,6 +44,7 @@ export function serializeCategory(category: {
     id: category.id,
     name: category.name,
     kind: category.kind as Category["kind"],
+    parentId: category.parentId,
     icon: category.icon,
     color: category.color,
     version: category.version,

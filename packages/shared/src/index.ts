@@ -19,6 +19,7 @@ export interface Account extends LedgerEntity {
 export interface Category extends LedgerEntity {
   name: string;
   kind: CategoryKind;
+  parentId?: string | null;
   icon: string;
   color: string;
 }
@@ -57,14 +58,8 @@ export interface SyncPayload {
 }
 
 export const DEFAULT_CATEGORIES: Omit<Category, keyof LedgerEntity>[] = [
-  { name: "餐饮", kind: "expense", icon: "utensils", color: "#d45b3f" },
-  { name: "交通", kind: "expense", icon: "train", color: "#2f7d86" },
-  { name: "购物", kind: "expense", icon: "shopping-bag", color: "#9a6a2f" },
-  { name: "居家", kind: "expense", icon: "home", color: "#6b6f3f" },
-  { name: "医疗", kind: "expense", icon: "heart-pulse", color: "#b44768" },
-  { name: "工资", kind: "income", icon: "briefcase", color: "#2f7d4f" },
-  { name: "副业", kind: "income", icon: "sparkles", color: "#6f5fa8" },
-  { name: "理财", kind: "income", icon: "line-chart", color: "#ad7f24" }
+  { name: "其他", kind: "expense", parentId: null, icon: "folder", color: "#6b6f3f" },
+  { name: "其他", kind: "income", parentId: null, icon: "folder", color: "#2f7d4f" }
 ];
 
 export const DEFAULT_ACCOUNTS: Omit<Account, keyof LedgerEntity>[] = [

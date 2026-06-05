@@ -27,7 +27,6 @@ import {
   Plus,
   RefreshCw,
   Search,
-  Settings2,
   Trash2,
   Undo2,
   Upload,
@@ -42,7 +41,6 @@ type View = "overview" | "entry" | "transactions" | "accounts" | "budget" | "rep
 
 const navItems: { id: View; label: string; icon: typeof Home }[] = [
   { id: "overview", label: "总览", icon: Home },
-  { id: "entry", label: "记一笔", icon: Plus },
   { id: "transactions", label: "流水", icon: ListFilter },
   { id: "accounts", label: "账户", icon: Banknote },
   { id: "budget", label: "预算", icon: CalendarDays },
@@ -58,6 +56,45 @@ const typeLabels: Record<TransactionType, string> = {
 
 function entityStamp() {
   return { id: crypto.randomUUID(), version: 1, updatedAt: new Date().toISOString(), deletedAt: null };
+}
+
+function categoryPath(category: Category | undefined, categories: Category[]) {
+  if (!category) return "";
+  const parent = category.parentId ? categories.find((item) => item.id === category.parentId) : undefined;
+  if (parent) return `${parent.name} > ${category.name}`;
+  return category.name === "其他" ? category.name : `其他 > ${category.name}`;
+}
+
+function selectableCategories(categories: Category[], kind: Category["kind"]) {
+  const active = activeOnly(categories).filter((category) => category.kind === kind);
+  const parentIds = new Set(active.map((category) => category.parentId).filter(Boolean));
+  return active.filter((category) => category.parentId || !parentIds.has(category.id));
+}
+
+function makeCategory(input: {
+  name: string;
+  kind: Category["kind"];
+  parentId?: string | null;
+  color?: string;
+  icon?: string;
+}): Category {
+  return {
+    ...entityStamp(),
+    name: input.name.trim(),
+    kind: input.kind,
+    parentId: input.parentId ?? null,
+    icon: input.icon ?? "circle",
+    color: input.color ?? (input.kind === "expense" ? "#d45b3f" : "#2f7d4f")
+  };
+}
+
+function otherCategory(categories: Category[], kind: Category["kind"]) {
+  return activeOnly(categories).find((category) => category.kind === kind && !category.parentId && category.name === "其他");
+}
+
+function viewTitle(view: View) {
+  if (view === "entry") return "记一笔";
+  return navItems.find((item) => item.id === view)?.label ?? "总览";
 }
 
 function authHeaders(token: string | null): Record<string, string> {
@@ -231,7 +268,7 @@ export function App() {
         <header className="topbar">
           <div>
             <span className="eyebrow">{currentMonth}</span>
-            <h1>{navItems.find((item) => item.id === view)?.label}</h1>
+            <h1>{viewTitle(view)}</h1>
           </div>
           <div className="top-actions">
             <button className="icon-button" onClick={() => void exportCsv(token)} title="导出 CSV">
@@ -252,7 +289,7 @@ export function App() {
           <Overview summary={summary} totalAssets={totalAssets} accounts={activeAccounts} transactions={activeTransactions} />
         )}
         {view === "entry" && (
-          <EntryForm accounts={activeAccounts} categories={activeCategories} onSave={(item) => saveLocalAndQueue("transactions", item)} />
+          <EntryForm accounts={activeAccounts} categories={activeCategories} onSave={(item) => saveLocalAndQueue("transactions", item)} onSaveCategory={(item) => saveLocalAndQueue("categories", item)} />
         )}
         {view === "transactions" && (
           <TransactionList transactions={activeTransactions} accounts={accounts} categories={categories} onDelete={async (item) => {
@@ -261,10 +298,10 @@ export function App() {
           }} onEdit={(item) => setEditingTransaction(item)} editingTransaction={editingTransaction} onCancelEdit={() => setEditingTransaction(null)} onSaveEdit={async (item) => {
             await saveLocalAndQueue("transactions", item);
             setEditingTransaction(null);
-          }} />
+          }} onSaveCategory={(item) => saveLocalAndQueue("categories", item)} />
         )}
         {view === "accounts" && (
-          <AccountsPanel accounts={activeAccounts} transactions={activeTransactions} onSave={(item) => saveLocalAndQueue("accounts", item)} />
+          <ManagementPanel accounts={activeAccounts} categories={activeCategories} transactions={activeTransactions} onSaveAccount={(item) => saveLocalAndQueue("accounts", item)} onSaveCategory={(item) => saveLocalAndQueue("categories", item)} />
         )}
         {view === "budget" && (
           <BudgetPanel budgets={activeOnly(budgets)} categories={activeCategories} transactions={activeTransactions} onSave={(item) => saveLocalAndQueue("budgets", item)} />
@@ -278,7 +315,7 @@ export function App() {
             await saveLocalAndQueue("transactions", restored);
           }} />
         )}
-        <CategoryQuickAdd categories={activeCategories} onSave={(item) => saveLocalAndQueue("categories", item)} />
+        <button className="floating entry-fab" onClick={() => setView("entry")} title="记一笔"><Plus size={30} /></button>
       </main>
     </div>
   );
@@ -378,10 +415,11 @@ function toDatetimeLocal(value: string) {
   return new Date(date.getTime() - offsetMs).toISOString().slice(0, 16);
 }
 
-function EntryForm({ accounts, categories, onSave, editing, onCancel }: {
+function EntryForm({ accounts, categories, onSave, onSaveCategory, editing, onCancel }: {
   accounts: Account[];
   categories: Category[];
   onSave: (item: Transaction) => Promise<void>;
+  onSaveCategory: (item: Category) => Promise<void>;
   editing?: Transaction | null;
   onCancel?: () => void;
 }) {
@@ -394,7 +432,8 @@ function EntryForm({ accounts, categories, onSave, editing, onCancel }: {
   const [note, setNote] = useState(editing?.note ?? "");
   const [occurredAt, setOccurredAt] = useState(() => editing ? toDatetimeLocal(editing.occurredAt) : new Date().toISOString().slice(0, 16));
 
-  const filteredCategories = categories.filter((category) => category.kind === (type === "income" ? "income" : "expense"));
+  const categoryKind = type === "income" ? "income" : "expense";
+  const filteredCategories = selectableCategories(categories, categoryKind);
 
   useEffect(() => {
     if (!editing) return;
@@ -410,7 +449,9 @@ function EntryForm({ accounts, categories, onSave, editing, onCancel }: {
 
   useEffect(() => {
     if (!accountId && accounts[0]) setAccountId(accounts[0].id);
-    if (!categoryId && filteredCategories[0]) setCategoryId(filteredCategories[0].id);
+    if (type !== "transfer" && !filteredCategories.some((category) => category.id === categoryId)) {
+      setCategoryId(filteredCategories[0]?.id ?? "");
+    }
   }, [accounts, filteredCategories, accountId, categoryId]);
 
   async function submit(event: React.FormEvent) {
@@ -451,7 +492,7 @@ function EntryForm({ accounts, categories, onSave, editing, onCancel }: {
         {type === "transfer" ? (
           <label>转入账户<select value={toAccountId} onChange={(event) => setToAccountId(event.target.value)}>{accounts.filter((item) => item.id !== accountId).map((account) => <option key={account.id} value={account.id}>{account.name}</option>)}</select></label>
         ) : (
-          <label>分类<select value={categoryId} onChange={(event) => setCategoryId(event.target.value)}>{filteredCategories.map((category) => <option key={category.id} value={category.id}>{category.name}</option>)}</select></label>
+          <CategoryPicker categories={categories} kind={categoryKind} value={categoryId} onChange={setCategoryId} onCreate={onSaveCategory} />
         )}
         <label>时间<input value={occurredAt} onChange={(event) => setOccurredAt(event.target.value)} type="datetime-local" /></label>
         <label>商户<input value={merchant} onChange={(event) => setMerchant(event.target.value)} placeholder="超市、餐厅、客户..." /></label>
@@ -463,7 +504,56 @@ function EntryForm({ accounts, categories, onSave, editing, onCancel }: {
   );
 }
 
-function TransactionList({ transactions, accounts, categories, onDelete, onEdit, editingTransaction, onCancelEdit, onSaveEdit }: {
+function CategoryPicker({ categories, kind, value, onChange, onCreate }: {
+  categories: Category[];
+  kind: Category["kind"];
+  value: string;
+  onChange: (id: string) => void;
+  onCreate: (item: Category) => Promise<void>;
+}) {
+  const [query, setQuery] = useState("");
+  const options = selectableCategories(categories, kind);
+  const normalizedQuery = query.trim().toLowerCase();
+  const matches = normalizedQuery
+    ? options.filter((category) => categoryPath(category, categories).toLowerCase().includes(normalizedQuery))
+    : options;
+  const canCreate = query.trim().length > 0 && !options.some((category) => category.name.toLowerCase() === normalizedQuery);
+
+  async function createQuickCategory() {
+    const name = query.trim();
+    if (!name) return;
+    let parent = otherCategory(categories, kind);
+    if (!parent) {
+      parent = makeCategory({ name: "其他", kind, parentId: null, icon: "folder", color: kind === "expense" ? "#6b6f3f" : "#2f7d4f" });
+      await onCreate(parent);
+    }
+    const child = makeCategory({ name, kind, parentId: parent.id });
+    await onCreate(child);
+    onChange(child.id);
+    setQuery("");
+  }
+
+  return (
+    <label className="category-picker full">
+      分类
+      <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="搜索或新增分类" />
+      <div className="category-chip-list">
+        {matches.map((category) => (
+          <button type="button" className={value === category.id ? "category-chip active" : "category-chip"} key={category.id} onClick={() => onChange(category.id)}>
+            {categoryPath(category, categories)}
+          </button>
+        ))}
+        {canCreate && (
+          <button type="button" className="category-chip create" onClick={() => void createQuickCategory()}>
+            新增：其他 &gt; {query.trim()}
+          </button>
+        )}
+      </div>
+    </label>
+  );
+}
+
+function TransactionList({ transactions, accounts, categories, onDelete, onEdit, editingTransaction, onCancelEdit, onSaveEdit, onSaveCategory }: {
   transactions: Transaction[];
   accounts: Account[];
   categories: Category[];
@@ -472,6 +562,7 @@ function TransactionList({ transactions, accounts, categories, onDelete, onEdit,
   editingTransaction: Transaction | null;
   onCancelEdit: () => void;
   onSaveEdit: (item: Transaction) => Promise<void>;
+  onSaveCategory: (item: Category) => Promise<void>;
 }) {
   const [query, setQuery] = useState("");
   const [type, setType] = useState<TransactionType | "all">("all");
@@ -493,7 +584,7 @@ function TransactionList({ transactions, accounts, categories, onDelete, onEdit,
       {editingTransaction && (
         <div className="edit-panel">
           <h2>编辑流水</h2>
-          <EntryForm accounts={activeOnly(accounts)} categories={activeOnly(categories)} editing={editingTransaction} onSave={onSaveEdit} onCancel={onCancelEdit} />
+          <EntryForm accounts={activeOnly(accounts)} categories={activeOnly(categories)} editing={editingTransaction} onSave={onSaveEdit} onSaveCategory={onSaveCategory} onCancel={onCancelEdit} />
         </div>
       )}
       <TransactionRows transactions={filtered} accounts={accounts} categories={categories} onDelete={onDelete} onEdit={onEdit} />
@@ -535,13 +626,39 @@ function TransactionRows({ transactions, accounts, categories, onDelete, onEdit,
   );
 }
 
+function ManagementPanel({ accounts, categories, transactions, onSaveAccount, onSaveCategory }: {
+  accounts: Account[];
+  categories: Category[];
+  transactions: Transaction[];
+  onSaveAccount: (item: Account) => Promise<void>;
+  onSaveCategory: (item: Category) => Promise<void>;
+}) {
+  return (
+    <section className="grid two">
+      <AccountsPanel accounts={accounts} transactions={transactions} onSave={onSaveAccount} />
+      <CategoriesPanel categories={categories} onSave={onSaveCategory} />
+    </section>
+  );
+}
+
 function AccountsPanel({ accounts, transactions, onSave }: { accounts: Account[]; transactions: Transaction[]; onSave: (item: Account) => Promise<void> }) {
   const [name, setName] = useState("");
   const [type, setType] = useState<Account["type"]>("bank");
   const [opening, setOpening] = useState("0");
+  const [color, setColor] = useState("#1f5f74");
+  const [editing, setEditing] = useState<Account | null>(null);
+
+  function editAccount(account: Account) {
+    setEditing(account);
+    setName(account.name);
+    setType(account.type);
+    setOpening(centsToYuan(account.openingBalanceCents));
+    setColor(account.color);
+  }
+
   return (
-    <section className="grid two">
-      <div className="panel">
+    <>
+      <div className="panel management-panel">
         <h2>账户</h2>
         <div className="account-list">
           {accounts.map((account) => (
@@ -549,17 +666,29 @@ function AccountsPanel({ accounts, transactions, onSave }: { accounts: Account[]
               <i style={{ background: account.color }} />
               <span>{account.name}</span>
               <strong>¥{centsToYuan(calculateAccountBalance(account, transactions))}</strong>
+              <button className="icon-button" onClick={() => editAccount(account)} title="编辑账户"><Pencil size={16} /></button>
             </div>
           ))}
         </div>
       </div>
       <form className="panel form-stack" onSubmit={async (event) => {
         event.preventDefault();
-        await onSave({ ...entityStamp(), name, type, openingBalanceCents: yuanToCents(opening), color: "#1f5f74" });
+        await onSave({
+          ...(editing ?? entityStamp()),
+          name,
+          type,
+          openingBalanceCents: yuanToCents(opening),
+          color,
+          version: editing ? editing.version + 1 : 1,
+          updatedAt: new Date().toISOString(),
+          deletedAt: null
+        });
         setName("");
         setOpening("0");
+        setColor("#1f5f74");
+        setEditing(null);
       }}>
-        <h2>新增账户</h2>
+        <h2>{editing ? "编辑账户" : "新增账户"}</h2>
         <input value={name} onChange={(event) => setName(event.target.value)} placeholder="账户名称" required />
         <select value={type} onChange={(event) => setType(event.target.value as Account["type"])}>
           <option value="bank">银行卡</option>
@@ -571,9 +700,104 @@ function AccountsPanel({ accounts, transactions, onSave }: { accounts: Account[]
           <option value="other">其他</option>
         </select>
         <input value={opening} onChange={(event) => setOpening(event.target.value)} placeholder="初始余额" inputMode="decimal" />
+        <input value={color} onChange={(event) => setColor(event.target.value)} type="color" />
         <button className="primary">保存账户</button>
+        {editing && <button type="button" className="ghost" onClick={() => {
+          setEditing(null);
+          setName("");
+          setOpening("0");
+          setColor("#1f5f74");
+        }}>取消编辑</button>}
       </form>
-    </section>
+    </>
+  );
+}
+
+function CategoriesPanel({ categories, onSave }: { categories: Category[]; onSave: (item: Category) => Promise<void> }) {
+  const [name, setName] = useState("");
+  const [kind, setKind] = useState<Category["kind"]>("expense");
+  const [parentId, setParentId] = useState("__other__");
+  const [editing, setEditing] = useState<Category | null>(null);
+  const activeCategories = activeOnly(categories);
+  const topCategories = activeCategories.filter((category) => !category.parentId && category.kind === kind);
+  const groupedParents = activeCategories.filter((category) => !category.parentId);
+
+  function editCategory(category: Category) {
+    setEditing(category);
+    setName(category.name);
+    setKind(category.kind);
+    setParentId(category.parentId ?? "");
+  }
+
+  async function submit(event: React.FormEvent) {
+    event.preventDefault();
+    let nextParentId: string | null = parentId || null;
+    if (!editing && parentId === "__other__") {
+      let parent = otherCategory(activeCategories, kind);
+      if (!parent) {
+        parent = makeCategory({ name: "其他", kind, parentId: null, icon: "folder", color: kind === "expense" ? "#6b6f3f" : "#2f7d4f" });
+        await onSave(parent);
+      }
+      nextParentId = parent.id;
+    }
+    await onSave({
+      ...(editing ?? makeCategory({ name, kind, parentId: nextParentId })),
+      name,
+      kind,
+      parentId: nextParentId,
+      version: editing ? editing.version + 1 : 1,
+      updatedAt: new Date().toISOString(),
+      deletedAt: null
+    });
+    setName("");
+    setParentId("__other__");
+    setEditing(null);
+  }
+
+  return (
+    <>
+      <div className="panel management-panel">
+        <h2>分类</h2>
+        <div className="category-tree">
+          {groupedParents.map((parent) => {
+            const children = activeCategories.filter((category) => category.parentId === parent.id);
+            return (
+              <div className="category-group" key={parent.id}>
+                <div className="category-line">
+                  <strong>{parent.kind === "income" ? "收入" : "支出"} · {parent.name}</strong>
+                  <button className="icon-button" onClick={() => editCategory(parent)} title="编辑一级分类"><Pencil size={16} /></button>
+                </div>
+                {children.map((child) => (
+                  <div className="category-line child" key={child.id}>
+                    <span>{child.name}</span>
+                    <button className="icon-button" onClick={() => editCategory(child)} title="编辑二级分类"><Pencil size={16} /></button>
+                  </div>
+                ))}
+              </div>
+            );
+          })}
+        </div>
+      </div>
+      <form className="panel form-stack" onSubmit={submit}>
+        <h2>{editing ? "编辑分类" : "新增分类"}</h2>
+        <input value={name} onChange={(event) => setName(event.target.value)} placeholder="分类名称" required />
+        <select value={kind} onChange={(event) => setKind(event.target.value as Category["kind"])}>
+          <option value="expense">支出</option>
+          <option value="income">收入</option>
+        </select>
+        <select value={parentId} onChange={(event) => setParentId(event.target.value)}>
+          <option value="">作为一级分类</option>
+          {!editing && <option value="__other__">放入其他（默认）</option>}
+          {topCategories.map((category) => <option key={category.id} value={category.id}>{category.name}</option>)}
+        </select>
+        <button className="primary">保存分类</button>
+        {editing && <button type="button" className="ghost" onClick={() => {
+          setEditing(null);
+          setName("");
+          setParentId("__other__");
+        }}>取消编辑</button>}
+      </form>
+    </>
   );
 }
 
@@ -681,31 +905,6 @@ function Trash({ transactions, accounts, categories, onRestore }: { transactions
     <section className="panel">
       <TransactionRows transactions={transactions} accounts={accounts} categories={categories} onRestore={onRestore} />
     </section>
-  );
-}
-
-function CategoryQuickAdd({ categories, onSave }: { categories: Category[]; onSave: (item: Category) => Promise<void> }) {
-  const [open, setOpen] = useState(false);
-  const [name, setName] = useState("");
-  const [kind, setKind] = useState<Category["kind"]>("expense");
-  if (!open) return <button className="floating" onClick={() => setOpen(true)} title="新增分类"><Settings2 size={20} /></button>;
-  return (
-    <form className="floating-form" onSubmit={async (event) => {
-      event.preventDefault();
-      await onSave({ ...entityStamp(), name, kind, icon: "circle", color: kind === "expense" ? "#d45b3f" : "#2f7d4f" });
-      setName("");
-      setOpen(false);
-    }}>
-      <strong>新增分类</strong>
-      <input value={name} onChange={(event) => setName(event.target.value)} placeholder="分类名称" required />
-      <select value={kind} onChange={(event) => setKind(event.target.value as Category["kind"])}>
-        <option value="expense">支出</option>
-        <option value="income">收入</option>
-      </select>
-      <button className="primary">保存</button>
-      <button type="button" className="ghost" onClick={() => setOpen(false)}>取消</button>
-      <small>当前 {categories.length} 个分类</small>
-    </form>
   );
 }
 
