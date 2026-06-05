@@ -107,6 +107,7 @@ bash deploy/install-maintenance-cron.sh
 - 备份 PostgreSQL 到 `backups/ledger-YYYYMMDD-HHMMSS.sql.gz`。
 - 保留最近 30 天备份，删除更旧的备份。
 - 清理 7 天以上且未被容器使用的旧 Docker 镜像。
+- 清理 7 天以上未使用的 Docker 构建缓存。
 - 维护日志写入 `logs/maintenance.log`。
 
 手动执行一次：
