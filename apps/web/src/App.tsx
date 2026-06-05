@@ -54,6 +54,35 @@ const typeLabels: Record<TransactionType, string> = {
   transfer: "转账"
 };
 
+const REPORT_PALETTE = [
+  "#d45b3f",
+  "#2f7d4f",
+  "#1f5f74",
+  "#d6b25e",
+  "#8a5fb0",
+  "#c4517a",
+  "#2f7d86",
+  "#9a6a2f",
+  "#6b6f3f",
+  "#b44768",
+  "#ad7f24",
+  "#4f6f9f"
+];
+
+function reportColor(index: number) {
+  return REPORT_PALETTE[index % REPORT_PALETTE.length];
+}
+
+function dateFromMonthKey(value: string) {
+  const [year, month] = value.split("-").map(Number);
+  return new Date(year, (month || 1) - 1, 1);
+}
+
+function percentDelta(current: number, previous: number) {
+  if (previous === 0) return current > 0 ? 100 : 0;
+  return Math.round(((current - previous) / previous) * 100);
+}
+
 function entityStamp() {
   return { id: crypto.randomUUID(), version: 1, updatedAt: new Date().toISOString(), deletedAt: null };
 }
@@ -859,6 +888,12 @@ function Reports({ transactions, categories }: { transactions: Transaction[]; ca
   const [categoryKind, setCategoryKind] = useState<Category["kind"]>("expense");
   const reportTransactions = transactions.filter((item) => item.occurredAt.startsWith(month));
   const monthSummary = summarizeMonth(transactions, month);
+  const previousDate = dateFromMonthKey(month);
+  previousDate.setMonth(previousDate.getMonth() - 1);
+  const previousSummary = summarizeMonth(transactions, monthKey(previousDate));
+  const incomeChange = percentDelta(monthSummary.incomeCents, previousSummary.incomeCents);
+  const expenseChange = percentDelta(monthSummary.expenseCents, previousSummary.expenseCents);
+  const savingsRate = monthSummary.incomeCents > 0 ? Math.round((monthSummary.netCents / monthSummary.incomeCents) * 100) : 0;
   const categoryTotal = Math.max(1, reportTransactions
     .filter((item) => item.type === categoryKind)
     .reduce((sum, item) => sum + item.amountCents, 0));
@@ -877,8 +912,28 @@ function Reports({ transactions, categories }: { transactions: Transaction[]; ca
       current.value += item.amountCents;
       totals.set(id, current);
     });
-    return Array.from(totals.values()).sort((left, right) => right.value - left.value);
+    return Array.from(totals.values())
+      .sort((left, right) => right.value - left.value)
+      .map((entry, index) => ({ ...entry, color: reportColor(index) }));
   }, [reportTransactions, categories, categoryKind]);
+  const expenseCategoryData = useMemo(() => {
+    const totals = new Map<string, { id: string; name: string; value: number; color: string }>();
+    reportTransactions.filter((item) => item.type === "expense").forEach((item) => {
+      const category = categories.find((entry) => entry.id === item.categoryId);
+      const id = category?.id ?? "uncategorized";
+      const current = totals.get(id) ?? {
+        id,
+        name: category ? categoryPath(category, categories) : "未分类",
+        value: 0,
+        color: "#8a7154"
+      };
+      current.value += item.amountCents;
+      totals.set(id, current);
+    });
+    return Array.from(totals.values()).sort((left, right) => right.value - left.value);
+  }, [reportTransactions, categories]);
+  const topExpense = expenseCategoryData[0];
+  const topExpenseRatio = topExpense && monthSummary.expenseCents > 0 ? Math.round((topExpense.value / monthSummary.expenseCents) * 100) : 0;
 
   const donutGradient = categoryData.length
     ? `conic-gradient(${categoryData.map((entry, index) => {
@@ -916,6 +971,29 @@ function Reports({ transactions, categories }: { transactions: Transaction[]; ca
         <Metric title="月收入" value={monthSummary.incomeCents} icon={ArrowDownLeft} tone="good" />
         <Metric title="月支出" value={monthSummary.expenseCents} icon={ArrowUpRight} tone="warn" />
         <Metric title={monthSummary.netCents >= 0 ? "净流入" : "净流出"} value={monthSummary.netCents} icon={CircleDollarSign} tone={monthSummary.netCents >= 0 ? "good" : "warn"} />
+      </div>
+
+      <div className="finance-insights">
+        <article className={savingsRate >= 20 ? "insight-card good" : savingsRate >= 0 ? "insight-card neutral" : "insight-card warn"}>
+          <span>储蓄率</span>
+          <strong>{savingsRate}%</strong>
+          <p>{savingsRate >= 20 ? "现金流健康，可以考虑增加长期储蓄或投资预算。" : savingsRate >= 0 ? "仍有结余，建议把固定储蓄目标提高到收入的 20%。" : "本月为净流出，优先检查非必要支出和一次性大额消费。"}</p>
+        </article>
+        <article className="insight-card">
+          <span>最大支出项</span>
+          <strong>{topExpense ? topExpense.name : "暂无"}</strong>
+          <p>{topExpense ? `占本月支出的 ${topExpenseRatio}%，金额 ¥${centsToYuan(topExpense.value)}。` : "本月还没有支出数据。"}</p>
+        </article>
+        <article className={expenseChange > 15 ? "insight-card warn" : "insight-card neutral"}>
+          <span>支出环比</span>
+          <strong>{expenseChange >= 0 ? "+" : ""}{expenseChange}%</strong>
+          <p>{expenseChange > 15 ? "支出增长较快，建议查看分类统计里的前三项。" : "支出变化在可控范围内。"}</p>
+        </article>
+        <article className="insight-card">
+          <span>收入环比</span>
+          <strong>{incomeChange >= 0 ? "+" : ""}{incomeChange}%</strong>
+          <p>{incomeChange >= 0 ? "收入较上月持平或增长。" : "收入较上月下降，预算上建议更保守。"}</p>
+        </article>
       </div>
 
       <section className="grid two report-grid">
