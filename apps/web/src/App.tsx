@@ -83,6 +83,36 @@ function percentDelta(current: number, previous: number) {
   return Math.round(((current - previous) / previous) * 100);
 }
 
+function daysInMonth(value: string) {
+  const date = dateFromMonthKey(value);
+  return new Date(date.getFullYear(), date.getMonth() + 1, 0).getDate();
+}
+
+function polarToCartesian(cx: number, cy: number, radius: number, angle: number) {
+  const radians = (angle - 90) * Math.PI / 180;
+  return {
+    x: cx + radius * Math.cos(radians),
+    y: cy + radius * Math.sin(radians)
+  };
+}
+
+function describeDonutSegment(cx: number, cy: number, outerRadius: number, innerRadius: number, startAngle: number, endAngle: number) {
+  const safeEnd = Math.min(endAngle, startAngle + 359.99);
+  const largeArc = safeEnd - startAngle > 180 ? 1 : 0;
+  const outerStart = polarToCartesian(cx, cy, outerRadius, startAngle);
+  const outerEnd = polarToCartesian(cx, cy, outerRadius, safeEnd);
+  const innerEnd = polarToCartesian(cx, cy, innerRadius, safeEnd);
+  const innerStart = polarToCartesian(cx, cy, innerRadius, startAngle);
+
+  return [
+    `M ${outerStart.x} ${outerStart.y}`,
+    `A ${outerRadius} ${outerRadius} 0 ${largeArc} 1 ${outerEnd.x} ${outerEnd.y}`,
+    `L ${innerEnd.x} ${innerEnd.y}`,
+    `A ${innerRadius} ${innerRadius} 0 ${largeArc} 0 ${innerStart.x} ${innerStart.y}`,
+    "Z"
+  ].join(" ");
+}
+
 function entityStamp() {
   return { id: crypto.randomUUID(), version: 1, updatedAt: new Date().toISOString(), deletedAt: null };
 }
@@ -883,9 +913,78 @@ function BudgetPanel({ budgets, categories, transactions, onSave }: {
   );
 }
 
+function InteractiveDonut({ data, total, selectedIndex, onSelect, kind }: {
+  data: { id: string; name: string; value: number; color: string }[];
+  total: number;
+  selectedIndex: number;
+  onSelect: (index: number) => void;
+  kind: Category["kind"];
+}) {
+  const selected = data[selectedIndex];
+  let cursor = 0;
+  const segments = data.map((entry, index) => {
+    const start = cursor / total * 360;
+    cursor += entry.value;
+    const end = cursor / total * 360;
+    return { ...entry, index, start, end, ratio: Math.round((entry.value / total) * 100) };
+  });
+  const selectedSegment = segments[selectedIndex];
+  const rotation = selectedSegment ? -((selectedSegment.start + selectedSegment.end) / 2) : 0;
+
+  function selectOffset(offset: number) {
+    if (data.length === 0) return;
+    onSelect((selectedIndex + offset + data.length) % data.length);
+  }
+
+  if (data.length === 0) {
+    return (
+      <div className="donut-shell empty-donut">
+        <div className="donut-center">
+          <strong>¥0.00</strong>
+          <span>{kind === "expense" ? "分类支出" : "分类收入"}</span>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="donut-control">
+      <div className="donut-shell">
+        <svg className="donut-svg" viewBox="0 0 220 220" role="img" aria-label="分类占比图" style={{ transform: `rotate(${rotation}deg)` }}>
+          {segments.map((segment) => (
+            <path
+              aria-label={`${segment.name} ${segment.ratio}% ¥${centsToYuan(segment.value)}`}
+              className={segment.index === selectedIndex ? "donut-segment active" : "donut-segment"}
+              d={describeDonutSegment(110, 110, 96, 56, segment.start, segment.end)}
+              fill={segment.color}
+              key={segment.id}
+              onClick={() => onSelect(segment.index)}
+              role="button"
+              tabIndex={0}
+              onKeyDown={(event) => {
+                if (event.key === "Enter" || event.key === " ") onSelect(segment.index);
+              }}
+            />
+          ))}
+        </svg>
+        <div className="donut-center">
+          <strong>¥{centsToYuan(selected?.value ?? 0)}</strong>
+          <span>{selected?.name ?? (kind === "expense" ? "分类支出" : "分类收入")}</span>
+          {selectedSegment && <em>{selectedSegment.ratio}%</em>}
+        </div>
+      </div>
+      <div className="donut-actions">
+        <button type="button" className="ghost" onClick={() => selectOffset(-1)}>上一项</button>
+        <button type="button" className="ghost" onClick={() => selectOffset(1)}>下一项</button>
+      </div>
+    </div>
+  );
+}
+
 function Reports({ transactions, categories }: { transactions: Transaction[]; categories: Category[] }) {
   const [month, setMonth] = useState(monthKey());
   const [categoryKind, setCategoryKind] = useState<Category["kind"]>("expense");
+  const [selectedCategoryIndex, setSelectedCategoryIndex] = useState(0);
   const reportTransactions = transactions.filter((item) => item.occurredAt.startsWith(month));
   const monthSummary = summarizeMonth(transactions, month);
   const previousDate = dateFromMonthKey(month);
@@ -894,9 +993,16 @@ function Reports({ transactions, categories }: { transactions: Transaction[]; ca
   const incomeChange = percentDelta(monthSummary.incomeCents, previousSummary.incomeCents);
   const expenseChange = percentDelta(monthSummary.expenseCents, previousSummary.expenseCents);
   const savingsRate = monthSummary.incomeCents > 0 ? Math.round((monthSummary.netCents / monthSummary.incomeCents) * 100) : 0;
-  const categoryTotal = Math.max(1, reportTransactions
+  const rawCategoryTotal = reportTransactions
     .filter((item) => item.type === categoryKind)
-    .reduce((sum, item) => sum + item.amountCents, 0));
+    .reduce((sum, item) => sum + item.amountCents, 0);
+  const categoryTotal = Math.max(1, rawCategoryTotal);
+  const monthDays = daysInMonth(month);
+  const isCurrentMonth = month === monthKey();
+  const elapsedDays = isCurrentMonth ? Math.max(1, new Date().getDate()) : monthDays;
+  const dailyAverageExpense = Math.round(monthSummary.expenseCents / elapsedDays);
+  const projectedExpense = Math.round(dailyAverageExpense * monthDays);
+  const coverageRatio = monthSummary.expenseCents > 0 ? Math.round((monthSummary.incomeCents / monthSummary.expenseCents) * 100) : monthSummary.incomeCents > 0 ? 999 : 0;
 
   const categoryData = useMemo(() => {
     const totals = new Map<string, { id: string; name: string; value: number; color: string }>();
@@ -934,14 +1040,8 @@ function Reports({ transactions, categories }: { transactions: Transaction[]; ca
   }, [reportTransactions, categories]);
   const topExpense = expenseCategoryData[0];
   const topExpenseRatio = topExpense && monthSummary.expenseCents > 0 ? Math.round((topExpense.value / monthSummary.expenseCents) * 100) : 0;
-
-  const donutGradient = categoryData.length
-    ? `conic-gradient(${categoryData.map((entry, index) => {
-      const start = categoryData.slice(0, index).reduce((sum, item) => sum + item.value, 0) / categoryTotal * 100;
-      const end = (categoryData.slice(0, index).reduce((sum, item) => sum + item.value, 0) + entry.value) / categoryTotal * 100;
-      return `${entry.color} ${start}% ${end}%`;
-    }).join(", ")})`
-    : "conic-gradient(rgba(49, 71, 58, 0.12) 0 100%)";
+  const topThreeExpense = expenseCategoryData.slice(0, 3).reduce((sum, item) => sum + item.value, 0);
+  const concentrationRatio = monthSummary.expenseCents > 0 ? Math.round((topThreeExpense / monthSummary.expenseCents) * 100) : 0;
 
   const trendData = Array.from({ length: 12 }, (_, index) => {
     const date = new Date();
@@ -956,6 +1056,11 @@ function Reports({ transactions, categories }: { transactions: Transaction[]; ca
     };
   });
   const maxTrend = Math.max(1, ...trendData.map((entry) => Math.max(entry.income, entry.expense, Math.abs(entry.net))));
+  const recentNetAverage = Math.round(trendData.slice(-3).reduce((sum, item) => sum + item.net, 0) / 3);
+
+  useEffect(() => {
+    if (selectedCategoryIndex > Math.max(0, categoryData.length - 1)) setSelectedCategoryIndex(0);
+  }, [categoryData.length, selectedCategoryIndex]);
 
   return (
     <section className="report-page">
@@ -994,6 +1099,26 @@ function Reports({ transactions, categories }: { transactions: Transaction[]; ca
           <strong>{incomeChange >= 0 ? "+" : ""}{incomeChange}%</strong>
           <p>{incomeChange >= 0 ? "收入较上月持平或增长。" : "收入较上月下降，预算上建议更保守。"}</p>
         </article>
+        <article className="insight-card">
+          <span>日均支出</span>
+          <strong>¥{centsToYuan(dailyAverageExpense)}</strong>
+          <p>{isCurrentMonth ? `按当前节奏，月底预计支出 ¥${centsToYuan(projectedExpense)}。` : "这是该月实际日均支出。"}</p>
+        </article>
+        <article className={concentrationRatio > 65 ? "insight-card warn" : "insight-card neutral"}>
+          <span>前三支出集中度</span>
+          <strong>{concentrationRatio}%</strong>
+          <p>{concentrationRatio > 65 ? "支出集中在少数分类，适合优先做专项控制。" : "支出结构相对分散。"}</p>
+        </article>
+        <article className={coverageRatio >= 120 ? "insight-card good" : coverageRatio >= 100 ? "insight-card neutral" : "insight-card warn"}>
+          <span>收入覆盖支出</span>
+          <strong>{coverageRatio >= 999 ? "充足" : `${coverageRatio}%`}</strong>
+          <p>{coverageRatio >= 120 ? "收入明显覆盖支出，现金流余地较好。" : coverageRatio >= 100 ? "收入刚好覆盖支出，建议留出安全垫。" : "收入未覆盖支出，需要减少可变支出或动用预算。"}</p>
+        </article>
+        <article className={recentNetAverage >= 0 ? "insight-card good" : "insight-card warn"}>
+          <span>近三月平均净流</span>
+          <strong>{recentNetAverage >= 0 ? "+" : "-"}¥{centsToYuan(Math.abs(recentNetAverage))}</strong>
+          <p>{recentNetAverage >= 0 ? "近期现金流趋势为正。" : "近期平均为净流出，建议压缩非必要支出。"}</p>
+        </article>
       </div>
 
       <section className="grid two report-grid">
@@ -1009,19 +1134,23 @@ function Reports({ transactions, categories }: { transactions: Transaction[]; ca
             </div>
           </div>
           <div className="donut-wrap">
-            <div className="donut-chart" style={{ background: donutGradient }}>
-              <div>
-                <strong>¥{centsToYuan(categoryTotal === 1 && categoryData.length === 0 ? 0 : categoryTotal)}</strong>
-                <span>{categoryKind === "expense" ? "分类支出" : "分类收入"}</span>
-              </div>
-            </div>
+            <InteractiveDonut data={categoryData} total={categoryTotal} selectedIndex={selectedCategoryIndex} onSelect={setSelectedCategoryIndex} kind={categoryKind} />
           </div>
           <div className="donut-list">
             {categoryData.length === 0 && <p className="empty">本月暂无{categoryKind === "expense" ? "支出" : "收入"}分类数据</p>}
-            {categoryData.map((entry) => {
+            {categoryData.map((entry, index) => {
               const ratio = Math.round((entry.value / categoryTotal) * 100);
               return (
-                <div className="budget-line" key={entry.id}>
+                <div
+                  className={selectedCategoryIndex === index ? "budget-line report-category-line active" : "budget-line report-category-line"}
+                  key={entry.id}
+                  onClick={() => setSelectedCategoryIndex(index)}
+                  role="button"
+                  tabIndex={0}
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter" || event.key === " ") setSelectedCategoryIndex(index);
+                  }}
+                >
                   <span><i className="dot" style={{ background: entry.color }} />{entry.name}</span>
                   <strong>¥{centsToYuan(entry.value)} · {ratio}%</strong>
                   <div className="bar"><i style={{ width: `${ratio}%`, background: entry.color }} /></div>
