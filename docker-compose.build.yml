@@ -1,0 +1,14 @@
+services:
+  api:
+    image: personal-ledger-pwa-api:local
+    build:
+      context: .
+      dockerfile: deploy/api.Dockerfile
+
+  web:
+    image: personal-ledger-pwa-web:local
+    build:
+      context: .
+      dockerfile: deploy/web.Dockerfile
+      args:
+        VITE_API_BASE: /api

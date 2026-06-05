@@ -50,13 +50,15 @@ CORS_ORIGIN=https://ledger.47.74.3.104.sslip.io
 REPO_URL=https://github.com/YOUR_NAME/personal-ledger-pwa.git bash deploy/server-setup.sh
 cd ~/personal-ledger-pwa
 nano .env
-docker compose up -d --build
+docker compose pull
+docker compose up -d
 ```
 
 ## 4. 启动
 
 ```bash
-docker compose up -d --build
+docker compose pull
+docker compose up -d
 docker compose logs -f caddy api
 ```
 
@@ -68,7 +70,30 @@ https://ledger.47.74.3.104.sslip.io
 
 iPhone 用 Safari 打开，点击分享按钮，选择“添加到主屏幕”。
 
-## 5. 备份
+## 5. 轻量更新
+
+服务器规格只有 2 GiB 内存，不要在服务器上执行 `docker compose up -d --build`、`npm install` 或 `npm run build`。这些构建工作由 GitHub Actions 完成，并推送到 GHCR 镜像仓库。
+
+以后更新服务器只执行：
+
+```bash
+cd /root/personal-ledger-pwa
+bash deploy/update-server.sh
+```
+
+这个脚本只会：
+
+- 拉取 GitHub 最新代码。
+- 拉取已经构建好的 `api` / `web` 镜像。
+- 重启容器。
+
+如果确实需要在本机或性能更好的机器上手动构建镜像，使用：
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose.build.yml build
+```
+
+## 6. 备份
 
 手动备份：
 

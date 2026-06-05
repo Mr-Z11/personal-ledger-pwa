@@ -30,3 +30,10 @@ npm run dev
 ## 部署
 
 见 [docs/deployment.md](docs/deployment.md)。
+
+生产更新使用预构建镜像，服务器不要运行 `docker compose up -d --build`。推送到 `main` 后由 GitHub Actions 构建镜像；服务器只需执行：
+
+```bash
+cd /root/personal-ledger-pwa
+bash deploy/update-server.sh
+```
