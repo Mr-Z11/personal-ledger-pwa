@@ -1,6 +1,7 @@
 import {
   activeOnly,
   calculateAccountBalance,
+  calculateNetWorthContribution,
   centsToYuan,
   monthKey,
   summarizeMonth,
@@ -58,6 +59,17 @@ const typeLabels: Record<TransactionType, string> = {
   expense: "支出",
   income: "收入",
   transfer: "转账"
+};
+
+const accountTypeLabels: Record<Account["type"], string> = {
+  bank: "银行卡",
+  cash: "现金",
+  credit: "信用卡",
+  alipay: "支付宝",
+  wechat: "微信",
+  investment: "投资",
+  loan: "贷款/债务",
+  other: "其他"
 };
 
 const exportFormats: { id: ExportFormat; label: string }[] = [
@@ -236,6 +248,18 @@ function makeCategory(input: {
     icon: input.icon ?? "circle",
     color: input.color ?? (input.kind === "expense" ? "#d45b3f" : "#2f7d4f")
   };
+}
+
+function inferAccountType(name: string): Account["type"] {
+  const text = name.toLowerCase();
+  if (/贷款|房贷|车贷|借款|负债|借呗|白条|花呗/.test(name)) return "loan";
+  if (/信用|credit/.test(text)) return "credit";
+  if (/支付宝|alipay/.test(text)) return "alipay";
+  if (/微信|wechat/.test(text)) return "wechat";
+  if (/现金|cash/.test(text)) return "cash";
+  if (/基金|股票|投资|理财/.test(name)) return "investment";
+  if (/银行|银行卡|bank|card/.test(text)) return "bank";
+  return "other";
 }
 
 function otherCategory(categories: Category[], kind: Category["kind"]) {
@@ -450,7 +474,7 @@ export function App() {
   const isLocalPreview = token?.startsWith("local-preview:") ?? false;
   const currentMonth = monthKey();
   const summary = summarizeMonth(activeTransactions, currentMonth);
-  const totalAssets = activeAccounts.reduce((sum, account) => sum + calculateAccountBalance(account, activeTransactions), 0);
+  const totalAssets = activeAccounts.reduce((sum, account) => sum + calculateNetWorthContribution(account, activeTransactions), 0);
 
   async function hydrateFromServer(nextToken = token) {
     if (!nextToken) return;
@@ -738,14 +762,14 @@ function Overview({ summary, totalAssets, accounts, transactions }: {
       <Metric title="本月收入" value={summary.incomeCents} icon={ArrowDownLeft} tone="good" />
       <Metric title="本月支出" value={summary.expenseCents} icon={ArrowUpRight} tone="warn" />
       <Metric title="本月结余" value={summary.netCents} icon={ArrowRightLeft} tone="ink" />
-      <Metric title="总资产" value={totalAssets} icon={Banknote} tone="blue" />
+      <Metric title="净值估算" value={totalAssets} icon={Banknote} tone="blue" />
       <div className="panel wide">
-        <h2>账户余额</h2>
+        <h2>账户记录</h2>
         <div className="account-strip">
           {accounts.map((account) => (
             <div className="mini-card" key={account.id} style={{ borderColor: account.color }}>
               <span>{account.name}</span>
-              <strong>¥{centsToYuan(calculateAccountBalance(account, transactions))}</strong>
+              <strong>¥{centsToYuan(calculateNetWorthContribution(account, transactions))}</strong>
             </div>
           ))}
         </div>
@@ -1151,7 +1175,7 @@ function AccountsPanel({ accounts, transactions, onSave, onDelete }: { accounts:
   const [opening, setOpening] = useState("0");
   const [color, setColor] = useState("#1f5f74");
   const [editing, setEditing] = useState<Account | null>(null);
-  const netAssets = accounts.reduce((sum, account) => sum + calculateAccountBalance(account, transactions), 0);
+  const netAssets = accounts.reduce((sum, account) => sum + calculateNetWorthContribution(account, transactions), 0);
 
   function editAccount(account: Account) {
     setEditing(account);
@@ -1181,14 +1205,15 @@ function AccountsPanel({ accounts, transactions, onSave, onDelete }: { accounts:
         <div className={`account-net-card ${netAssets >= 0 ? "positive" : "negative"}`}>
           <span>净资产</span>
           <strong>¥{centsToYuan(netAssets)}</strong>
-          <small>所有账户余额合计</small>
+          <small>负债账户按负资产计，余额仅作记录估算</small>
         </div>
         <div className="account-list">
           {accounts.map((account) => (
             <div className="account-line" key={account.id}>
               <i style={{ background: account.color }} />
               <span>{account.name}</span>
-              <strong>¥{centsToYuan(calculateAccountBalance(account, transactions))}</strong>
+              <em>{accountTypeLabels[account.type]}</em>
+              <strong>¥{centsToYuan(calculateNetWorthContribution(account, transactions))}</strong>
               <button className="icon-button" onClick={() => editAccount(account)} title="编辑账户"><Pencil size={16} /></button>
               <button className="icon-button danger" onClick={() => void deleteAccount(account)} title="删除账户"><Trash2 size={16} /></button>
             </div>
@@ -1221,6 +1246,7 @@ function AccountsPanel({ accounts, transactions, onSave, onDelete }: { accounts:
           <option value="alipay">支付宝</option>
           <option value="wechat">微信</option>
           <option value="investment">投资</option>
+          <option value="loan">贷款/债务</option>
           <option value="other">其他</option>
         </select>
         <input value={opening} onChange={(event) => setOpening(event.target.value)} placeholder="初始余额" inputMode="decimal" />
@@ -1699,7 +1725,7 @@ async function importCsv(
     const accountName = name.trim() || nextAccounts[0]?.name || "导入账户";
     const existing = nextAccounts.find((item) => item.name === accountName);
     if (existing) return existing;
-    const account: Account = { ...entityStamp(), name: accountName, type: "other", openingBalanceCents: 0, color: "#8a7154" };
+    const account: Account = { ...entityStamp(), name: accountName, type: inferAccountType(accountName), openingBalanceCents: 0, color: "#8a7154" };
     nextAccounts.push(account);
     await saveLocalAndQueue("accounts", account);
     return account;

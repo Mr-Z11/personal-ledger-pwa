@@ -1,5 +1,5 @@
 export type TransactionType = "expense" | "income" | "transfer";
-export type AccountType = "cash" | "bank" | "credit" | "alipay" | "wechat" | "investment" | "other";
+export type AccountType = "cash" | "bank" | "credit" | "alipay" | "wechat" | "investment" | "loan" | "other";
 export type CategoryKind = "expense" | "income";
 
 export interface LedgerEntity {
@@ -103,6 +103,15 @@ export function calculateAccountBalance(account: Account, transactions: Transact
     if (item.type === "transfer" && item.toAccountId === account.id) return balance + item.amountCents;
     return balance;
   }, account.openingBalanceCents);
+}
+
+export function isLiabilityAccount(account: Pick<Account, "type">): boolean {
+  return account.type === "loan" || account.type === "credit";
+}
+
+export function calculateNetWorthContribution(account: Account, transactions: Transaction[]): number {
+  const balance = calculateAccountBalance(account, transactions);
+  return isLiabilityAccount(account) ? -Math.abs(balance) : balance;
 }
 
 export function summarizeMonth(transactions: Transaction[], month = monthKey()) {
