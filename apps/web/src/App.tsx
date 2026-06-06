@@ -35,7 +35,7 @@ import {
   X
 } from "lucide-react";
 import Papa from "papaparse";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState, type CSSProperties } from "react";
 import { api } from "./api";
 import { clearOutbox, db, enqueue, readOutboxPayload, resetLocalData, saveSnapshot } from "./db";
 
@@ -51,8 +51,7 @@ const navItems: { id: View; label: string; icon: typeof Home }[] = [
   { id: "accounts", label: "账户", icon: Banknote },
   { id: "budget", label: "预算", icon: CalendarDays },
   { id: "reports", label: "报表", icon: PieChartIcon },
-  { id: "settings", label: "设置", icon: Settings2 },
-  { id: "trash", label: "回收站", icon: Trash2 }
+  { id: "settings", label: "设置", icon: Settings2 }
 ];
 
 const typeLabels: Record<TransactionType, string> = {
@@ -260,6 +259,14 @@ function inferAccountType(name: string): Account["type"] {
   if (/基金|股票|投资|理财/.test(name)) return "investment";
   if (/银行|银行卡|bank|card/.test(text)) return "bank";
   return "other";
+}
+
+function mealDefaultAccount(accounts: Account[]) {
+  return accounts.find((account) => account.name.includes("招行信用卡6837")) ?? accounts.find((account) => account.name.includes("招行信用卡"));
+}
+
+function isMealCategory(category: Category | undefined, categories: Category[]) {
+  return /早餐|午餐|晚餐|早饭|午饭|晚饭|早午晚餐/.test(categoryPath(category, categories));
 }
 
 function otherCategory(categories: Category[], kind: Category["kind"]) {
@@ -562,9 +569,12 @@ export function App() {
     if (!isLocalPreview && navigator.onLine) void syncNow();
   }
 
-  async function saveManyLocalAndQueue(kind: "transactions", items: Transaction[]) {
+  async function saveManyLocalAndQueue(kind: "transactions", items: Transaction[]): Promise<void>;
+  async function saveManyLocalAndQueue(kind: "categories", items: Category[]): Promise<void>;
+  async function saveManyLocalAndQueue(kind: "transactions" | "categories", items: Transaction[] | Category[]) {
     if (items.length === 0) return;
-    await db.transactions.bulkPut(items);
+    if (kind === "transactions") await db.transactions.bulkPut(items as Transaction[]);
+    else await db.categories.bulkPut(items as Category[]);
     await enqueue({ [kind]: items });
     await refreshLocal();
     if (!isLocalPreview && navigator.onLine) void syncNow();
@@ -630,7 +640,7 @@ export function App() {
         </header>
 
         {view === "overview" && (
-          <Overview summary={summary} totalAssets={totalAssets} accounts={activeAccounts} transactions={activeTransactions} />
+          <Overview summary={summary} totalAssets={totalAssets} accounts={activeAccounts} categories={activeCategories} transactions={activeTransactions} />
         )}
         {view === "entry" && (
           <EntryForm
@@ -688,6 +698,7 @@ export function App() {
             onImported={(count) => setToast(`已导入 ${count} 笔流水`)}
             onImportError={(error) => setToast(error instanceof Error ? error.message : "导入失败")}
             onSaveCategory={(item) => saveLocalAndQueue("categories", item)}
+            onDeleteCategories={(items) => saveManyLocalAndQueue("categories", items)}
           />
         )}
         {view === "trash" && (
@@ -759,21 +770,58 @@ function AuthScreen({ onAuth }: { onAuth: (result: Awaited<ReturnType<typeof api
   );
 }
 
-function Overview({ summary, totalAssets, accounts, transactions }: {
+function Overview({ summary, totalAssets, accounts, categories, transactions }: {
   summary: { incomeCents: number; expenseCents: number; netCents: number };
   totalAssets: number;
   accounts: Account[];
+  categories: Category[];
   transactions: Transaction[];
 }) {
+  const monthTransactions = transactions.filter((item) => item.occurredAt.startsWith(monthKey()));
+  const monthExpenseTransactions = monthTransactions.filter((item) => item.type === "expense");
+  const dailyAverage = Math.round(summary.expenseCents / Math.max(1, new Date().getDate()));
+  const expenseByCategory = monthExpenseTransactions.reduce((totals, item) => {
+    const id = item.categoryId ?? "uncategorized";
+    totals.set(id, (totals.get(id) ?? 0) + item.amountCents);
+    return totals;
+  }, new Map<string, number>());
+  const topCategoryEntry = Array.from(expenseByCategory.entries()).sort((left, right) => right[1] - left[1])[0];
+  const topCategory = topCategoryEntry ? categories.find((category) => category.id === topCategoryEntry[0]) : undefined;
+  const expenseProgress = summary.incomeCents > 0 ? Math.min(100, Math.round((summary.expenseCents / summary.incomeCents) * 100)) : summary.expenseCents > 0 ? 100 : 0;
+  const recentTransactions = transactions.slice(0, 6);
   return (
-    <section className="grid overview-grid">
-      <Metric title="本月收入" value={summary.incomeCents} icon={ArrowDownLeft} tone="good" />
-      <Metric title="本月支出" value={summary.expenseCents} icon={ArrowUpRight} tone="warn" />
-      <Metric title="本月结余" value={summary.netCents} icon={ArrowRightLeft} tone="ink" />
-      <Metric title="净值估算" value={totalAssets} icon={Banknote} tone="blue" />
-      <div className="panel wide">
+    <section className="overview-dashboard">
+      <div className="overview-hero">
+        <div className="overview-hero-main">
+          <span>本月消费</span>
+          <strong>¥{centsToYuan(summary.expenseCents)}</strong>
+          <p>{summary.netCents >= 0 ? `本月仍结余 ¥${centsToYuan(summary.netCents)}` : `本月净流出 ¥${centsToYuan(Math.abs(summary.netCents))}`}</p>
+        </div>
+        <div className="overview-ring" style={{ "--progress": `${expenseProgress}%` } as CSSProperties}>
+          <div>
+            <strong>{expenseProgress}%</strong>
+            <span>收入覆盖</span>
+          </div>
+        </div>
+      </div>
+
+      <div className="overview-kpis">
+        <Metric title="本月收入" value={summary.incomeCents} icon={ArrowDownLeft} tone="good" />
+        <Metric title="日均支出" value={dailyAverage} icon={ArrowUpRight} tone="warn" />
+        <Metric title="净值估算" value={totalAssets} icon={Banknote} tone="blue" />
+      </div>
+
+      <section className="panel overview-insight">
+        <div>
+          <span>最大支出分类</span>
+          <strong>{topCategory ? categoryPath(topCategory, categories) : "暂无支出"}</strong>
+        </div>
+        <b>{topCategoryEntry ? `¥${centsToYuan(topCategoryEntry[1])}` : "¥0.00"}</b>
+      </section>
+
+      <section className="panel">
         <h2>账户记录</h2>
-        <div className="account-strip">
+        <div className="account-strip compact">
           {accounts.map((account) => (
             <div className="mini-card" key={account.id} style={{ borderColor: account.color }}>
               <span>{account.name}</span>
@@ -781,11 +829,12 @@ function Overview({ summary, totalAssets, accounts, transactions }: {
             </div>
           ))}
         </div>
-      </div>
-      <div className="panel">
+      </section>
+
+      <section className="panel">
         <h2>最近流水</h2>
-        <TransactionRows transactions={transactions.slice(0, 6)} accounts={accounts} categories={[]} compact />
-      </div>
+        <TransactionRows transactions={recentTransactions} accounts={accounts} categories={categories} compact />
+      </section>
     </section>
   );
 }
@@ -831,7 +880,7 @@ function EntryForm({ accounts, categories, transactions, onSave, onSaveCategory,
     () => sortCategoriesByUsage(selectableCategories(categories, categoryKind), categories, usageCounts),
     [categories, categoryKind, usageCounts]
   );
-  const selectedCategoryPath = categoryPath(categories.find((category) => category.id === categoryId), categories);
+  const selectedCategory = categories.find((category) => category.id === categoryId);
 
   useEffect(() => {
     if (!editing) return;
@@ -853,10 +902,10 @@ function EntryForm({ accounts, categories, transactions, onSave, onSaveCategory,
   }, [accounts, filteredCategories, accountId, categoryId]);
 
   useEffect(() => {
-    if (editing || type !== "expense" || !/早餐|午餐|晚餐|早饭|午饭|晚饭|早午晚餐/.test(selectedCategoryPath)) return;
-    const mealAccount = accounts.find((account) => account.name.includes("招行信用卡6837"));
+    if (editing || type !== "expense" || !isMealCategory(selectedCategory, categories)) return;
+    const mealAccount = mealDefaultAccount(accounts);
     if (mealAccount) setAccountId(mealAccount.id);
-  }, [accounts, editing, selectedCategoryPath, type]);
+  }, [accounts, categories, editing, selectedCategory, type]);
 
   async function submit(event: React.FormEvent) {
     event.preventDefault();
@@ -1119,6 +1168,10 @@ function TransactionList({ transactions, accounts, categories, onDelete, onEdit,
     setSelectedIds(new Set(visibleTransactions.map((item) => item.id)));
   }
 
+  function expandLoadedGroups() {
+    setExpandedGroups(new Set(transactionGroups.map((group) => group.key)));
+  }
+
   async function applyBatch(updater: (item: Transaction) => Transaction) {
     if (selectedTransactions.length === 0) return;
     await onBulkUpdate(selectedTransactions.map(updater));
@@ -1144,7 +1197,9 @@ function TransactionList({ transactions, accounts, categories, onDelete, onEdit,
         </div>
       </div>
       <div className="transaction-tools">
+        <strong>批量管理</strong>
         <span>已显示 {visibleTransactions.length} / {filtered.length} 笔</span>
+        <button type="button" className="ghost" onClick={expandLoadedGroups} disabled={transactionGroups.length === 0}>展开已加载</button>
         <button type="button" className="ghost" onClick={selectVisible} disabled={visibleTransactions.length === 0}>选择当前</button>
         {selectedIds.size > 0 && <button type="button" className="ghost" onClick={() => setSelectedIds(new Set())}>清除选择</button>}
       </div>
@@ -1293,7 +1348,8 @@ function SettingsPanel({
   onImportFile,
   onImported,
   onImportError,
-  onSaveCategory
+  onSaveCategory,
+  onDeleteCategories
 }: {
   accounts: Account[];
   categories: Category[];
@@ -1307,6 +1363,7 @@ function SettingsPanel({
   onImported: (count: number) => void;
   onImportError: (error: unknown) => void;
   onSaveCategory: (item: Category) => Promise<void>;
+  onDeleteCategories: (items: Category[]) => Promise<void>;
 }) {
   return (
     <section className="grid two settings-grid">
@@ -1346,7 +1403,7 @@ function SettingsPanel({
           <span>{categories.length} 个分类</span>
         </div>
       </div>
-      <CategoriesPanel categories={categories} onSave={onSaveCategory} />
+      <CategoriesPanel categories={categories} onSave={onSaveCategory} onDelete={onDeleteCategories} />
     </section>
   );
 }
@@ -1358,6 +1415,7 @@ function AccountsPanel({ accounts, transactions, onSave, onDelete }: { accounts:
   const [color, setColor] = useState("#1f5f74");
   const [editing, setEditing] = useState<Account | null>(null);
   const netAssets = accounts.reduce((sum, account) => sum + calculateNetWorthContribution(account, transactions), 0);
+  const editingBalance = editing ? calculateAccountBalance(editing, transactions) : 0;
 
   function editAccount(account: Account) {
     setEditing(account);
@@ -1396,8 +1454,8 @@ function AccountsPanel({ accounts, transactions, onSave, onDelete }: { accounts:
               <span>{account.name}</span>
               <em>{accountTypeLabels[account.type]}</em>
               <strong>¥{centsToYuan(calculateNetWorthContribution(account, transactions))}</strong>
-              <button className="icon-button" onClick={() => editAccount(account)} title="编辑账户"><Pencil size={16} /></button>
-              <button className="icon-button danger" onClick={() => void deleteAccount(account)} title="删除账户"><Trash2 size={16} /></button>
+              <button className="text-action" onClick={() => editAccount(account)} type="button"><Pencil size={15} />编辑</button>
+              <button className="text-action danger" onClick={() => void deleteAccount(account)} type="button"><Trash2 size={15} />删除</button>
             </div>
           ))}
         </div>
@@ -1431,7 +1489,12 @@ function AccountsPanel({ accounts, transactions, onSave, onDelete }: { accounts:
           <option value="loan">贷款/债务</option>
           <option value="other">其他</option>
         </select>
-        <input value={opening} onChange={(event) => setOpening(event.target.value)} placeholder="初始余额" inputMode="decimal" />
+        <label>余额校准<input value={opening} onChange={(event) => setOpening(event.target.value)} placeholder="初始余额" inputMode="decimal" /></label>
+        {editing && (
+          <button type="button" className="ghost" onClick={() => setOpening(centsToYuan(editing.openingBalanceCents - editingBalance))}>
+            将当前显示余额校准为 0
+          </button>
+        )}
         <input value={color} onChange={(event) => setColor(event.target.value)} type="color" />
         <button className="primary">保存账户</button>
         {editing && <button type="button" className="ghost" onClick={() => {
@@ -1445,13 +1508,14 @@ function AccountsPanel({ accounts, transactions, onSave, onDelete }: { accounts:
   );
 }
 
-function CategoriesPanel({ categories, onSave }: { categories: Category[]; onSave: (item: Category) => Promise<void> }) {
+function CategoriesPanel({ categories, onSave, onDelete }: { categories: Category[]; onSave: (item: Category) => Promise<void>; onDelete: (items: Category[]) => Promise<void> }) {
   const [name, setName] = useState("");
   const [kind, setKind] = useState<Category["kind"]>("expense");
   const [parentId, setParentId] = useState("__other__");
   const [editing, setEditing] = useState<Category | null>(null);
+  const [openCategoryIds, setOpenCategoryIds] = useState<Set<string>>(() => new Set());
   const activeCategories = activeOnly(categories);
-  const topCategories = activeCategories.filter((category) => !category.parentId && category.kind === kind);
+  const topCategories = activeCategories.filter((category) => !category.parentId && category.kind === kind && category.id !== editing?.id);
   const groupedParents = activeCategories.filter((category) => !category.parentId);
 
   function editCategory(category: Category) {
@@ -1459,6 +1523,36 @@ function CategoriesPanel({ categories, onSave }: { categories: Category[]; onSav
     setName(category.name);
     setKind(category.kind);
     setParentId(category.parentId ?? "");
+  }
+
+  function toggleCategoryGroup(id: string) {
+    setOpenCategoryIds((current) => {
+      const next = new Set(current);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
+
+  async function deleteCategory(category: Category) {
+    const children = activeCategories.filter((item) => item.parentId === category.id);
+    const confirmed = window.confirm(children.length > 0
+      ? `删除“${category.name}”及 ${children.length} 个子分类？历史流水会保留。`
+      : `删除分类“${category.name}”？历史流水会保留。`);
+    if (!confirmed) return;
+    const now = new Date().toISOString();
+    const deleted = [category, ...children].map((item) => ({
+      ...item,
+      deletedAt: now,
+      updatedAt: now,
+      version: item.version + 1
+    }));
+    if (editing && deleted.some((item) => item.id === editing.id)) {
+      setEditing(null);
+      setName("");
+      setParentId("__other__");
+    }
+    await onDelete(deleted);
   }
 
   async function submit(event: React.FormEvent) {
@@ -1490,19 +1584,26 @@ function CategoriesPanel({ categories, onSave }: { categories: Category[]; onSav
     <>
       <div className="panel management-panel">
         <h2>分类</h2>
+        <p className="empty">按一级分类折叠管理，展开后可编辑或删除子分类。</p>
         <div className="category-tree">
           {groupedParents.map((parent) => {
             const children = activeCategories.filter((category) => category.parentId === parent.id);
+            const open = openCategoryIds.has(parent.id);
             return (
               <div className="category-group" key={parent.id}>
                 <div className="category-line">
-                  <strong>{parent.kind === "income" ? "收入" : "支出"} · {parent.name}</strong>
-                  <button className="icon-button" onClick={() => editCategory(parent)} title="编辑一级分类"><Pencil size={16} /></button>
+                  <button className="category-toggle" type="button" onClick={() => toggleCategoryGroup(parent.id)}>
+                    <strong>{parent.kind === "income" ? "收入" : "支出"} · {parent.name}</strong>
+                    <span>{children.length} 个子分类 · {open ? "收起" : "展开"}</span>
+                  </button>
+                  <button className="text-action" onClick={() => editCategory(parent)} type="button"><Pencil size={15} />编辑</button>
+                  <button className="text-action danger" onClick={() => void deleteCategory(parent)} type="button"><Trash2 size={15} />删除</button>
                 </div>
-                {children.map((child) => (
+                {open && children.map((child) => (
                   <div className="category-line child" key={child.id}>
                     <span>{child.name}</span>
-                    <button className="icon-button" onClick={() => editCategory(child)} title="编辑二级分类"><Pencil size={16} /></button>
+                    <button className="text-action" onClick={() => editCategory(child)} type="button"><Pencil size={15} />编辑</button>
+                    <button className="text-action danger" onClick={() => void deleteCategory(child)} type="button"><Trash2 size={15} />删除</button>
                   </div>
                 ))}
               </div>
@@ -1943,12 +2044,13 @@ async function importCsv(
     const toAccountName = rowValue(row, ["转入账户", "账户2", "收款账户", "对方账户"]);
     const toAccount = type === "transfer" ? await findOrCreateAccount(toAccountName || "转入账户") : null;
     const category = type === "transfer" ? null : await findOrCreateCategory(type === "income" ? "income" : "expense", row);
+    const defaultMealAccount = type === "expense" && isMealCategory(category ?? undefined, nextCategories) ? mealDefaultAccount(nextAccounts) : undefined;
     const dateText = rowValue(row, ["日期", "交易日期", "记账日期", "发生日期", "消费日期"]);
     const timeText = rowValue(row, ["时间", "交易时间", "发生时间"]);
     await saveLocalAndQueue("transactions", {
       ...entityStamp(),
       type,
-      accountId: account.id,
+      accountId: defaultMealAccount?.id ?? account.id,
       toAccountId: toAccount?.id ?? null,
       categoryId: category?.id ?? null,
       amountCents,
