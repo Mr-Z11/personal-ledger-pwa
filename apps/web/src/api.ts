@@ -72,7 +72,7 @@ export const api = {
   pull(token: string) {
     return apiFetch<LedgerSnapshot>("/sync/pull", {}, token);
   },
-  exportUrl() {
-    return `${API_BASE}/export/csv`;
+  exportUrl(format = "ledger") {
+    return `${API_BASE}/export/csv?format=${encodeURIComponent(format)}`;
   }
 };

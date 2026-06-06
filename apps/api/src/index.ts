@@ -10,6 +10,8 @@ import { config } from "./config.js";
 import { prisma } from "./prisma.js";
 import { serializeAccount, serializeBudget, serializeCategory, serializeSnapshot, serializeTransaction } from "./serializers.js";
 
+type ExportFormat = "ledger" | "portable" | "suishouji" | "qianji";
+
 const authSchema = z.object({
   email: z.string().email(),
   password: z.string().min(8),
@@ -77,6 +79,101 @@ async function loadSnapshot(ledgerId: string) {
 function csvEscape(value: string | number | null | undefined) {
   const text = value == null ? "" : String(value);
   return /[",\n]/.test(text) ? `"${text.replaceAll('"', '""')}"` : text;
+}
+
+function typeLabel(type: string) {
+  if (type === "income") return "收入";
+  if (type === "transfer") return "转账";
+  return "支出";
+}
+
+function datePart(value: Date) {
+  return value.toISOString().slice(0, 10);
+}
+
+function timePart(value: Date) {
+  return value.toISOString().slice(11, 19);
+}
+
+function categoryParts(category?: { name: string; parentId?: string | null } | null) {
+  return { primary: category?.parentId ? "" : category?.name ?? "", secondary: category?.parentId ? category.name : "" };
+}
+
+function exportRow(format: ExportFormat, item: {
+  occurredAt: Date;
+  type: string;
+  account: { name: string };
+  toAccount?: { name: string } | null;
+  category?: { name: string; parentId?: string | null } | null;
+  amountCents: number;
+  merchant?: string | null;
+  note?: string | null;
+  tags: string[];
+}) {
+  const category = categoryParts(item.category);
+  const signedAmount = item.type === "expense" ? `-${centsToYuan(item.amountCents)}` : centsToYuan(item.amountCents);
+  if (format === "portable") {
+    return [
+      datePart(item.occurredAt),
+      timePart(item.occurredAt),
+      typeLabel(item.type),
+      category.primary,
+      category.secondary || item.category?.name,
+      item.account.name,
+      item.toAccount?.name,
+      signedAmount,
+      item.merchant,
+      item.note,
+      item.tags.join("|")
+    ];
+  }
+  if (format === "suishouji") {
+    return [
+      typeLabel(item.type),
+      datePart(item.occurredAt),
+      timePart(item.occurredAt),
+      category.primary || "其他",
+      category.secondary || item.category?.name || "其他",
+      item.account.name,
+      item.toAccount?.name,
+      centsToYuan(item.amountCents),
+      item.merchant,
+      item.note
+    ];
+  }
+  if (format === "qianji") {
+    return [
+      datePart(item.occurredAt),
+      typeLabel(item.type),
+      item.category?.name ?? "其他",
+      item.account.name,
+      centsToYuan(item.amountCents),
+      item.merchant,
+      item.note
+    ];
+  }
+  return [
+    item.occurredAt.toISOString(),
+    item.type,
+    item.account.name,
+    item.toAccount?.name,
+    item.category?.name,
+    centsToYuan(item.amountCents),
+    item.merchant,
+    item.note,
+    item.tags.join("|")
+  ];
+}
+
+function exportHeaders(format: ExportFormat) {
+  if (format === "portable") return ["日期", "时间", "类型", "一级分类", "二级分类", "账户", "转入账户", "金额", "商户", "备注", "标签"];
+  if (format === "suishouji") return ["交易类型", "日期", "时间", "一级分类", "二级分类", "账户1", "账户2", "金额", "商家", "备注"];
+  if (format === "qianji") return ["日期", "类型", "分类", "账户", "金额", "商户", "备注"];
+  return ["日期", "类型", "账户", "转入账户", "分类", "金额", "商户", "备注", "标签"];
+}
+
+function parseExportFormat(value: unknown): ExportFormat {
+  return value === "portable" || value === "suishouji" || value === "qianji" ? value : "ledger";
 }
 
 export async function buildApp(): Promise<FastifyInstance> {
@@ -271,26 +368,16 @@ export async function buildApp(): Promise<FastifyInstance> {
 
   app.get("/export/csv", { preHandler: [app.authenticate] }, async (request, reply) => {
     const ledger = await getLedgerForUser(request.user.sub);
+    const { format } = z.object({ format: z.string().optional() }).parse(request.query);
+    const exportFormat = parseExportFormat(format);
     const transactions = await prisma.transaction.findMany({
       where: { ledgerId: ledger.id, deletedAt: null },
       include: { account: true, toAccount: true, category: true },
       orderBy: { occurredAt: "desc" }
     });
     const rows = [
-      ["日期", "类型", "账户", "转入账户", "分类", "金额", "商户", "备注", "标签"].join(","),
-      ...transactions.map((item) =>
-        [
-          item.occurredAt.toISOString(),
-          item.type,
-          item.account.name,
-          item.toAccount?.name,
-          item.category?.name,
-          centsToYuan(item.amountCents),
-          item.merchant,
-          item.note,
-          item.tags.join("|")
-        ].map(csvEscape).join(",")
-      )
+      exportHeaders(exportFormat).join(","),
+      ...transactions.map((item) => exportRow(exportFormat, item).map(csvEscape).join(","))
     ];
     return reply.header("content-type", "text/csv; charset=utf-8").send(`\ufeff${rows.join("\n")}`);
   });

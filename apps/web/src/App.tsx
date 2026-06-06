@@ -17,7 +17,6 @@ import {
   ArrowUpRight,
   Banknote,
   CalendarDays,
-  CircleDollarSign,
   Download,
   FolderPlus,
   Home,
@@ -40,6 +39,9 @@ import { api } from "./api";
 import { clearOutbox, db, enqueue, readOutboxPayload, resetLocalData, saveSnapshot } from "./db";
 
 type View = "overview" | "entry" | "transactions" | "accounts" | "budget" | "reports" | "settings" | "trash";
+type LedgerGroupMode = "day" | "month" | "year";
+type ReportPeriod = "month" | "year";
+type ExportFormat = "ledger" | "portable" | "suishouji" | "qianji";
 
 const navItems: { id: View; label: string; icon: typeof Home }[] = [
   { id: "overview", label: "总览", icon: Home },
@@ -56,6 +58,13 @@ const typeLabels: Record<TransactionType, string> = {
   income: "收入",
   transfer: "转账"
 };
+
+const exportFormats: { id: ExportFormat; label: string }[] = [
+  { id: "ledger", label: "完整 CSV" },
+  { id: "portable", label: "通用迁移" },
+  { id: "suishouji", label: "随手记兼容" },
+  { id: "qianji", label: "钱迹/一木类" }
+];
 
 const REPORT_PALETTE = [
   "#d45b3f",
@@ -107,6 +116,25 @@ function dateLabel(value: string) {
   });
 }
 
+function monthLabel(value: string) {
+  const [year, month] = value.split("-");
+  return `${year}年${Number(month)}月`;
+}
+
+function yearLabel(value: string) {
+  return `${value}年`;
+}
+
+function dayOfYear(date: Date) {
+  const start = new Date(date.getFullYear(), 0, 1);
+  return Math.floor((date.getTime() - start.getTime()) / 86_400_000) + 1;
+}
+
+function daysInYear(value: string) {
+  const year = Number(value);
+  return new Date(year, 1, 29).getMonth() === 1 ? 366 : 365;
+}
+
 function polarToCartesian(cx: number, cy: number, radius: number, angle: number) {
   const radians = (angle - 90) * Math.PI / 180;
   return {
@@ -149,6 +177,49 @@ function selectableCategories(categories: Category[], kind: Category["kind"]) {
   return active.filter((category) => category.parentId || !parentIds.has(category.id));
 }
 
+function summarizeTransactions(transactions: Transaction[]) {
+  const totals = transactions.reduce(
+    (summary, item) => {
+      if (item.type === "expense") summary.expenseCents += item.amountCents;
+      if (item.type === "income") summary.incomeCents += item.amountCents;
+      return summary;
+    },
+    { incomeCents: 0, expenseCents: 0, netCents: 0 }
+  );
+  totals.netCents = totals.incomeCents - totals.expenseCents;
+  return totals;
+}
+
+function transactionGroupKey(item: Transaction, mode: LedgerGroupMode) {
+  const day = dateKey(item.occurredAt);
+  if (mode === "year") return day.slice(0, 4);
+  if (mode === "month") return day.slice(0, 7);
+  return day;
+}
+
+function transactionGroupLabel(key: string, mode: LedgerGroupMode) {
+  if (mode === "year") return yearLabel(key);
+  if (mode === "month") return monthLabel(key);
+  return dateLabel(key);
+}
+
+function categoryUsageCounts(transactions: Transaction[], kind: Category["kind"]) {
+  const counts = new Map<string, number>();
+  transactions.forEach((item) => {
+    if (item.type !== kind || !item.categoryId) return;
+    counts.set(item.categoryId, (counts.get(item.categoryId) ?? 0) + 1);
+  });
+  return counts;
+}
+
+function sortCategoriesByUsage(categories: Category[], allCategories: Category[], usageCounts: Map<string, number>) {
+  return [...categories].sort((left, right) => {
+    const usageDelta = (usageCounts.get(right.id) ?? 0) - (usageCounts.get(left.id) ?? 0);
+    if (usageDelta !== 0) return usageDelta;
+    return categoryPath(left, allCategories).localeCompare(categoryPath(right, allCategories), "zh-CN");
+  });
+}
+
 function makeCategory(input: {
   name: string;
   kind: Category["kind"];
@@ -179,6 +250,115 @@ function authHeaders(token: string | null): Record<string, string> {
   return token ? { authorization: `Bearer ${token}` } : {};
 }
 
+function normalizeFieldName(value: string) {
+  return value.replace(/^\ufeff/, "").replace(/\s+/g, "").replace(/[()（）【】\[\]_-]/g, "").toLowerCase();
+}
+
+function rowValue(row: Record<string, string>, aliases: string[]) {
+  const normalizedAliases = aliases.map(normalizeFieldName);
+  const entry = Object.entries(row).find(([key]) => normalizedAliases.includes(normalizeFieldName(key)));
+  return entry?.[1]?.trim() ?? "";
+}
+
+function parseMoneyValue(value: string) {
+  const normalized = value.replace(/[¥￥元,\s]/g, "").replace(/^\((.*)\)$/, "-$1");
+  if (!normalized) return 0;
+  return yuanToCents(normalized);
+}
+
+function parseImportedDate(dateText: string, timeText = "") {
+  const raw = `${dateText} ${timeText}`.trim();
+  if (!raw) return new Date().toISOString();
+  const serial = Number(raw);
+  if (Number.isFinite(serial) && serial > 20_000 && serial < 80_000) {
+    return new Date(Date.UTC(1899, 11, 30) + serial * 86_400_000).toISOString();
+  }
+  const normalized = raw
+    .replace(/[年月]/g, "-")
+    .replace(/[日号]/g, "")
+    .replace(/\//g, "-")
+    .replace(/\./g, "-");
+  const parsed = new Date(normalized);
+  if (!Number.isNaN(parsed.getTime())) return parsed.toISOString();
+  return new Date().toISOString();
+}
+
+function inferTransactionType(row: Record<string, string>, sheetName = ""): TransactionType {
+  const typeText = `${rowValue(row, ["类型", "交易类型", "收支类型", "账单类型", "流水类型"])} ${sheetName}`.toLowerCase();
+  if (/转账|transfer/.test(typeText)) return "transfer";
+  if (/收入|收款|入账|income/.test(typeText)) return "income";
+  if (/支出|付款|消费|expense/.test(typeText)) return "expense";
+  if (rowValue(row, ["收入", "收入金额", "收款金额", "入账金额"])) return "income";
+  return "expense";
+}
+
+function importedAmount(row: Record<string, string>, type: TransactionType) {
+  const explicit = rowValue(row, ["金额", "交易金额", "金额元", "钱", "数额", "发生金额"]);
+  const expense = rowValue(row, ["支出", "支出金额", "付款金额", "消费金额"]);
+  const income = rowValue(row, ["收入", "收入金额", "收款金额", "入账金额"]);
+  const raw = explicit || (type === "income" ? income : expense) || income || expense;
+  return Math.abs(parseMoneyValue(raw || "0"));
+}
+
+function splitCategoryName(value: string) {
+  const parts = value.split(/[>\/\\｜|·,-]/).map((part) => part.trim()).filter(Boolean);
+  if (parts.length >= 2) return { primary: parts[0], secondary: parts.slice(1).join(" > ") };
+  return { primary: "", secondary: parts[0] ?? "" };
+}
+
+function csvRowsFromText(text: string) {
+  const parsed = Papa.parse<Record<string, string>>(text, { header: true, skipEmptyLines: true });
+  return parsed.data;
+}
+
+function rowsFromHtmlTable(text: string) {
+  const doc = new DOMParser().parseFromString(text, "text/html");
+  const rows: Record<string, string>[] = [];
+  doc.querySelectorAll("table").forEach((table) => {
+    const sheetName = table.querySelector("caption")?.textContent?.trim() ?? "";
+    const tableRows = Array.from(table.querySelectorAll("tr"));
+    const headers = Array.from(tableRows[0]?.querySelectorAll("th,td") ?? []).map((cell) => cell.textContent?.trim() ?? "");
+    tableRows.slice(1).forEach((tr) => {
+      const cells = Array.from(tr.querySelectorAll("td,th")).map((cell) => cell.textContent?.trim() ?? "");
+      if (cells.every((cell) => !cell)) return;
+      const row: Record<string, string> = {};
+      headers.forEach((header, index) => {
+        row[header || `列${index + 1}`] = cells[index] ?? "";
+      });
+      row.__sheet = sheetName;
+      rows.push(row);
+    });
+  });
+  return rows;
+}
+
+async function readImportRows(file: File) {
+  if (/\.xlsx$/i.test(file.name)) {
+    throw new Error("当前可导入 CSV/TSV 和文本表格型 .xls；.xlsx 需要补充 Excel 解析依赖后支持。");
+  }
+  const text = await file.text();
+  if (/\.xls$/i.test(file.name) && text.includes("\u0000")) {
+    throw new Error("这个 .xls 像是二进制 Excel，请先从随手记导出 CSV，或另存为 CSV 后再导入。");
+  }
+  if (/^\s*</.test(text) && /<table/i.test(text)) return rowsFromHtmlTable(text);
+  const normalized = text.replace(/\r\n/g, "\n");
+  return csvRowsFromText(normalized);
+}
+
+function downloadCsv(filename: string, rows: (string | number | null | undefined)[][]) {
+  const csv = rows.map((row) => row.map((value) => {
+    const text = value == null ? "" : String(value);
+    return /[",\n]/.test(text) ? `"${text.replaceAll('"', '""')}"` : text;
+  }).join(",")).join("\n");
+  const blob = new Blob([`\ufeff${csv}`], { type: "text/csv;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = filename;
+  link.click();
+  URL.revokeObjectURL(url);
+}
+
 export function App() {
   const [token, setToken] = useState(() => localStorage.getItem("ledger-token"));
   const [userName, setUserName] = useState(() => localStorage.getItem("ledger-user") ?? "");
@@ -193,6 +373,8 @@ export function App() {
   const [lastSync, setLastSync] = useState<string | undefined>();
   const [editingTransaction, setEditingTransaction] = useState<Transaction | null>(null);
   const [quickCategoryOpen, setQuickCategoryOpen] = useState(false);
+  const [toast, setToast] = useState<string | null>(null);
+  const [exportFormat, setExportFormat] = useState<ExportFormat>("ledger");
 
   const refreshLocal = useCallback(async () => {
     const [nextAccounts, nextCategories, nextTransactions, nextBudgets, nextOutboxCount, nextLastSync] = await Promise.all([
@@ -283,6 +465,12 @@ export function App() {
     return () => window.removeEventListener("online", onOnline);
   }, [token]);
 
+  useEffect(() => {
+    if (!toast) return undefined;
+    const timer = window.setTimeout(() => setToast(null), 2800);
+    return () => window.clearTimeout(timer);
+  }, [toast]);
+
   async function signOut() {
     localStorage.removeItem("ledger-token");
     localStorage.removeItem("ledger-user");
@@ -350,14 +538,23 @@ export function App() {
             <h1>{viewTitle(view)}</h1>
           </div>
           <div className="top-actions">
-            <button className="icon-button" onClick={() => void exportCsv(token)} title="导出 CSV">
+            <select className="export-format" value={exportFormat} onChange={(event) => setExportFormat(event.target.value as ExportFormat)} title="导出格式">
+              {exportFormats.map((item) => <option key={item.id} value={item.id}>{item.label}</option>)}
+            </select>
+            <button className="icon-button" onClick={() => void exportCsv(token, exportFormat, activeAccounts, activeCategories, activeTransactions)} title="导出 CSV">
               <Download size={18} />
             </button>
-            <label className="icon-button" title="导入 CSV">
+            <label className="icon-button" title="导入账单">
               <Upload size={18} />
-              <input type="file" accept=".csv,text/csv" hidden onChange={(event) => {
+              <input type="file" accept=".csv,.tsv,.txt,.xls,.xlsx,text/csv,text/tab-separated-values,text/plain,text/html" hidden onChange={(event) => {
                 const file = event.currentTarget.files?.[0];
-                if (file) void importCsv(file, activeAccounts, activeCategories, saveLocalAndQueue);
+                if (file) {
+                  void importCsv(file, activeAccounts, activeCategories, saveLocalAndQueue).then((count) => {
+                    setToast(`已导入 ${count} 笔流水`);
+                  }).catch((error) => {
+                    setToast(error instanceof Error ? error.message : "导入失败");
+                  });
+                }
                 event.currentTarget.value = "";
               }} />
             </label>
@@ -368,15 +565,27 @@ export function App() {
           <Overview summary={summary} totalAssets={totalAssets} accounts={activeAccounts} transactions={activeTransactions} />
         )}
         {view === "entry" && (
-          <EntryForm accounts={activeAccounts} categories={activeCategories} onSave={(item) => saveLocalAndQueue("transactions", item)} onSaveCategory={(item) => saveLocalAndQueue("categories", item)} />
+          <EntryForm
+            accounts={activeAccounts}
+            categories={activeCategories}
+            transactions={activeTransactions}
+            onSave={async (item) => {
+              await saveLocalAndQueue("transactions", item);
+              setMessage("流水已保存");
+              setToast(`${typeLabels[item.type]} ¥${centsToYuan(item.amountCents)} 已记录`);
+            }}
+            onSaveCategory={(item) => saveLocalAndQueue("categories", item)}
+          />
         )}
         {view === "transactions" && (
           <TransactionList transactions={activeTransactions} accounts={accounts} categories={categories} onDelete={async (item) => {
             const deleted = { ...item, deletedAt: new Date().toISOString(), updatedAt: new Date().toISOString(), version: item.version + 1 };
             await saveLocalAndQueue("transactions", deleted);
+            setToast("流水已移入回收站");
           }} onEdit={(item) => setEditingTransaction(item)} editingTransaction={editingTransaction} onCancelEdit={() => setEditingTransaction(null)} onSaveEdit={async (item) => {
             await saveLocalAndQueue("transactions", item);
             setEditingTransaction(null);
+            setToast("流水已更新");
           }} onSaveCategory={(item) => saveLocalAndQueue("categories", item)} />
         )}
         {view === "accounts" && (
@@ -398,8 +607,10 @@ export function App() {
           <Trash transactions={transactions.filter((item) => item.deletedAt)} accounts={accounts} categories={categories} onRestore={async (item) => {
             const restored = { ...item, deletedAt: null, updatedAt: new Date().toISOString(), version: item.version + 1 };
             await saveLocalAndQueue("transactions", restored);
+            setToast("流水已恢复");
           }} />
         )}
+        {toast && <div className="save-toast" role="status">{toast}</div>}
         <button className="floating category-fab" onClick={() => setQuickCategoryOpen((value) => !value)} title="快速增加分类"><FolderPlus size={23} /></button>
         {quickCategoryOpen && (
           <QuickCategoryForm
@@ -471,7 +682,7 @@ function Overview({ summary, totalAssets, accounts, transactions }: {
     <section className="grid overview-grid">
       <Metric title="本月收入" value={summary.incomeCents} icon={ArrowDownLeft} tone="good" />
       <Metric title="本月支出" value={summary.expenseCents} icon={ArrowUpRight} tone="warn" />
-      <Metric title="本月结余" value={summary.netCents} icon={CircleDollarSign} tone="ink" />
+      <Metric title="本月结余" value={summary.netCents} icon={ArrowRightLeft} tone="ink" />
       <Metric title="总资产" value={totalAssets} icon={Banknote} tone="blue" />
       <div className="panel wide">
         <h2>账户余额</h2>
@@ -508,9 +719,10 @@ function toDatetimeLocal(value: string) {
   return new Date(date.getTime() - offsetMs).toISOString().slice(0, 16);
 }
 
-function EntryForm({ accounts, categories, onSave, onSaveCategory, editing, onCancel }: {
+function EntryForm({ accounts, categories, transactions, onSave, onSaveCategory, editing, onCancel }: {
   accounts: Account[];
   categories: Category[];
+  transactions: Transaction[];
   onSave: (item: Transaction) => Promise<void>;
   onSaveCategory: (item: Category) => Promise<void>;
   editing?: Transaction | null;
@@ -524,9 +736,14 @@ function EntryForm({ accounts, categories, onSave, onSaveCategory, editing, onCa
   const [merchant, setMerchant] = useState(editing?.merchant ?? "");
   const [note, setNote] = useState(editing?.note ?? "");
   const [occurredAt, setOccurredAt] = useState(() => editing ? toDatetimeLocal(editing.occurredAt) : new Date().toISOString().slice(0, 16));
+  const [saveFeedback, setSaveFeedback] = useState("");
 
   const categoryKind = type === "income" ? "income" : "expense";
-  const filteredCategories = selectableCategories(categories, categoryKind);
+  const usageCounts = useMemo(() => categoryUsageCounts(transactions, categoryKind), [transactions, categoryKind]);
+  const filteredCategories = useMemo(
+    () => sortCategoriesByUsage(selectableCategories(categories, categoryKind), categories, usageCounts),
+    [categories, categoryKind, usageCounts]
+  );
 
   useEffect(() => {
     if (!editing) return;
@@ -569,6 +786,8 @@ function EntryForm({ accounts, categories, onSave, onSaveCategory, editing, onCa
       setAmount("");
       setMerchant("");
       setNote("");
+      setOccurredAt(toDatetimeLocal(new Date().toISOString()));
+      setSaveFeedback(`${typeLabels[type]} ¥${centsToYuan(item.amountCents)} 已保存`);
     }
   }
 
@@ -580,12 +799,13 @@ function EntryForm({ accounts, categories, onSave, onSaveCategory, editing, onCa
         ))}
       </div>
       <form className="form-grid" onSubmit={submit}>
+        {saveFeedback && <div className="save-confirm full" role="status">{saveFeedback}</div>}
         <label>金额<input value={amount} onChange={(event) => setAmount(event.target.value)} placeholder="0.00" inputMode="decimal" required /></label>
         <label>{type === "income" ? "收款账户" : "付款账户"}<select value={accountId} onChange={(event) => setAccountId(event.target.value)}>{accounts.map((account) => <option key={account.id} value={account.id}>{account.name}</option>)}</select></label>
         {type === "transfer" ? (
           <label>转入账户<select value={toAccountId} onChange={(event) => setToAccountId(event.target.value)}>{accounts.filter((item) => item.id !== accountId).map((account) => <option key={account.id} value={account.id}>{account.name}</option>)}</select></label>
         ) : (
-          <CategoryPicker categories={categories} kind={categoryKind} value={categoryId} onChange={setCategoryId} onCreate={onSaveCategory} />
+          <CategoryPicker categories={categories} options={filteredCategories} usageCounts={usageCounts} kind={categoryKind} value={categoryId} onChange={setCategoryId} onCreate={onSaveCategory} />
         )}
         <label>时间<input value={occurredAt} onChange={(event) => setOccurredAt(event.target.value)} type="datetime-local" /></label>
         <label>商户<input value={merchant} onChange={(event) => setMerchant(event.target.value)} placeholder="超市、餐厅、客户..." /></label>
@@ -597,15 +817,16 @@ function EntryForm({ accounts, categories, onSave, onSaveCategory, editing, onCa
   );
 }
 
-function CategoryPicker({ categories, kind, value, onChange, onCreate }: {
+function CategoryPicker({ categories, options, usageCounts, kind, value, onChange, onCreate }: {
   categories: Category[];
+  options: Category[];
+  usageCounts: Map<string, number>;
   kind: Category["kind"];
   value: string;
   onChange: (id: string) => void;
   onCreate: (item: Category) => Promise<void>;
 }) {
   const [query, setQuery] = useState("");
-  const options = selectableCategories(categories, kind);
   const normalizedQuery = query.trim().toLowerCase();
   const selectedCategory = options.find((category) => category.id === value);
   const matches = normalizedQuery
@@ -630,7 +851,21 @@ function CategoryPicker({ categories, kind, value, onChange, onCreate }: {
   return (
     <label className="category-picker full">
       分类
-      <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="搜索或新增分类" />
+      <select value={selectedCategory?.id ?? ""} onChange={(event) => onChange(event.target.value)} required>
+        <option value="" disabled>选择分类</option>
+        {options.map((category) => {
+          const usage = usageCounts.get(category.id) ?? 0;
+          return (
+            <option key={category.id} value={category.id}>
+              {categoryPath(category, categories)}{usage > 0 ? ` · 常用 ${usage}` : ""}
+            </option>
+          );
+        })}
+      </select>
+      <div className="category-search">
+        <Search size={15} />
+        <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="搜索或新增分类" />
+      </div>
       <div className="category-chip-list">
         {!normalizedQuery && selectedCategory && (
           <button type="button" className="category-chip active" onClick={() => onChange(selectedCategory.id)}>
@@ -722,29 +957,30 @@ function TransactionList({ transactions, accounts, categories, onDelete, onEdit,
 }) {
   const [query, setQuery] = useState("");
   const [type, setType] = useState<TransactionType | "all">("all");
-  const [collapsedDays, setCollapsedDays] = useState<Set<string>>(() => new Set());
+  const [groupMode, setGroupMode] = useState<LedgerGroupMode>("day");
+  const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(() => new Set());
   const filtered = transactions.filter((item) => {
     const haystack = [item.note, item.merchant, accounts.find((account) => account.id === item.accountId)?.name, categories.find((category) => category.id === item.categoryId)?.name].join(" ");
     return (type === "all" || item.type === type) && haystack.toLowerCase().includes(query.toLowerCase());
   });
-  const dayGroups = useMemo(() => {
-    const groups = new Map<string, { date: string; transactions: Transaction[]; incomeCents: number; expenseCents: number }>();
+  const transactionGroups = useMemo(() => {
+    const groups = new Map<string, { key: string; transactions: Transaction[]; incomeCents: number; expenseCents: number }>();
     filtered.forEach((item) => {
-      const key = dateKey(item.occurredAt);
-      const group = groups.get(key) ?? { date: key, transactions: [], incomeCents: 0, expenseCents: 0 };
+      const key = transactionGroupKey(item, groupMode);
+      const group = groups.get(key) ?? { key, transactions: [], incomeCents: 0, expenseCents: 0 };
       group.transactions.push(item);
       if (item.type === "income") group.incomeCents += item.amountCents;
       if (item.type === "expense") group.expenseCents += item.amountCents;
       groups.set(key, group);
     });
-    return Array.from(groups.values()).sort((left, right) => right.date.localeCompare(left.date));
-  }, [filtered]);
+    return Array.from(groups.values()).sort((left, right) => right.key.localeCompare(left.key));
+  }, [filtered, groupMode]);
 
-  function toggleDay(date: string) {
-    setCollapsedDays((current) => {
+  function toggleGroup(key: string) {
+    setCollapsedGroups((current) => {
       const next = new Set(current);
-      if (next.has(date)) next.delete(date);
-      else next.add(date);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
       return next;
     });
   }
@@ -759,23 +995,30 @@ function TransactionList({ transactions, accounts, categories, onDelete, onEdit,
           <option value="income">收入</option>
           <option value="transfer">转账</option>
         </select>
+        <div className="segmented compact group-mode">
+          {(["day", "month", "year"] as LedgerGroupMode[]).map((item) => (
+            <button key={item} type="button" className={groupMode === item ? "active" : ""} onClick={() => setGroupMode(item)}>
+              {item === "day" ? "日" : item === "month" ? "月" : "年"}
+            </button>
+          ))}
+        </div>
       </div>
       {editingTransaction && (
         <div className="edit-panel">
           <h2>编辑流水</h2>
-          <EntryForm accounts={activeOnly(accounts)} categories={activeOnly(categories)} editing={editingTransaction} onSave={onSaveEdit} onSaveCategory={onSaveCategory} onCancel={onCancelEdit} />
+          <EntryForm accounts={activeOnly(accounts)} categories={activeOnly(categories)} transactions={transactions} editing={editingTransaction} onSave={onSaveEdit} onSaveCategory={onSaveCategory} onCancel={onCancelEdit} />
         </div>
       )}
-      {dayGroups.length === 0 && <p className="empty">暂无记录</p>}
-      {dayGroups.map((group, index) => {
-        const collapsed = collapsedDays.has(group.date);
+      {transactionGroups.length === 0 && <p className="empty">暂无记录</p>}
+      {transactionGroups.map((group, index) => {
+        const collapsed = collapsedGroups.has(group.key);
         const netCents = group.incomeCents - group.expenseCents;
         return (
-          <section className={`day-group tone-${index % 4} ${collapsed ? "collapsed" : "open"}`} key={group.date}>
-            <button className="day-summary" type="button" onClick={() => toggleDay(group.date)} aria-expanded={!collapsed}>
+          <section className={`day-group tone-${index % 4} ${collapsed ? "collapsed" : "open"}`} key={group.key}>
+            <button className="day-summary" type="button" onClick={() => toggleGroup(group.key)} aria-expanded={!collapsed}>
               <div>
-                <strong>{dateLabel(group.date)}</strong>
-                <span>{group.transactions.length} 笔</span>
+                <strong>{transactionGroupLabel(group.key, groupMode)}</strong>
+                <span>{group.transactions.length} 笔 · 按{groupMode === "day" ? "日" : groupMode === "month" ? "月" : "年"}折叠</span>
               </div>
               <div className="day-totals">
                 <span className="income">收 ¥{centsToYuan(group.incomeCents)}</span>
@@ -1143,27 +1386,39 @@ function InteractiveDonut({ data, total, selectedIndex, onSelect, kind }: {
 }
 
 function Reports({ transactions, categories }: { transactions: Transaction[]; categories: Category[] }) {
+  const currentYear = String(new Date().getFullYear());
+  const [period, setPeriod] = useState<ReportPeriod>("month");
   const [month, setMonth] = useState(monthKey());
+  const [year, setYear] = useState(currentYear);
   const [categoryKind, setCategoryKind] = useState<Category["kind"]>("expense");
   const [selectedCategoryIndex, setSelectedCategoryIndex] = useState(0);
-  const reportTransactions = transactions.filter((item) => item.occurredAt.startsWith(month));
-  const monthSummary = summarizeMonth(transactions, month);
-  const previousDate = dateFromMonthKey(month);
-  previousDate.setMonth(previousDate.getMonth() - 1);
-  const previousSummary = summarizeMonth(transactions, monthKey(previousDate));
-  const incomeChange = percentDelta(monthSummary.incomeCents, previousSummary.incomeCents);
-  const expenseChange = percentDelta(monthSummary.expenseCents, previousSummary.expenseCents);
-  const savingsRate = monthSummary.incomeCents > 0 ? Math.round((monthSummary.netCents / monthSummary.incomeCents) * 100) : 0;
+  const selectedYear = year.trim() || currentYear;
+  const periodKey = period === "month" ? month : selectedYear;
+  const periodLabel = period === "month" ? monthLabel(month) : yearLabel(selectedYear);
+  const previousKey = period === "month"
+    ? (() => {
+      const previousDate = dateFromMonthKey(month);
+      previousDate.setMonth(previousDate.getMonth() - 1);
+      return monthKey(previousDate);
+    })()
+    : String(Number(selectedYear) - 1);
+  const reportTransactions = transactions.filter((item) => item.occurredAt.startsWith(periodKey));
+  const previousTransactions = transactions.filter((item) => item.occurredAt.startsWith(previousKey));
+  const periodSummary = summarizeTransactions(reportTransactions);
+  const previousSummary = summarizeTransactions(previousTransactions);
+  const incomeChange = percentDelta(periodSummary.incomeCents, previousSummary.incomeCents);
+  const expenseChange = percentDelta(periodSummary.expenseCents, previousSummary.expenseCents);
+  const savingsRate = periodSummary.incomeCents > 0 ? Math.round((periodSummary.netCents / periodSummary.incomeCents) * 100) : 0;
   const rawCategoryTotal = reportTransactions
     .filter((item) => item.type === categoryKind)
     .reduce((sum, item) => sum + item.amountCents, 0);
   const categoryTotal = Math.max(1, rawCategoryTotal);
-  const monthDays = daysInMonth(month);
-  const isCurrentMonth = month === monthKey();
-  const elapsedDays = isCurrentMonth ? Math.max(1, new Date().getDate()) : monthDays;
-  const dailyAverageExpense = Math.round(monthSummary.expenseCents / elapsedDays);
-  const projectedExpense = Math.round(dailyAverageExpense * monthDays);
-  const coverageRatio = monthSummary.expenseCents > 0 ? Math.round((monthSummary.incomeCents / monthSummary.expenseCents) * 100) : monthSummary.incomeCents > 0 ? 999 : 0;
+  const periodDays = period === "month" ? daysInMonth(month) : daysInYear(selectedYear);
+  const isCurrentPeriod = period === "month" ? month === monthKey() : selectedYear === currentYear;
+  const elapsedDays = isCurrentPeriod ? Math.max(1, period === "month" ? new Date().getDate() : dayOfYear(new Date())) : periodDays;
+  const dailyAverageExpense = Math.round(periodSummary.expenseCents / elapsedDays);
+  const projectedExpense = Math.round(dailyAverageExpense * periodDays);
+  const coverageRatio = periodSummary.expenseCents > 0 ? Math.round((periodSummary.incomeCents / periodSummary.expenseCents) * 100) : periodSummary.incomeCents > 0 ? 999 : 0;
 
   const categoryData = useMemo(() => {
     const totals = new Map<string, { id: string; name: string; value: number; color: string }>();
@@ -1202,17 +1457,21 @@ function Reports({ transactions, categories }: { transactions: Transaction[]; ca
   }, [reportTransactions, categories]);
 
   const topExpense = expenseCategoryData[0];
-  const topExpenseRatio = topExpense && monthSummary.expenseCents > 0 ? Math.round((topExpense.value / monthSummary.expenseCents) * 100) : 0;
+  const topExpenseRatio = topExpense && periodSummary.expenseCents > 0 ? Math.round((topExpense.value / periodSummary.expenseCents) * 100) : 0;
   const topThreeExpense = expenseCategoryData.slice(0, 3).reduce((sum, item) => sum + item.value, 0);
-  const concentrationRatio = monthSummary.expenseCents > 0 ? Math.round((topThreeExpense / monthSummary.expenseCents) * 100) : 0;
+  const concentrationRatio = periodSummary.expenseCents > 0 ? Math.round((topThreeExpense / periodSummary.expenseCents) * 100) : 0;
 
-  const trendData = Array.from({ length: 12 }, (_, index) => {
-    const date = new Date();
-    date.setMonth(date.getMonth() - (11 - index));
-    const key = monthKey(date);
-    const summary = summarizeMonth(transactions, key);
+  const trendData = Array.from({ length: period === "month" ? 12 : 6 }, (_, index) => {
+    const key = period === "month"
+      ? (() => {
+        const date = dateFromMonthKey(month);
+        date.setMonth(date.getMonth() - (11 - index));
+        return monthKey(date);
+      })()
+      : String(Number(selectedYear) - (5 - index));
+    const summary = summarizeTransactions(transactions.filter((item) => item.occurredAt.startsWith(key)));
     return {
-      month: key,
+      period: key,
       income: summary.incomeCents,
       expense: summary.expenseCents,
       net: summary.netCents
@@ -1230,42 +1489,55 @@ function Reports({ transactions, categories }: { transactions: Transaction[]; ca
       <div className="panel report-toolbar">
         <div>
           <h2>分析报表</h2>
-          <span>{month} · 收入支出与分类结构</span>
+          <span>{periodLabel} · 收入支出与分类结构</span>
         </div>
-        <input value={month} onChange={(event) => setMonth(event.target.value)} type="month" />
+        <div className="report-controls">
+          <div className="segmented compact">
+            {(["month", "year"] as ReportPeriod[]).map((item) => (
+              <button key={item} type="button" className={period === item ? "active" : ""} onClick={() => setPeriod(item)}>
+                {item === "month" ? "按月" : "按年"}
+              </button>
+            ))}
+          </div>
+          {period === "month" ? (
+            <input value={month} onChange={(event) => setMonth(event.target.value)} type="month" />
+          ) : (
+            <input className="year-input" value={year} onChange={(event) => setYear(event.target.value)} type="number" min="1970" max="2100" />
+          )}
+        </div>
       </div>
 
       <div className="report-metrics">
-        <Metric title="月收入" value={monthSummary.incomeCents} icon={ArrowDownLeft} tone="good" />
-        <Metric title="月支出" value={monthSummary.expenseCents} icon={ArrowUpRight} tone="warn" />
-        <Metric title={monthSummary.netCents >= 0 ? "净流入" : "净流出"} value={monthSummary.netCents} icon={CircleDollarSign} tone={monthSummary.netCents >= 0 ? "good" : "warn"} />
+        <Metric title={period === "month" ? "月收入" : "年收入"} value={periodSummary.incomeCents} icon={ArrowDownLeft} tone="good" />
+        <Metric title={period === "month" ? "月支出" : "年支出"} value={periodSummary.expenseCents} icon={ArrowUpRight} tone="warn" />
+        <Metric title={periodSummary.netCents >= 0 ? "净流入" : "净流出"} value={periodSummary.netCents} icon={ArrowRightLeft} tone={periodSummary.netCents >= 0 ? "good" : "warn"} />
       </div>
 
       <div className="finance-insights">
         <article className={savingsRate >= 20 ? "insight-card good" : savingsRate >= 0 ? "insight-card neutral" : "insight-card warn"}>
           <span>储蓄率</span>
           <strong>{savingsRate}%</strong>
-          <p>{savingsRate >= 20 ? "现金流健康，可以考虑增加长期储蓄或投资预算。" : savingsRate >= 0 ? "仍有结余，建议把固定储蓄目标提高到收入的 20%。" : "本月为净流出，优先检查非必要支出和一次性大额消费。"}</p>
+          <p>{savingsRate >= 20 ? "现金流健康，可以考虑增加长期储蓄或投资预算。" : savingsRate >= 0 ? "仍有结余，建议把固定储蓄目标提高到收入的 20%。" : "本期为净流出，优先检查非必要支出和一次性大额消费。"}</p>
         </article>
         <article className="insight-card">
           <span>最大支出项</span>
           <strong>{topExpense ? topExpense.name : "暂无"}</strong>
-          <p>{topExpense ? `占本月支出的 ${topExpenseRatio}%，金额 ¥${centsToYuan(topExpense.value)}。` : "本月还没有支出数据。"}</p>
+          <p>{topExpense ? `占本期支出的 ${topExpenseRatio}%，金额 ¥${centsToYuan(topExpense.value)}。` : "本期还没有支出数据。"}</p>
         </article>
         <article className={expenseChange > 15 ? "insight-card warn" : "insight-card neutral"}>
-          <span>支出环比</span>
+          <span>{period === "month" ? "支出环比" : "支出年比"}</span>
           <strong>{expenseChange >= 0 ? "+" : ""}{expenseChange}%</strong>
           <p>{expenseChange > 15 ? "支出增长较快，建议查看分类统计里的前三项。" : "支出变化在可控范围内。"}</p>
         </article>
         <article className="insight-card">
-          <span>收入环比</span>
+          <span>{period === "month" ? "收入环比" : "收入年比"}</span>
           <strong>{incomeChange >= 0 ? "+" : ""}{incomeChange}%</strong>
           <p>{incomeChange >= 0 ? "收入较上月持平或增长。" : "收入较上月下降，预算上建议更保守。"}</p>
         </article>
         <article className="insight-card">
           <span>日均支出</span>
           <strong>¥{centsToYuan(dailyAverageExpense)}</strong>
-          <p>{isCurrentMonth ? `按当前节奏，月底预计支出 ¥${centsToYuan(projectedExpense)}。` : "这是该月实际日均支出。"}</p>
+          <p>{isCurrentPeriod ? `按当前节奏，本${period === "month" ? "月" : "年"}预计支出 ¥${centsToYuan(projectedExpense)}。` : `这是该${period === "month" ? "月" : "年"}实际日均支出。`}</p>
         </article>
         <article className={concentrationRatio > 65 ? "insight-card warn" : "insight-card neutral"}>
           <span>前三支出集中度</span>
@@ -1278,7 +1550,7 @@ function Reports({ transactions, categories }: { transactions: Transaction[]; ca
           <p>{coverageRatio >= 120 ? "收入明显覆盖支出，现金流余地较好。" : coverageRatio >= 100 ? "收入刚好覆盖支出，建议留出安全垫。" : "收入未覆盖支出，需要减少可变支出或动用预算。"}</p>
         </article>
         <article className={recentNetAverage >= 0 ? "insight-card good" : "insight-card warn"}>
-          <span>近三月平均净流</span>
+          <span>{period === "month" ? "近三月平均净流" : "近三年平均净流"}</span>
           <strong>{recentNetAverage >= 0 ? "+" : "-"}¥{centsToYuan(Math.abs(recentNetAverage))}</strong>
           <p>{recentNetAverage >= 0 ? "近期现金流趋势为正。" : "近期平均为净流出，建议压缩非必要支出。"}</p>
         </article>
@@ -1300,7 +1572,7 @@ function Reports({ transactions, categories }: { transactions: Transaction[]; ca
             <InteractiveDonut data={categoryData} total={categoryTotal} selectedIndex={selectedCategoryIndex} onSelect={setSelectedCategoryIndex} kind={categoryKind} />
           </div>
           <div className="donut-list">
-            {categoryData.length === 0 && <p className="empty">本月暂无{categoryKind === "expense" ? "支出" : "收入"}分类数据</p>}
+            {categoryData.length === 0 && <p className="empty">本期暂无{categoryKind === "expense" ? "支出" : "收入"}分类数据</p>}
             {categoryData.map((entry, index) => {
               const ratio = Math.round((entry.value / categoryTotal) * 100);
               return (
@@ -1324,7 +1596,7 @@ function Reports({ transactions, categories }: { transactions: Transaction[]; ca
         </div>
 
         <div className="panel chart-panel trend-panel">
-          <h2>月度收入 / 支出 / 净流向</h2>
+          <h2>{period === "month" ? "月度" : "年度"}收入 / 支出 / 净流向</h2>
           <div className="trend-legend">
             <span><i className="legend income-bar" />收入</span>
             <span><i className="legend expense-bar" />支出</span>
@@ -1333,13 +1605,13 @@ function Reports({ transactions, categories }: { transactions: Transaction[]; ca
           <div className="trend-bars monthly-flow">
             {trendData.map((item) => {
               return (
-                <div className="trend-month" key={item.month}>
+                <div className="trend-month" key={item.period}>
                   <div className="trend-stack">
                     <i className="income-bar" title={`收入 ¥${centsToYuan(item.income)}`} style={{ height: `${Math.max(4, (item.income / maxTrend) * 100)}%` }} />
                     <i className="expense-bar" title={`支出 ¥${centsToYuan(item.expense)}`} style={{ height: `${Math.max(4, (item.expense / maxTrend) * 100)}%` }} />
                     <i className={item.net >= 0 ? "net-line net-positive" : "net-line net-negative"} title={`${item.net >= 0 ? "净流入" : "净流出"} ¥${centsToYuan(Math.abs(item.net))}`} style={{ height: `${Math.max(4, (Math.abs(item.net) / maxTrend) * 100)}%` }} />
                   </div>
-                  <span>{item.month.slice(5)}</span>
+                  <span>{period === "month" ? item.period.slice(5) : item.period}</span>
                   <small className={item.net >= 0 ? "net-positive-text" : "net-negative-text"}>{item.net >= 0 ? "+" : "-"}{centsToYuan(Math.abs(item.net))}</small>
                 </div>
               );
@@ -1362,38 +1634,114 @@ async function importCsv(
   file: File,
   accounts: Account[],
   categories: Category[],
-  saveLocalAndQueue: (kind: "transactions", item: Transaction) => Promise<void>
+  saveLocalAndQueue: (kind: "accounts" | "categories" | "transactions", item: Account | Category | Transaction) => Promise<void>
 ) {
-  const text = await file.text();
-  const parsed = Papa.parse<Record<string, string>>(text, { header: true, skipEmptyLines: true });
-  for (const row of parsed.data) {
-    const account = accounts.find((item) => item.name === row["账户"]) ?? accounts[0];
-    if (!account) continue;
-    const category = categories.find((item) => item.name === row["分类"]);
-    const amount = row["金额"] ?? "0";
+  const rows = await readImportRows(file);
+  const nextAccounts = [...accounts];
+  const nextCategories = [...categories];
+
+  async function findOrCreateAccount(name: string) {
+    const accountName = name.trim() || nextAccounts[0]?.name || "导入账户";
+    const existing = nextAccounts.find((item) => item.name === accountName);
+    if (existing) return existing;
+    const account: Account = { ...entityStamp(), name: accountName, type: "other", openingBalanceCents: 0, color: "#8a7154" };
+    nextAccounts.push(account);
+    await saveLocalAndQueue("accounts", account);
+    return account;
+  }
+
+  async function findOrCreateCategory(kind: Category["kind"], row: Record<string, string>) {
+    const combined = rowValue(row, ["分类", "类别", "账目分类", "收支分类", "科目"]);
+    const split = splitCategoryName(combined);
+    const primaryName = rowValue(row, ["一级分类", "大类", "父分类"]) || split.primary || "其他";
+    const secondaryName = rowValue(row, ["二级分类", "子分类", "小类", "明细分类"]) || split.secondary;
+    let parent = nextCategories.find((item) => item.kind === kind && !item.parentId && item.name === primaryName);
+    if (!parent) {
+      parent = makeCategory({ name: primaryName, kind, parentId: null, icon: "folder", color: kind === "expense" ? "#6b6f3f" : "#2f7d4f" });
+      nextCategories.push(parent);
+      await saveLocalAndQueue("categories", parent);
+    }
+    if (!secondaryName || secondaryName === parent.name) return parent;
+    let child = nextCategories.find((item) => item.kind === kind && item.parentId === parent.id && item.name === secondaryName);
+    if (!child) {
+      child = makeCategory({ name: secondaryName, kind, parentId: parent.id, color: parent.color });
+      nextCategories.push(child);
+      await saveLocalAndQueue("categories", child);
+    }
+    return child;
+  }
+
+  let imported = 0;
+  for (const row of rows) {
+    const type = inferTransactionType(row, row.__sheet);
+    const amountCents = importedAmount(row, type);
+    if (amountCents <= 0) continue;
+    const account = await findOrCreateAccount(rowValue(row, ["账户", "账户1", "支付账户", "付款账户", "收支账户", "资金账户", "银行卡"]));
+    const toAccountName = rowValue(row, ["转入账户", "账户2", "收款账户", "对方账户"]);
+    const toAccount = type === "transfer" ? await findOrCreateAccount(toAccountName || "转入账户") : null;
+    const category = type === "transfer" ? null : await findOrCreateCategory(type === "income" ? "income" : "expense", row);
+    const dateText = rowValue(row, ["日期", "交易日期", "记账日期", "发生日期", "消费日期"]);
+    const timeText = rowValue(row, ["时间", "交易时间", "发生时间"]);
     await saveLocalAndQueue("transactions", {
       ...entityStamp(),
-      type: (row["类型"] as TransactionType) || "expense",
+      type,
       accountId: account.id,
-      toAccountId: null,
+      toAccountId: toAccount?.id ?? null,
       categoryId: category?.id ?? null,
-      amountCents: yuanToCents(amount),
-      occurredAt: row["日期"] ? new Date(row["日期"]).toISOString() : new Date().toISOString(),
-      merchant: row["商户"] ?? "",
-      note: row["备注"] ?? "",
-      tags: row["标签"] ? row["标签"].split("|").filter(Boolean) : []
+      amountCents,
+      occurredAt: parseImportedDate(dateText || rowValue(row, ["交易时间", "发生时间"]), timeText),
+      merchant: rowValue(row, ["商户", "商家", "交易对方", "对象", "店铺"]),
+      note: rowValue(row, ["备注", "说明", "摘要", "用途", "内容", "项目"]),
+      tags: rowValue(row, ["标签", "成员"]).split(/[|,，、]/).map((item) => item.trim()).filter(Boolean)
     });
+    imported += 1;
   }
+  return imported;
 }
 
-async function exportCsv(token: string | null) {
+function localExportRows(format: ExportFormat, accounts: Account[], categories: Category[], transactions: Transaction[]) {
+  const accountName = (id?: string | null) => accounts.find((item) => item.id === id)?.name ?? "";
+  const categoryName = (id?: string | null) => {
+    const category = categories.find((item) => item.id === id);
+    return category ? categoryPath(category, categories) : "";
+  };
+  const typeName = (type: TransactionType) => typeLabels[type];
+  const rows = transactions.map((item) => {
+    const date = new Date(item.occurredAt);
+    const day = date.toISOString().slice(0, 10);
+    const time = date.toISOString().slice(11, 19);
+    if (format === "portable") {
+      const parts = splitCategoryName(categoryName(item.categoryId));
+      return [day, time, typeName(item.type), parts.primary, parts.secondary || categoryName(item.categoryId), accountName(item.accountId), accountName(item.toAccountId), item.type === "expense" ? `-${centsToYuan(item.amountCents)}` : centsToYuan(item.amountCents), item.merchant, item.note, item.tags.join("|")];
+    }
+    if (format === "suishouji") {
+      const parts = splitCategoryName(categoryName(item.categoryId));
+      return [typeName(item.type), day, time, parts.primary || "其他", parts.secondary || categoryName(item.categoryId) || "其他", accountName(item.accountId), accountName(item.toAccountId), centsToYuan(item.amountCents), item.merchant, item.note];
+    }
+    if (format === "qianji") {
+      return [day, typeName(item.type), categoryName(item.categoryId) || "其他", accountName(item.accountId), centsToYuan(item.amountCents), item.merchant, item.note];
+    }
+    return [item.occurredAt, item.type, accountName(item.accountId), accountName(item.toAccountId), categoryName(item.categoryId), centsToYuan(item.amountCents), item.merchant, item.note, item.tags.join("|")];
+  });
+  if (format === "portable") return [["日期", "时间", "类型", "一级分类", "二级分类", "账户", "转入账户", "金额", "商户", "备注", "标签"], ...rows];
+  if (format === "suishouji") return [["交易类型", "日期", "时间", "一级分类", "二级分类", "账户1", "账户2", "金额", "商家", "备注"], ...rows];
+  if (format === "qianji") return [["日期", "类型", "分类", "账户", "金额", "商户", "备注"], ...rows];
+  return [["日期", "类型", "账户", "转入账户", "分类", "金额", "商户", "备注", "标签"], ...rows];
+}
+
+async function exportCsv(token: string | null, format: ExportFormat, accounts: Account[], categories: Category[], transactions: Transaction[]) {
   if (!token) return;
-  const response = await fetch(api.exportUrl(), { headers: authHeaders(token) });
+  const filename = `ledger-${format}-${new Date().toISOString().slice(0, 10)}.csv`;
+  if (token.startsWith("local-preview:")) {
+    downloadCsv(filename, localExportRows(format, accounts, categories, transactions));
+    return;
+  }
+  const response = await fetch(api.exportUrl(format), { headers: authHeaders(token) });
   const blob = await response.blob();
   const url = URL.createObjectURL(blob);
   const link = document.createElement("a");
   link.href = url;
-  link.download = `ledger-${new Date().toISOString().slice(0, 10)}.csv`;
+  link.download = filename;
   link.click();
   URL.revokeObjectURL(url);
 }
