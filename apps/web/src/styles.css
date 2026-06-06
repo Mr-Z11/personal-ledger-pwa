@@ -196,6 +196,11 @@ h2 {
   min-height: 2.55rem;
 }
 
+.top-actions .export-file-type {
+  width: 5.8rem;
+  min-height: 2.55rem;
+}
+
 .icon-button {
   width: 2.55rem;
   background: #fffaf0;

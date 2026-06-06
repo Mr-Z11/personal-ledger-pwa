@@ -42,6 +42,7 @@ type View = "overview" | "entry" | "transactions" | "accounts" | "budget" | "rep
 type LedgerGroupMode = "day" | "month" | "year";
 type ReportPeriod = "month" | "year";
 type ExportFormat = "ledger" | "portable" | "suishouji" | "qianji";
+type ExportFileType = "csv" | "xlsx";
 
 const navItems: { id: View; label: string; icon: typeof Home }[] = [
   { id: "overview", label: "总览", icon: Home },
@@ -60,7 +61,7 @@ const typeLabels: Record<TransactionType, string> = {
 };
 
 const exportFormats: { id: ExportFormat; label: string }[] = [
-  { id: "ledger", label: "完整 CSV" },
+  { id: "ledger", label: "完整格式" },
   { id: "portable", label: "通用迁移" },
   { id: "suishouji", label: "随手记兼容" },
   { id: "qianji", label: "钱迹/一木类" }
@@ -311,6 +312,41 @@ function csvRowsFromText(text: string) {
   return parsed.data;
 }
 
+function looksLikeImportHeader(row: unknown[]) {
+  const normalized = row.map((cell) => normalizeFieldName(String(cell ?? "")));
+  const hasDate = normalized.some((cell) => ["日期", "交易日期", "记账日期", "发生日期", "消费日期", "时间", "交易时间"].map(normalizeFieldName).includes(cell));
+  const hasAmount = normalized.some((cell) => ["金额", "交易金额", "支出", "收入", "支出金额", "收入金额", "发生金额"].map(normalizeFieldName).includes(cell));
+  const hasType = normalized.some((cell) => ["类型", "交易类型", "收支类型", "账单类型", "流水类型"].map(normalizeFieldName).includes(cell));
+  return (hasDate && hasAmount) || (hasType && hasAmount);
+}
+
+function rowsFromSheetMatrix(matrix: unknown[][], sheetName: string) {
+  const headerIndex = matrix.findIndex((row) => looksLikeImportHeader(row));
+  if (headerIndex < 0) return [];
+  const headers = matrix[headerIndex].map((cell, index) => String(cell ?? "").trim() || `列${index + 1}`);
+  return matrix.slice(headerIndex + 1).flatMap((cells) => {
+    if (cells.every((cell) => String(cell ?? "").trim() === "")) return [];
+    const row: Record<string, string> = {};
+    headers.forEach((header, index) => {
+      row[header] = String(cells[index] ?? "").trim();
+    });
+    row.__sheet = sheetName;
+    return [row];
+  });
+}
+
+async function rowsFromExcel(file: File) {
+  const XLSX = await import("xlsx");
+  const buffer = await file.arrayBuffer();
+  const workbook = XLSX.read(buffer, { type: "array", raw: false });
+  return workbook.SheetNames.flatMap((sheetName) => {
+    const sheet = workbook.Sheets[sheetName];
+    if (!sheet) return [];
+    const matrix = XLSX.utils.sheet_to_json<unknown[]>(sheet, { header: 1, defval: "", raw: false });
+    return rowsFromSheetMatrix(matrix, sheetName);
+  });
+}
+
 function rowsFromHtmlTable(text: string) {
   const doc = new DOMParser().parseFromString(text, "text/html");
   const rows: Record<string, string>[] = [];
@@ -333,13 +369,12 @@ function rowsFromHtmlTable(text: string) {
 }
 
 async function readImportRows(file: File) {
-  if (/\.xlsx$/i.test(file.name)) {
-    throw new Error("当前可导入 CSV/TSV 和文本表格型 .xls；.xlsx 需要补充 Excel 解析依赖后支持。");
+  if (/\.(xlsx|xls|xlsm)$/i.test(file.name)) {
+    const rows = await rowsFromExcel(file);
+    if (rows.length > 0) return rows;
+    throw new Error("没有在 Excel 中识别到账单表头，请确认包含日期、金额、类型、账户、分类等列。");
   }
   const text = await file.text();
-  if (/\.xls$/i.test(file.name) && text.includes("\u0000")) {
-    throw new Error("这个 .xls 像是二进制 Excel，请先从随手记导出 CSV，或另存为 CSV 后再导入。");
-  }
   if (/^\s*</.test(text) && /<table/i.test(text)) return rowsFromHtmlTable(text);
   const normalized = text.replace(/\r\n/g, "\n");
   return csvRowsFromText(normalized);
@@ -351,6 +386,21 @@ function downloadCsv(filename: string, rows: (string | number | null | undefined
     return /[",\n]/.test(text) ? `"${text.replaceAll('"', '""')}"` : text;
   }).join(",")).join("\n");
   const blob = new Blob([`\ufeff${csv}`], { type: "text/csv;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = filename;
+  link.click();
+  URL.revokeObjectURL(url);
+}
+
+async function downloadXlsx(filename: string, rows: (string | number | null | undefined)[][]) {
+  const XLSX = await import("xlsx");
+  const workbook = XLSX.utils.book_new();
+  const sheet = XLSX.utils.aoa_to_sheet(rows);
+  XLSX.utils.book_append_sheet(workbook, sheet, "账单");
+  const data = XLSX.write(workbook, { bookType: "xlsx", type: "array" });
+  const blob = new Blob([data], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
   const url = URL.createObjectURL(blob);
   const link = document.createElement("a");
   link.href = url;
@@ -375,6 +425,7 @@ export function App() {
   const [quickCategoryOpen, setQuickCategoryOpen] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
   const [exportFormat, setExportFormat] = useState<ExportFormat>("ledger");
+  const [exportFileType, setExportFileType] = useState<ExportFileType>("xlsx");
 
   const refreshLocal = useCallback(async () => {
     const [nextAccounts, nextCategories, nextTransactions, nextBudgets, nextOutboxCount, nextLastSync] = await Promise.all([
@@ -541,12 +592,16 @@ export function App() {
             <select className="export-format" value={exportFormat} onChange={(event) => setExportFormat(event.target.value as ExportFormat)} title="导出格式">
               {exportFormats.map((item) => <option key={item.id} value={item.id}>{item.label}</option>)}
             </select>
-            <button className="icon-button" onClick={() => void exportCsv(token, exportFormat, activeAccounts, activeCategories, activeTransactions)} title="导出 CSV">
+            <select className="export-file-type" value={exportFileType} onChange={(event) => setExportFileType(event.target.value as ExportFileType)} title="导出文件类型">
+              <option value="xlsx">Excel</option>
+              <option value="csv">CSV</option>
+            </select>
+            <button className="icon-button" onClick={() => void exportData(token, exportFormat, exportFileType, activeAccounts, activeCategories, activeTransactions)} title="导出账单">
               <Download size={18} />
             </button>
             <label className="icon-button" title="导入账单">
               <Upload size={18} />
-              <input type="file" accept=".csv,.tsv,.txt,.xls,.xlsx,text/csv,text/tab-separated-values,text/plain,text/html" hidden onChange={(event) => {
+              <input type="file" accept=".csv,.tsv,.txt,.xls,.xlsx,.xlsm,text/csv,text/tab-separated-values,text/plain,text/html,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" hidden onChange={(event) => {
                 const file = event.currentTarget.files?.[0];
                 if (file) {
                   void importCsv(file, activeAccounts, activeCategories, saveLocalAndQueue).then((count) => {
@@ -1729,11 +1784,17 @@ function localExportRows(format: ExportFormat, accounts: Account[], categories: 
   return [["日期", "类型", "账户", "转入账户", "分类", "金额", "商户", "备注", "标签"], ...rows];
 }
 
-async function exportCsv(token: string | null, format: ExportFormat, accounts: Account[], categories: Category[], transactions: Transaction[]) {
+async function exportData(token: string | null, format: ExportFormat, fileType: ExportFileType, accounts: Account[], categories: Category[], transactions: Transaction[]) {
   if (!token) return;
-  const filename = `ledger-${format}-${new Date().toISOString().slice(0, 10)}.csv`;
+  const date = new Date().toISOString().slice(0, 10);
+  const rows = localExportRows(format, accounts, categories, transactions);
+  if (fileType === "xlsx") {
+    await downloadXlsx(`ledger-${format}-${date}.xlsx`, rows);
+    return;
+  }
+  const filename = `ledger-${format}-${date}.csv`;
   if (token.startsWith("local-preview:")) {
-    downloadCsv(filename, localExportRows(format, accounts, categories, transactions));
+    downloadCsv(filename, rows);
     return;
   }
   const response = await fetch(api.exportUrl(format), { headers: authHeaders(token) });
