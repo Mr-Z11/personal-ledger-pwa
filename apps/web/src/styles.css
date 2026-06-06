@@ -173,9 +173,48 @@ main {
   margin-bottom: 1rem;
 }
 
-.topbar > div:first-child {
+.page-heading {
   flex: 1 1 12rem;
   min-width: 0;
+}
+
+.app-heading {
+  min-height: 3.15rem;
+  padding: 0.48rem 0.72rem;
+  border: 1px solid rgba(49, 71, 58, 0.12);
+  border-radius: 0.72rem;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.58rem;
+  background: rgba(255, 250, 240, 0.78);
+  box-shadow: 0 0.7rem 1.6rem rgba(36, 49, 39, 0.08);
+}
+
+.app-heading-mark {
+  width: 2rem;
+  height: 2rem;
+  border-radius: 0.55rem;
+  display: grid;
+  place-items: center;
+  background: #31473a;
+  color: #fff7df;
+}
+
+.app-heading strong,
+.app-heading span {
+  display: block;
+  white-space: nowrap;
+}
+
+.app-heading strong {
+  font-size: 0.92rem;
+}
+
+.app-heading span {
+  margin-top: 0.1rem;
+  color: rgba(36, 49, 39, 0.6);
+  font-size: 0.74rem;
+  font-weight: 800;
 }
 
 h1,
@@ -400,6 +439,43 @@ select {
   margin-bottom: 0.8rem;
 }
 
+.transaction-tools,
+.batch-panel {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+  margin-bottom: 0.75rem;
+}
+
+.transaction-tools span {
+  margin-right: auto;
+  color: rgba(36, 49, 39, 0.64);
+  font-size: 0.84rem;
+  font-weight: 800;
+}
+
+.batch-panel {
+  padding: 0.65rem;
+  border: 1px solid rgba(49, 71, 58, 0.12);
+  border-radius: 0.62rem;
+  background: rgba(49, 71, 58, 0.06);
+}
+
+.batch-panel strong {
+  margin-right: auto;
+}
+
+.batch-panel select {
+  width: min(100%, 11rem);
+  min-height: 2.35rem;
+}
+
+.batch-panel .ghost,
+.transaction-tools .ghost {
+  min-height: 2.35rem;
+}
+
 .search {
   position: relative;
 }
@@ -539,6 +615,49 @@ select {
   padding: 0.38rem 0.46rem;
   border-radius: 0.48rem;
   background: rgba(255, 255, 255, 0.46);
+}
+
+.row.selectable {
+  grid-template-columns: 1.35rem 2rem minmax(0, 1fr) auto;
+}
+
+.row-check {
+  width: 1rem;
+  min-height: 1rem;
+  accent-color: #31473a;
+}
+
+.load-more {
+  width: 100%;
+  margin-top: 0.85rem;
+}
+
+.data-actions,
+.data-stat-strip {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.55rem;
+}
+
+.data-actions .primary,
+.import-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.45rem;
+}
+
+.import-button {
+  cursor: pointer;
+}
+
+.data-stat-strip span {
+  padding: 0.35rem 0.55rem;
+  border-radius: 999px;
+  background: rgba(49, 71, 58, 0.08);
+  color: rgba(36, 49, 39, 0.68);
+  font-size: 0.8rem;
+  font-weight: 800;
 }
 
 .edit-panel {
@@ -1294,9 +1413,19 @@ select {
     margin-bottom: 0.8rem;
   }
 
-  .topbar > div:first-child {
+  .page-heading {
     flex-basis: 8.5rem;
     min-width: 8.5rem;
+  }
+
+  .app-heading {
+    min-height: 2.75rem;
+    padding: 0.4rem 0.55rem;
+  }
+
+  .app-heading-mark {
+    width: 1.8rem;
+    height: 1.8rem;
   }
 
   h1 {
@@ -1401,6 +1530,19 @@ select {
     grid-template-columns: 1.9rem minmax(0, 1fr) auto;
   }
 
+  .row.selectable {
+    grid-template-columns: 1.2rem 1.9rem minmax(0, 1fr) auto;
+  }
+
+  .batch-panel {
+    display: grid;
+    grid-template-columns: 1fr;
+  }
+
+  .batch-panel select {
+    width: 100%;
+  }
+
   .day-summary {
     grid-template-columns: minmax(0, 1fr) auto;
     gap: 0.5rem;
@@ -1443,8 +1585,16 @@ select {
     grid-template-columns: minmax(4.8rem, auto) minmax(0, 1fr);
   }
 
-  .topbar > div:first-child {
+  .page-heading {
     min-width: 0;
+  }
+
+  .app-heading {
+    justify-self: end;
+  }
+
+  .app-heading span {
+    display: none;
   }
 
   h1 {
@@ -1512,6 +1662,10 @@ select {
     grid-template-columns: 1.75rem minmax(0, 1fr) auto;
     gap: 0.42rem;
     padding: 0.34rem 0.4rem;
+  }
+
+  .row.selectable {
+    grid-template-columns: 1.08rem 1.72rem minmax(0, 1fr) auto;
   }
 
   .day-summary {

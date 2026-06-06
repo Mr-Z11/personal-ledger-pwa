@@ -562,6 +562,14 @@ export function App() {
     if (!isLocalPreview && navigator.onLine) void syncNow();
   }
 
+  async function saveManyLocalAndQueue(kind: "transactions", items: Transaction[]) {
+    if (items.length === 0) return;
+    await db.transactions.bulkPut(items);
+    await enqueue({ [kind]: items });
+    await refreshLocal();
+    if (!isLocalPreview && navigator.onLine) void syncNow();
+  }
+
   if (!token) {
     return <AuthScreen onAuth={async (result) => {
       localStorage.setItem("ledger-token", result.token);
@@ -608,35 +616,16 @@ export function App() {
 
       <main>
         <header className="topbar">
-          <div>
+          <div className="page-heading">
             <span className="eyebrow">{currentMonth}</span>
             <h1>{viewTitle(view)}</h1>
           </div>
-          <div className="top-actions">
-            <select className="export-format" value={exportFormat} onChange={(event) => setExportFormat(event.target.value as ExportFormat)} title="导出格式">
-              {exportFormats.map((item) => <option key={item.id} value={item.id}>{item.label}</option>)}
-            </select>
-            <select className="export-file-type" value={exportFileType} onChange={(event) => setExportFileType(event.target.value as ExportFileType)} title="导出文件类型">
-              <option value="xlsx">Excel</option>
-              <option value="csv">CSV</option>
-            </select>
-            <button className="icon-button" onClick={() => void exportData(token, exportFormat, exportFileType, activeAccounts, activeCategories, activeTransactions)} title="导出账单">
-              <Download size={18} />
-            </button>
-            <label className="icon-button" title="导入账单">
-              <Upload size={18} />
-              <input type="file" accept=".csv,.tsv,.txt,.xls,.xlsx,.xlsm,text/csv,text/tab-separated-values,text/plain,text/html,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" hidden onChange={(event) => {
-                const file = event.currentTarget.files?.[0];
-                if (file) {
-                  void importCsv(file, activeAccounts, activeCategories, saveLocalAndQueue).then((count) => {
-                    setToast(`已导入 ${count} 笔流水`);
-                  }).catch((error) => {
-                    setToast(error instanceof Error ? error.message : "导入失败");
-                  });
-                }
-                event.currentTarget.value = "";
-              }} />
-            </label>
+          <div className="app-heading">
+            <div className="app-heading-mark"><Banknote size={18} /></div>
+            <div>
+              <strong>消费账本</strong>
+              <span>记录支出，分析现金流</span>
+            </div>
           </div>
         </header>
 
@@ -665,10 +654,16 @@ export function App() {
             await saveLocalAndQueue("transactions", item);
             setEditingTransaction(null);
             setToast("流水已更新");
+          }} onBulkUpdate={async (items) => {
+            await saveManyLocalAndQueue("transactions", items);
+            setToast(`已批量更新 ${items.length} 笔流水`);
           }} onSaveCategory={(item) => saveLocalAndQueue("categories", item)} />
         )}
         {view === "accounts" && (
-          <AccountsPanel accounts={activeAccounts} transactions={activeTransactions} onSave={(item) => saveLocalAndQueue("accounts", item)} onDelete={async (item) => {
+          <AccountsPanel accounts={activeAccounts} transactions={activeTransactions} onSave={async (item) => {
+            await saveLocalAndQueue("accounts", item);
+            setToast("账户已保存");
+          }} onDelete={async (item) => {
             const deleted = { ...item, deletedAt: new Date().toISOString(), updatedAt: new Date().toISOString(), version: item.version + 1 };
             await saveLocalAndQueue("accounts", deleted);
           }} />
@@ -680,7 +675,20 @@ export function App() {
           <Reports transactions={activeTransactions} categories={activeCategories} />
         )}
         {view === "settings" && (
-          <SettingsPanel categories={activeCategories} onSaveCategory={(item) => saveLocalAndQueue("categories", item)} />
+          <SettingsPanel
+            accounts={activeAccounts}
+            categories={activeCategories}
+            transactions={activeTransactions}
+            exportFormat={exportFormat}
+            exportFileType={exportFileType}
+            onExportFormatChange={setExportFormat}
+            onExportFileTypeChange={setExportFileType}
+            onExport={() => void exportData(token, exportFormat, exportFileType, activeAccounts, activeCategories, activeTransactions)}
+            onImportFile={(file) => importCsv(file, activeAccounts, activeCategories, saveLocalAndQueue)}
+            onImported={(count) => setToast(`已导入 ${count} 笔流水`)}
+            onImportError={(error) => setToast(error instanceof Error ? error.message : "导入失败")}
+            onSaveCategory={(item) => saveLocalAndQueue("categories", item)}
+          />
         )}
         {view === "trash" && (
           <Trash transactions={transactions.filter((item) => item.deletedAt)} accounts={accounts} categories={categories} onRestore={async (item) => {
@@ -823,6 +831,7 @@ function EntryForm({ accounts, categories, transactions, onSave, onSaveCategory,
     () => sortCategoriesByUsage(selectableCategories(categories, categoryKind), categories, usageCounts),
     [categories, categoryKind, usageCounts]
   );
+  const selectedCategoryPath = categoryPath(categories.find((category) => category.id === categoryId), categories);
 
   useEffect(() => {
     if (!editing) return;
@@ -842,6 +851,12 @@ function EntryForm({ accounts, categories, transactions, onSave, onSaveCategory,
       setCategoryId(filteredCategories[0]?.id ?? "");
     }
   }, [accounts, filteredCategories, accountId, categoryId]);
+
+  useEffect(() => {
+    if (editing || type !== "expense" || !/早餐|午餐|晚餐|早饭|午饭|晚饭|早午晚餐/.test(selectedCategoryPath)) return;
+    const mealAccount = accounts.find((account) => account.name.includes("招行信用卡6837"));
+    if (mealAccount) setAccountId(mealAccount.id);
+  }, [accounts, editing, selectedCategoryPath, type]);
 
   async function submit(event: React.FormEvent) {
     event.preventDefault();
@@ -1023,7 +1038,7 @@ function QuickCategoryForm({ categories, onSave, onClose }: { categories: Catego
   );
 }
 
-function TransactionList({ transactions, accounts, categories, onDelete, onEdit, editingTransaction, onCancelEdit, onSaveEdit, onSaveCategory }: {
+function TransactionList({ transactions, accounts, categories, onDelete, onEdit, editingTransaction, onCancelEdit, onSaveEdit, onBulkUpdate, onSaveCategory }: {
   transactions: Transaction[];
   accounts: Account[];
   categories: Category[];
@@ -1032,19 +1047,36 @@ function TransactionList({ transactions, accounts, categories, onDelete, onEdit,
   editingTransaction: Transaction | null;
   onCancelEdit: () => void;
   onSaveEdit: (item: Transaction) => Promise<void>;
+  onBulkUpdate: (items: Transaction[]) => Promise<void>;
   onSaveCategory: (item: Category) => Promise<void>;
 }) {
   const [query, setQuery] = useState("");
   const [type, setType] = useState<TransactionType | "all">("all");
   const [groupMode, setGroupMode] = useState<LedgerGroupMode>("day");
-  const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(() => new Set());
-  const filtered = transactions.filter((item) => {
-    const haystack = [item.note, item.merchant, accounts.find((account) => account.id === item.accountId)?.name, categories.find((category) => category.id === item.categoryId)?.name].join(" ");
-    return (type === "all" || item.type === type) && haystack.toLowerCase().includes(query.toLowerCase());
-  });
+  const [expandedGroups, setExpandedGroups] = useState<Set<string>>(() => new Set());
+  const [visibleLimit, setVisibleLimit] = useState(120);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(() => new Set());
+  const [batchAccountId, setBatchAccountId] = useState("");
+  const [batchCategoryId, setBatchCategoryId] = useState("");
+  const activeAccounts = activeOnly(accounts);
+  const activeCategories = activeOnly(categories);
+  const batchCategory = activeCategories.find((category) => category.id === batchCategoryId);
+  const filtered = useMemo(() => {
+    const needle = query.toLowerCase();
+    return transactions
+      .filter((item) => {
+        const category = categories.find((entry) => entry.id === item.categoryId);
+        const haystack = [item.note, item.merchant, accounts.find((account) => account.id === item.accountId)?.name, category?.name, categoryPath(category, categories)].join(" ");
+        return (type === "all" || item.type === type) && haystack.toLowerCase().includes(needle);
+      })
+      .sort((left, right) => right.occurredAt.localeCompare(left.occurredAt));
+  }, [accounts, categories, query, transactions, type]);
+  const visibleTransactions = useMemo(() => filtered.slice(0, visibleLimit), [filtered, visibleLimit]);
+  const selectedTransactions = useMemo(() => visibleTransactions.filter((item) => selectedIds.has(item.id)), [selectedIds, visibleTransactions]);
+  const visibleTransactionIds = useMemo(() => new Set(visibleTransactions.map((item) => item.id)), [visibleTransactions]);
   const transactionGroups = useMemo(() => {
     const groups = new Map<string, { key: string; transactions: Transaction[]; incomeCents: number; expenseCents: number }>();
-    filtered.forEach((item) => {
+    visibleTransactions.forEach((item) => {
       const key = transactionGroupKey(item, groupMode);
       const group = groups.get(key) ?? { key, transactions: [], incomeCents: 0, expenseCents: 0 };
       group.transactions.push(item);
@@ -1053,15 +1085,44 @@ function TransactionList({ transactions, accounts, categories, onDelete, onEdit,
       groups.set(key, group);
     });
     return Array.from(groups.values()).sort((left, right) => right.key.localeCompare(left.key));
-  }, [filtered, groupMode]);
+  }, [visibleTransactions, groupMode]);
+
+  useEffect(() => {
+    setVisibleLimit(120);
+    setExpandedGroups(new Set());
+    setSelectedIds(new Set());
+  }, [query, type, groupMode]);
+
+  useEffect(() => {
+    setSelectedIds((current) => new Set([...current].filter((id) => visibleTransactionIds.has(id))));
+  }, [visibleTransactionIds]);
 
   function toggleGroup(key: string) {
-    setCollapsedGroups((current) => {
+    setExpandedGroups((current) => {
       const next = new Set(current);
       if (next.has(key)) next.delete(key);
       else next.add(key);
       return next;
     });
+  }
+
+  function toggleSelected(id: string) {
+    setSelectedIds((current) => {
+      const next = new Set(current);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
+
+  function selectVisible() {
+    setSelectedIds(new Set(visibleTransactions.map((item) => item.id)));
+  }
+
+  async function applyBatch(updater: (item: Transaction) => Transaction) {
+    if (selectedTransactions.length === 0) return;
+    await onBulkUpdate(selectedTransactions.map(updater));
+    setSelectedIds(new Set());
   }
 
   return (
@@ -1082,19 +1143,57 @@ function TransactionList({ transactions, accounts, categories, onDelete, onEdit,
           ))}
         </div>
       </div>
+      <div className="transaction-tools">
+        <span>已显示 {visibleTransactions.length} / {filtered.length} 笔</span>
+        <button type="button" className="ghost" onClick={selectVisible} disabled={visibleTransactions.length === 0}>选择当前</button>
+        {selectedIds.size > 0 && <button type="button" className="ghost" onClick={() => setSelectedIds(new Set())}>清除选择</button>}
+      </div>
+      {selectedTransactions.length > 0 && (
+        <div className="batch-panel">
+          <strong>已选 {selectedTransactions.length} 笔</strong>
+          <select value={batchAccountId} onChange={(event) => setBatchAccountId(event.target.value)}>
+            <option value="">选择账户</option>
+            {activeAccounts.map((account) => <option key={account.id} value={account.id}>{account.name}</option>)}
+          </select>
+          <button type="button" className="ghost" disabled={!batchAccountId} onClick={() => void applyBatch((item) => ({
+            ...item,
+            accountId: batchAccountId,
+            updatedAt: new Date().toISOString(),
+            version: item.version + 1
+          }))}>批量改账户</button>
+          <select value={batchCategoryId} onChange={(event) => setBatchCategoryId(event.target.value)}>
+            <option value="">选择分类</option>
+            {activeCategories.map((category) => <option key={category.id} value={category.id}>{categoryPath(category, activeCategories)}</option>)}
+          </select>
+          <button type="button" className="ghost" disabled={!batchCategory} onClick={() => void applyBatch((item) => batchCategory ? {
+            ...item,
+            type: batchCategory.kind,
+            categoryId: batchCategory.id,
+            toAccountId: null,
+            updatedAt: new Date().toISOString(),
+            version: item.version + 1
+          } : item)}>批量改分类</button>
+          <button type="button" className="ghost danger" onClick={() => void applyBatch((item) => ({
+            ...item,
+            deletedAt: new Date().toISOString(),
+            updatedAt: new Date().toISOString(),
+            version: item.version + 1
+          }))}>批量删除</button>
+        </div>
+      )}
       {editingTransaction && (
         <div className="edit-panel">
           <h2>编辑流水</h2>
-          <EntryForm accounts={activeOnly(accounts)} categories={activeOnly(categories)} transactions={transactions} editing={editingTransaction} onSave={onSaveEdit} onSaveCategory={onSaveCategory} onCancel={onCancelEdit} />
+          <EntryForm accounts={activeAccounts} categories={activeCategories} transactions={transactions} editing={editingTransaction} onSave={onSaveEdit} onSaveCategory={onSaveCategory} onCancel={onCancelEdit} />
         </div>
       )}
       {transactionGroups.length === 0 && <p className="empty">暂无记录</p>}
       {transactionGroups.map((group, index) => {
-        const collapsed = collapsedGroups.has(group.key);
+        const expanded = expandedGroups.has(group.key);
         const netCents = group.incomeCents - group.expenseCents;
         return (
-          <section className={`day-group tone-${index % 4} ${collapsed ? "collapsed" : "open"}`} key={group.key}>
-            <button className="day-summary" type="button" onClick={() => toggleGroup(group.key)} aria-expanded={!collapsed}>
+          <section className={`day-group tone-${index % 4} ${expanded ? "open" : "collapsed"}`} key={group.key}>
+            <button className="day-summary" type="button" onClick={() => toggleGroup(group.key)} aria-expanded={expanded}>
               <div>
                 <strong>{transactionGroupLabel(group.key, groupMode)}</strong>
                 <span>{group.transactions.length} 笔 · 按{groupMode === "day" ? "日" : groupMode === "month" ? "月" : "年"}折叠</span>
@@ -1104,25 +1203,40 @@ function TransactionList({ transactions, accounts, categories, onDelete, onEdit,
                 <span className="expense">支 ¥{centsToYuan(group.expenseCents)}</span>
                 <b className={netCents >= 0 ? "income" : "expense"}>{netCents >= 0 ? "+" : "-"}¥{centsToYuan(Math.abs(netCents))}</b>
               </div>
-              <span className="fold-indicator">{collapsed ? "展开" : "折叠"}</span>
+              <span className="fold-indicator">{expanded ? "折叠" : "展开"}</span>
             </button>
-            {!collapsed && (
-              <TransactionRows transactions={group.transactions} accounts={accounts} categories={categories} onDelete={onDelete} onEdit={onEdit} />
+            {expanded && (
+              <TransactionRows
+                transactions={group.transactions}
+                accounts={accounts}
+                categories={categories}
+                onDelete={onDelete}
+                onEdit={onEdit}
+                selectedIds={selectedIds}
+                onToggleSelected={toggleSelected}
+              />
             )}
           </section>
         );
       })}
+      {visibleLimit < filtered.length && (
+        <button type="button" className="primary load-more" onClick={() => setVisibleLimit((value) => value + 120)}>
+          加载更多流水
+        </button>
+      )}
     </section>
   );
 }
 
-function TransactionRows({ transactions, accounts, categories, onDelete, onEdit, onRestore, compact = false }: {
+function TransactionRows({ transactions, accounts, categories, onDelete, onEdit, onRestore, selectedIds, onToggleSelected, compact = false }: {
   transactions: Transaction[];
   accounts: Account[];
   categories: Category[];
   onDelete?: (item: Transaction) => Promise<void>;
   onEdit?: (item: Transaction) => void;
   onRestore?: (item: Transaction) => Promise<void>;
+  selectedIds?: Set<string>;
+  onToggleSelected?: (id: string) => void;
   compact?: boolean;
 }) {
   if (transactions.length === 0) return <p className="empty">暂无记录</p>;
@@ -1135,7 +1249,16 @@ function TransactionRows({ transactions, accounts, categories, onDelete, onEdit,
         const title = item.merchant || category?.name || typeLabels[item.type];
         const meta = `${new Date(item.occurredAt).toLocaleDateString()} · ${account?.name ?? ""}${category ? ` · ${category.name}` : ""}`;
         return (
-          <article className="row" key={item.id}>
+          <article className={onToggleSelected ? "row selectable" : "row"} key={item.id}>
+            {onToggleSelected && (
+              <input
+                aria-label="选择流水"
+                checked={selectedIds?.has(item.id) ?? false}
+                className="row-check"
+                onChange={() => onToggleSelected(item.id)}
+                type="checkbox"
+              />
+            )}
             <div className={`row-icon ${item.type}`}>{item.type === "transfer" ? <ArrowRightLeft size={15} /> : item.type === "income" ? <ArrowDownLeft size={15} /> : <ArrowUpRight size={15} />}</div>
             <div className="row-main">
               <strong>{title}</strong>
@@ -1158,12 +1281,71 @@ function TransactionRows({ transactions, accounts, categories, onDelete, onEdit,
   );
 }
 
-function SettingsPanel({ categories, onSaveCategory }: {
+function SettingsPanel({
+  accounts,
+  categories,
+  transactions,
+  exportFormat,
+  exportFileType,
+  onExportFormatChange,
+  onExportFileTypeChange,
+  onExport,
+  onImportFile,
+  onImported,
+  onImportError,
+  onSaveCategory
+}: {
+  accounts: Account[];
   categories: Category[];
+  transactions: Transaction[];
+  exportFormat: ExportFormat;
+  exportFileType: ExportFileType;
+  onExportFormatChange: (format: ExportFormat) => void;
+  onExportFileTypeChange: (fileType: ExportFileType) => void;
+  onExport: () => void;
+  onImportFile: (file: File) => Promise<number>;
+  onImported: (count: number) => void;
+  onImportError: (error: unknown) => void;
   onSaveCategory: (item: Category) => Promise<void>;
 }) {
   return (
-    <section className="grid two">
+    <section className="grid two settings-grid">
+      <div className="panel form-stack data-tools-panel">
+        <div>
+          <h2>数据管理</h2>
+          <p className="empty">导入导出放在这里，日常记账页面保持轻量。</p>
+        </div>
+        <label>导出格式
+          <select value={exportFormat} onChange={(event) => onExportFormatChange(event.target.value as ExportFormat)}>
+            {exportFormats.map((item) => <option key={item.id} value={item.id}>{item.label}</option>)}
+          </select>
+        </label>
+        <label>文件类型
+          <select value={exportFileType} onChange={(event) => onExportFileTypeChange(event.target.value as ExportFileType)}>
+            <option value="xlsx">Excel</option>
+            <option value="csv">CSV</option>
+          </select>
+        </label>
+        <div className="data-actions">
+          <button className="primary" type="button" onClick={onExport}><Download size={17} />导出账单</button>
+          <label className="primary import-button">
+            <Upload size={17} />
+            导入账单
+            <input type="file" accept=".csv,.tsv,.txt,.xls,.xlsx,.xlsm,text/csv,text/tab-separated-values,text/plain,text/html,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" hidden onChange={(event) => {
+              const file = event.currentTarget.files?.[0];
+              if (file) {
+                void onImportFile(file).then(onImported).catch(onImportError);
+              }
+              event.currentTarget.value = "";
+            }} />
+          </label>
+        </div>
+        <div className="data-stat-strip">
+          <span>{transactions.length} 笔流水</span>
+          <span>{accounts.length} 个账户</span>
+          <span>{categories.length} 个分类</span>
+        </div>
+      </div>
       <CategoriesPanel categories={categories} onSave={onSaveCategory} />
     </section>
   );
