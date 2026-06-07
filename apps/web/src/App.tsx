@@ -265,6 +265,32 @@ function mealDefaultAccount(accounts: Account[]) {
   return accounts.find((account) => account.name.includes("招行信用卡6837")) ?? accounts.find((account) => account.name.includes("招行信用卡"));
 }
 
+function preferredExpenseAccount(accounts: Account[]) {
+  return accounts.find((account) => account.name.includes("招行信用卡6847"))
+    ?? accounts.find((account) => account.name.includes("招行信用卡"))
+    ?? accounts.find((account) => account.type === "credit")
+    ?? accounts[0];
+}
+
+function preferredIncomeAccount(accounts: Account[]) {
+  return accounts.find((account) => /储蓄卡/.test(account.name))
+    ?? accounts.find((account) => /银行卡|宁波|招行/.test(account.name) && account.type === "bank")
+    ?? accounts.find((account) => account.type === "bank")
+    ?? accounts[0];
+}
+
+function quickEntryAccounts(accounts: Account[], type: TransactionType, editing?: Transaction | null) {
+  if (editing) {
+    const current = accounts.find((account) => account.id === editing.accountId);
+    const preferred = type === "income" ? preferredIncomeAccount(accounts) : preferredExpenseAccount(accounts);
+    const options = [current, preferred].filter((account): account is Account => Boolean(account));
+    return options.filter((account, index, list) => list.findIndex((item) => item.id === account.id) === index);
+  }
+  if (type === "expense") return [preferredExpenseAccount(accounts)].filter(Boolean) as Account[];
+  if (type === "income") return [preferredIncomeAccount(accounts)].filter(Boolean) as Account[];
+  return accounts;
+}
+
 function isMealCategory(category: Category | undefined, categories: Category[]) {
   return /早餐|午餐|晚餐|早饭|午饭|晚饭|早午晚餐/.test(categoryPath(category, categories));
 }
@@ -481,7 +507,6 @@ export function App() {
   const isLocalPreview = token?.startsWith("local-preview:") ?? false;
   const currentMonth = monthKey();
   const summary = summarizeMonth(activeTransactions, currentMonth);
-  const totalAssets = activeAccounts.reduce((sum, account) => sum + calculateNetWorthContribution(account, activeTransactions), 0);
 
   async function hydrateFromServer(nextToken = token) {
     if (!nextToken) return;
@@ -640,7 +665,7 @@ export function App() {
         </header>
 
         {view === "overview" && (
-          <Overview summary={summary} totalAssets={totalAssets} accounts={activeAccounts} categories={activeCategories} transactions={activeTransactions} />
+          <Overview summary={summary} accounts={activeAccounts} categories={activeCategories} transactions={activeTransactions} />
         )}
         {view === "entry" && (
           <EntryForm
@@ -770,16 +795,17 @@ function AuthScreen({ onAuth }: { onAuth: (result: Awaited<ReturnType<typeof api
   );
 }
 
-function Overview({ summary, totalAssets, accounts, categories, transactions }: {
+function Overview({ summary, accounts, categories, transactions }: {
   summary: { incomeCents: number; expenseCents: number; netCents: number };
-  totalAssets: number;
   accounts: Account[];
   categories: Category[];
   transactions: Transaction[];
 }) {
   const monthTransactions = transactions.filter((item) => item.occurredAt.startsWith(monthKey()));
   const monthExpenseTransactions = monthTransactions.filter((item) => item.type === "expense");
-  const dailyAverage = Math.round(summary.expenseCents / Math.max(1, new Date().getDate()));
+  const elapsedDays = Math.max(1, new Date().getDate());
+  const dailyAverage = Math.round(summary.expenseCents / elapsedDays);
+  const largestExpense = monthExpenseTransactions.reduce((max, item) => Math.max(max, item.amountCents), 0);
   const expenseByCategory = monthExpenseTransactions.reduce((totals, item) => {
     const id = item.categoryId ?? "uncategorized";
     totals.set(id, (totals.get(id) ?? 0) + item.amountCents);
@@ -787,7 +813,7 @@ function Overview({ summary, totalAssets, accounts, categories, transactions }: 
   }, new Map<string, number>());
   const topCategoryEntry = Array.from(expenseByCategory.entries()).sort((left, right) => right[1] - left[1])[0];
   const topCategory = topCategoryEntry ? categories.find((category) => category.id === topCategoryEntry[0]) : undefined;
-  const expenseProgress = summary.incomeCents > 0 ? Math.min(100, Math.round((summary.expenseCents / summary.incomeCents) * 100)) : summary.expenseCents > 0 ? 100 : 0;
+  const expenseProgress = Math.min(100, Math.round((elapsedDays / daysInMonth(monthKey())) * 100));
   const recentTransactions = transactions.slice(0, 6);
   return (
     <section className="overview-dashboard">
@@ -800,15 +826,15 @@ function Overview({ summary, totalAssets, accounts, categories, transactions }: 
         <div className="overview-ring" style={{ "--progress": `${expenseProgress}%` } as CSSProperties}>
           <div>
             <strong>{expenseProgress}%</strong>
-            <span>收入覆盖</span>
+            <span>月进度</span>
           </div>
         </div>
       </div>
 
       <div className="overview-kpis">
-        <Metric title="本月收入" value={summary.incomeCents} icon={ArrowDownLeft} tone="good" />
+        <Metric title="本月消费" value={summary.expenseCents} icon={ArrowUpRight} tone="warn" />
         <Metric title="日均支出" value={dailyAverage} icon={ArrowUpRight} tone="warn" />
-        <Metric title="净值估算" value={totalAssets} icon={Banknote} tone="blue" />
+        <Metric title="最大单笔" value={largestExpense} icon={Banknote} tone="blue" />
       </div>
 
       <section className="panel overview-insight">
@@ -881,6 +907,8 @@ function EntryForm({ accounts, categories, transactions, onSave, onSaveCategory,
     [categories, categoryKind, usageCounts]
   );
   const selectedCategory = categories.find((category) => category.id === categoryId);
+  const accountOptions = useMemo(() => quickEntryAccounts(accounts, type, editing), [accounts, type, editing]);
+  const typeOptions: TransactionType[] = editing ? ["expense", "income", "transfer"] : ["expense", "income"];
 
   useEffect(() => {
     if (!editing) return;
@@ -895,11 +923,11 @@ function EntryForm({ accounts, categories, transactions, onSave, onSaveCategory,
   }, [editing]);
 
   useEffect(() => {
-    if (!accountId && accounts[0]) setAccountId(accounts[0].id);
+    if ((!accountId || !accountOptions.some((account) => account.id === accountId)) && accountOptions[0]) setAccountId(accountOptions[0].id);
     if (type !== "transfer" && !filteredCategories.some((category) => category.id === categoryId)) {
       setCategoryId(filteredCategories[0]?.id ?? "");
     }
-  }, [accounts, filteredCategories, accountId, categoryId]);
+  }, [accountOptions, filteredCategories, accountId, categoryId, type]);
 
   useEffect(() => {
     if (editing || type !== "expense" || !isMealCategory(selectedCategory, categories)) return;
@@ -937,14 +965,14 @@ function EntryForm({ accounts, categories, transactions, onSave, onSaveCategory,
   return (
     <section className="panel entry-panel">
       <div className="segmented">
-        {(["expense", "income", "transfer"] as TransactionType[]).map((item) => (
+        {typeOptions.map((item) => (
           <button key={item} className={type === item ? "active" : ""} onClick={() => setType(item)} type="button">{typeLabels[item]}</button>
         ))}
       </div>
       <form className="form-grid" onSubmit={submit}>
         {saveFeedback && <div className="save-confirm full" role="status">{saveFeedback}</div>}
         <label>金额<input value={amount} onChange={(event) => setAmount(event.target.value)} placeholder="0.00" inputMode="decimal" required /></label>
-        <label>{type === "income" ? "收款账户" : "付款账户"}<select value={accountId} onChange={(event) => setAccountId(event.target.value)}>{accounts.map((account) => <option key={account.id} value={account.id}>{account.name}</option>)}</select></label>
+        <label>{type === "income" ? "收款账户" : "付款账户"}<select value={accountId} onChange={(event) => setAccountId(event.target.value)}>{accountOptions.map((account) => <option key={account.id} value={account.id}>{account.name}</option>)}</select></label>
         {type === "transfer" ? (
           <label>转入账户<select value={toAccountId} onChange={(event) => setToAccountId(event.target.value)}>{accounts.filter((item) => item.id !== accountId).map((account) => <option key={account.id} value={account.id}>{account.name}</option>)}</select></label>
         ) : (
@@ -1239,7 +1267,7 @@ function TransactionList({ transactions, accounts, categories, onDelete, onEdit,
       {editingTransaction && (
         <div className="edit-panel">
           <h2>编辑流水</h2>
-          <EntryForm accounts={activeAccounts} categories={activeCategories} transactions={transactions} editing={editingTransaction} onSave={onSaveEdit} onSaveCategory={onSaveCategory} onCancel={onCancelEdit} />
+          <EntryForm accounts={accounts} categories={activeCategories} transactions={transactions} editing={editingTransaction} onSave={onSaveEdit} onSaveCategory={onSaveCategory} onCancel={onCancelEdit} />
         </div>
       )}
       {transactionGroups.length === 0 && <p className="empty">暂无记录</p>}
@@ -1754,8 +1782,8 @@ function Reports({ transactions, categories }: { transactions: Transaction[]; ca
   const [period, setPeriod] = useState<ReportPeriod>("month");
   const [month, setMonth] = useState(monthKey());
   const [year, setYear] = useState(currentYear);
-  const [categoryKind, setCategoryKind] = useState<Category["kind"]>("expense");
   const [selectedCategoryIndex, setSelectedCategoryIndex] = useState(0);
+  const categoryKind: Category["kind"] = "expense";
   const selectedYear = year.trim() || currentYear;
   const periodKey = period === "month" ? month : selectedYear;
   const periodLabel = period === "month" ? monthLabel(month) : yearLabel(selectedYear);
@@ -1770,9 +1798,7 @@ function Reports({ transactions, categories }: { transactions: Transaction[]; ca
   const previousTransactions = transactions.filter((item) => item.occurredAt.startsWith(previousKey));
   const periodSummary = summarizeTransactions(reportTransactions);
   const previousSummary = summarizeTransactions(previousTransactions);
-  const incomeChange = percentDelta(periodSummary.incomeCents, previousSummary.incomeCents);
   const expenseChange = percentDelta(periodSummary.expenseCents, previousSummary.expenseCents);
-  const savingsRate = periodSummary.incomeCents > 0 ? Math.round((periodSummary.netCents / periodSummary.incomeCents) * 100) : 0;
   const rawCategoryTotal = reportTransactions
     .filter((item) => item.type === categoryKind)
     .reduce((sum, item) => sum + item.amountCents, 0);
@@ -1782,7 +1808,6 @@ function Reports({ transactions, categories }: { transactions: Transaction[]; ca
   const elapsedDays = isCurrentPeriod ? Math.max(1, period === "month" ? new Date().getDate() : dayOfYear(new Date())) : periodDays;
   const dailyAverageExpense = Math.round(periodSummary.expenseCents / elapsedDays);
   const projectedExpense = Math.round(dailyAverageExpense * periodDays);
-  const coverageRatio = periodSummary.expenseCents > 0 ? Math.round((periodSummary.incomeCents / periodSummary.expenseCents) * 100) : periodSummary.incomeCents > 0 ? 999 : 0;
 
   const categoryData = useMemo(() => {
     const totals = new Map<string, { id: string; name: string; value: number; color: string }>();
@@ -1836,13 +1861,11 @@ function Reports({ transactions, categories }: { transactions: Transaction[]; ca
     const summary = summarizeTransactions(transactions.filter((item) => item.occurredAt.startsWith(key)));
     return {
       period: key,
-      income: summary.incomeCents,
-      expense: summary.expenseCents,
-      net: summary.netCents
+      expense: summary.expenseCents
     };
   });
-  const maxTrend = Math.max(1, ...trendData.map((entry) => Math.max(entry.income, entry.expense, Math.abs(entry.net))));
-  const recentNetAverage = Math.round(trendData.slice(-3).reduce((sum, item) => sum + item.net, 0) / 3);
+  const maxTrend = Math.max(1, ...trendData.map((entry) => entry.expense));
+  const recentExpenseAverage = Math.round(trendData.slice(-3).reduce((sum, item) => sum + item.expense, 0) / 3);
 
   useEffect(() => {
     if (selectedCategoryIndex > Math.max(0, categoryData.length - 1)) setSelectedCategoryIndex(0);
@@ -1853,7 +1876,7 @@ function Reports({ transactions, categories }: { transactions: Transaction[]; ca
       <div className="panel report-toolbar">
         <div>
           <h2>分析报表</h2>
-          <span>{periodLabel} · 收入支出与分类结构</span>
+          <span>{periodLabel} · 消费结构与支出节奏</span>
         </div>
         <div className="report-controls">
           <div className="segmented compact">
@@ -1872,17 +1895,12 @@ function Reports({ transactions, categories }: { transactions: Transaction[]; ca
       </div>
 
       <div className="report-metrics">
-        <Metric title={period === "month" ? "月收入" : "年收入"} value={periodSummary.incomeCents} icon={ArrowDownLeft} tone="good" />
-        <Metric title={period === "month" ? "月支出" : "年支出"} value={periodSummary.expenseCents} icon={ArrowUpRight} tone="warn" />
-        <Metric title={periodSummary.netCents >= 0 ? "净流入" : "净流出"} value={periodSummary.netCents} icon={ArrowRightLeft} tone={periodSummary.netCents >= 0 ? "good" : "warn"} />
+        <Metric title={period === "month" ? "月消费" : "年消费"} value={periodSummary.expenseCents} icon={ArrowUpRight} tone="warn" />
+        <Metric title="日均消费" value={dailyAverageExpense} icon={CalendarDays} tone="blue" />
+        <Metric title="预计消费" value={projectedExpense} icon={ArrowRightLeft} tone="neutral" />
       </div>
 
       <div className="finance-insights">
-        <article className={savingsRate >= 20 ? "insight-card good" : savingsRate >= 0 ? "insight-card neutral" : "insight-card warn"}>
-          <span>储蓄率</span>
-          <strong>{savingsRate}%</strong>
-          <p>{savingsRate >= 20 ? "现金流健康，可以考虑增加长期储蓄或投资预算。" : savingsRate >= 0 ? "仍有结余，建议把固定储蓄目标提高到收入的 20%。" : "本期为净流出，优先检查非必要支出和一次性大额消费。"}</p>
-        </article>
         <article className="insight-card">
           <span>最大支出项</span>
           <strong>{topExpense ? topExpense.name : "暂无"}</strong>
@@ -1894,11 +1912,6 @@ function Reports({ transactions, categories }: { transactions: Transaction[]; ca
           <p>{expenseChange > 15 ? "支出增长较快，建议查看分类统计里的前三项。" : "支出变化在可控范围内。"}</p>
         </article>
         <article className="insight-card">
-          <span>{period === "month" ? "收入环比" : "收入年比"}</span>
-          <strong>{incomeChange >= 0 ? "+" : ""}{incomeChange}%</strong>
-          <p>{incomeChange >= 0 ? "收入较上月持平或增长。" : "收入较上月下降，预算上建议更保守。"}</p>
-        </article>
-        <article className="insight-card">
           <span>日均支出</span>
           <strong>¥{centsToYuan(dailyAverageExpense)}</strong>
           <p>{isCurrentPeriod ? `按当前节奏，本${period === "month" ? "月" : "年"}预计支出 ¥${centsToYuan(projectedExpense)}。` : `这是该${period === "month" ? "月" : "年"}实际日均支出。`}</p>
@@ -1908,15 +1921,10 @@ function Reports({ transactions, categories }: { transactions: Transaction[]; ca
           <strong>{concentrationRatio}%</strong>
           <p>{concentrationRatio > 65 ? "支出集中在少数分类，适合优先做专项控制。" : "支出结构相对分散。"}</p>
         </article>
-        <article className={coverageRatio >= 120 ? "insight-card good" : coverageRatio >= 100 ? "insight-card neutral" : "insight-card warn"}>
-          <span>收入覆盖支出</span>
-          <strong>{coverageRatio >= 999 ? "充足" : `${coverageRatio}%`}</strong>
-          <p>{coverageRatio >= 120 ? "收入明显覆盖支出，现金流余地较好。" : coverageRatio >= 100 ? "收入刚好覆盖支出，建议留出安全垫。" : "收入未覆盖支出，需要减少可变支出或动用预算。"}</p>
-        </article>
-        <article className={recentNetAverage >= 0 ? "insight-card good" : "insight-card warn"}>
-          <span>{period === "month" ? "近三月平均净流" : "近三年平均净流"}</span>
-          <strong>{recentNetAverage >= 0 ? "+" : "-"}¥{centsToYuan(Math.abs(recentNetAverage))}</strong>
-          <p>{recentNetAverage >= 0 ? "近期现金流趋势为正。" : "近期平均为净流出，建议压缩非必要支出。"}</p>
+        <article className={recentExpenseAverage > dailyAverageExpense * periodDays ? "insight-card warn" : "insight-card neutral"}>
+          <span>{period === "month" ? "近三月平均消费" : "近三年平均消费"}</span>
+          <strong>¥{centsToYuan(recentExpenseAverage)}</strong>
+          <p>用长期均值对照当前支出，能更快发现异常月份和一次性大额消费。</p>
         </article>
       </div>
 
@@ -1924,13 +1932,7 @@ function Reports({ transactions, categories }: { transactions: Transaction[]; ca
         <div className="panel chart-panel category-analysis">
           <div className="chart-heading">
             <h2>分类统计</h2>
-            <div className="segmented compact">
-              {(["expense", "income"] as Category["kind"][]).map((item) => (
-                <button key={item} type="button" className={categoryKind === item ? "active" : ""} onClick={() => setCategoryKind(item)}>
-                  {item === "expense" ? "支出" : "收入"}
-                </button>
-              ))}
-            </div>
+            <span>只分析消费分类</span>
           </div>
           <div className="donut-wrap">
             <InteractiveDonut data={categoryData} total={categoryTotal} selectedIndex={selectedCategoryIndex} onSelect={setSelectedCategoryIndex} kind={categoryKind} />
@@ -1960,23 +1962,19 @@ function Reports({ transactions, categories }: { transactions: Transaction[]; ca
         </div>
 
         <div className="panel chart-panel trend-panel">
-          <h2>{period === "month" ? "月度" : "年度"}收入 / 支出 / 净流向</h2>
+          <h2>{period === "month" ? "月度" : "年度"}消费趋势</h2>
           <div className="trend-legend">
-            <span><i className="legend income-bar" />收入</span>
             <span><i className="legend expense-bar" />支出</span>
-            <span><i className="legend net-positive" />净流入/流出</span>
           </div>
           <div className="trend-bars monthly-flow">
             {trendData.map((item) => {
               return (
                 <div className="trend-month" key={item.period}>
                   <div className="trend-stack">
-                    <i className="income-bar" title={`收入 ¥${centsToYuan(item.income)}`} style={{ height: `${Math.max(4, (item.income / maxTrend) * 100)}%` }} />
                     <i className="expense-bar" title={`支出 ¥${centsToYuan(item.expense)}`} style={{ height: `${Math.max(4, (item.expense / maxTrend) * 100)}%` }} />
-                    <i className={item.net >= 0 ? "net-line net-positive" : "net-line net-negative"} title={`${item.net >= 0 ? "净流入" : "净流出"} ¥${centsToYuan(Math.abs(item.net))}`} style={{ height: `${Math.max(4, (Math.abs(item.net) / maxTrend) * 100)}%` }} />
                   </div>
                   <span>{period === "month" ? item.period.slice(5) : item.period}</span>
-                  <small className={item.net >= 0 ? "net-positive-text" : "net-negative-text"}>{item.net >= 0 ? "+" : "-"}{centsToYuan(Math.abs(item.net))}</small>
+                  <small className="net-negative-text">{centsToYuan(item.expense)}</small>
                 </div>
               );
             })}
