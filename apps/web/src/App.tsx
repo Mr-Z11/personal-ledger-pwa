@@ -295,6 +295,26 @@ function isMealCategory(category: Category | undefined, categories: Category[]) 
   return /早餐|午餐|晚餐|早饭|午饭|晚饭|早午晚餐/.test(categoryPath(category, categories));
 }
 
+function isNonDailyExpenseCategory(category: Category | undefined, categories: Category[]) {
+  const path = categoryPath(category, categories);
+  return /非日常支出|未分类大额|本金还款|利息支出|保险|课外培训|培训进修|教育|购车|私家车保养/.test(path);
+}
+
+function dailyExpenseTransactions(transactions: Transaction[], categories: Category[]) {
+  return transactions.filter((item) => {
+    if (item.type !== "expense") return false;
+    const category = categories.find((entry) => entry.id === item.categoryId);
+    return !isNonDailyExpenseCategory(category, categories);
+  });
+}
+
+function monthBudgetTotal(budgets: Budget[], month: string) {
+  const monthBudgets = budgets.filter((budget) => budget.month === month);
+  const overall = monthBudgets.find((budget) => !budget.categoryId);
+  if (overall) return overall.amountCents;
+  return monthBudgets.reduce((sum, budget) => sum + budget.amountCents, 0);
+}
+
 function otherCategory(categories: Category[], kind: Category["kind"]) {
   return activeOnly(categories).find((category) => category.kind === kind && !category.parentId && category.name === "其他");
 }
@@ -506,7 +526,14 @@ export function App() {
   const activeTransactions = activeOnly(transactions);
   const isLocalPreview = token?.startsWith("local-preview:") ?? false;
   const currentMonth = monthKey();
-  const summary = summarizeMonth(activeTransactions, currentMonth);
+  const dailyMonthExpenses = dailyExpenseTransactions(activeTransactions.filter((item) => item.occurredAt.startsWith(currentMonth)), activeCategories);
+  const dailyMonthExpenseCents = dailyMonthExpenses.reduce((sum, item) => sum + item.amountCents, 0);
+  const dailySummary = {
+    incomeCents: 0,
+    expenseCents: dailyMonthExpenseCents,
+    netCents: -dailyMonthExpenseCents
+  };
+  const currentBudgetCents = monthBudgetTotal(activeOnly(budgets), currentMonth);
 
   async function hydrateFromServer(nextToken = token) {
     if (!nextToken) return;
@@ -665,7 +692,7 @@ export function App() {
         </header>
 
         {view === "overview" && (
-          <Overview summary={summary} accounts={activeAccounts} categories={activeCategories} transactions={activeTransactions} />
+          <Overview summary={dailySummary} budgetCents={currentBudgetCents} accounts={activeAccounts} categories={activeCategories} transactions={activeTransactions} />
         )}
         {view === "entry" && (
           <EntryForm
@@ -795,14 +822,15 @@ function AuthScreen({ onAuth }: { onAuth: (result: Awaited<ReturnType<typeof api
   );
 }
 
-function Overview({ summary, accounts, categories, transactions }: {
+function Overview({ summary, budgetCents, accounts, categories, transactions }: {
   summary: { incomeCents: number; expenseCents: number; netCents: number };
+  budgetCents: number;
   accounts: Account[];
   categories: Category[];
   transactions: Transaction[];
 }) {
   const monthTransactions = transactions.filter((item) => item.occurredAt.startsWith(monthKey()));
-  const monthExpenseTransactions = monthTransactions.filter((item) => item.type === "expense");
+  const monthExpenseTransactions = dailyExpenseTransactions(monthTransactions, categories);
   const elapsedDays = Math.max(1, new Date().getDate());
   const dailyAverage = Math.round(summary.expenseCents / elapsedDays);
   const largestExpense = monthExpenseTransactions.reduce((max, item) => Math.max(max, item.amountCents), 0);
@@ -813,20 +841,20 @@ function Overview({ summary, accounts, categories, transactions }: {
   }, new Map<string, number>());
   const topCategoryEntry = Array.from(expenseByCategory.entries()).sort((left, right) => right[1] - left[1])[0];
   const topCategory = topCategoryEntry ? categories.find((category) => category.id === topCategoryEntry[0]) : undefined;
-  const expenseProgress = Math.min(100, Math.round((elapsedDays / daysInMonth(monthKey())) * 100));
+  const budgetUsage = budgetCents > 0 ? Math.min(100, Math.round((summary.expenseCents / budgetCents) * 100)) : 0;
   const recentTransactions = transactions.slice(0, 6);
   return (
     <section className="overview-dashboard">
       <div className="overview-hero">
         <div className="overview-hero-main">
-          <span>本月消费</span>
+          <span>本月日常消费</span>
           <strong>¥{centsToYuan(summary.expenseCents)}</strong>
-          <p>{summary.netCents >= 0 ? `本月仍结余 ¥${centsToYuan(summary.netCents)}` : `本月净流出 ¥${centsToYuan(Math.abs(summary.netCents))}`}</p>
+          <p>{budgetCents > 0 ? `日常预算 ¥${centsToYuan(budgetCents)}，剩余 ¥${centsToYuan(Math.max(0, budgetCents - summary.expenseCents))}` : "本月还没有设置日常预算"}</p>
         </div>
-        <div className="overview-ring" style={{ "--progress": `${expenseProgress}%` } as CSSProperties}>
+        <div className="overview-ring" style={{ "--progress": `${budgetUsage}%` } as CSSProperties}>
           <div>
-            <strong>{expenseProgress}%</strong>
-            <span>月进度</span>
+            <strong>{budgetCents > 0 ? `${budgetUsage}%` : "--"}</strong>
+            <span>{budgetCents > 0 ? "预算占用" : "未设预算"}</span>
           </div>
         </div>
       </div>
@@ -972,7 +1000,7 @@ function EntryForm({ accounts, categories, transactions, onSave, onSaveCategory,
       <form className="form-grid" onSubmit={submit}>
         {saveFeedback && <div className="save-confirm full" role="status">{saveFeedback}</div>}
         <label>金额<input value={amount} onChange={(event) => setAmount(event.target.value)} placeholder="0.00" inputMode="decimal" required /></label>
-        <label>{type === "income" ? "收款账户" : "付款账户"}<select value={accountId} onChange={(event) => setAccountId(event.target.value)}>{accountOptions.map((account) => <option key={account.id} value={account.id}>{account.name}</option>)}</select></label>
+        <label>{type === "income" ? "收款账户" : type === "expense" ? "信用卡" : "付款账户"}<select value={accountId} onChange={(event) => setAccountId(event.target.value)}>{accountOptions.map((account) => <option key={account.id} value={account.id}>{account.name}</option>)}</select></label>
         {type === "transfer" ? (
           <label>转入账户<select value={toAccountId} onChange={(event) => setToAccountId(event.target.value)}>{accounts.filter((item) => item.id !== accountId).map((account) => <option key={account.id} value={account.id}>{account.name}</option>)}</select></label>
         ) : (
@@ -1672,7 +1700,7 @@ function BudgetPanel({ budgets, categories, transactions, onSave }: {
   const [categoryId, setCategoryId] = useState("");
   const [amount, setAmount] = useState("");
   const expenseCategories = categories.filter((item) => item.kind === "expense");
-  const monthExpenses = transactions.filter((item) => item.type === "expense" && item.occurredAt.startsWith(month));
+  const monthExpenses = dailyExpenseTransactions(transactions.filter((item) => item.occurredAt.startsWith(month)), categories);
   return (
     <section className="grid two">
       <div className="panel">
@@ -1683,7 +1711,7 @@ function BudgetPanel({ budgets, categories, transactions, onSave }: {
             const ratio = Math.min(100, Math.round((spent / budget.amountCents) * 100));
             return (
               <div className="budget-line" key={budget.id}>
-                <span>{budget.categoryId ? categories.find((item) => item.id === budget.categoryId)?.name : "全部支出"}</span>
+                <span>{budget.categoryId ? categories.find((item) => item.id === budget.categoryId)?.name : "日常支出"}</span>
                 <strong>¥{centsToYuan(spent)} / ¥{centsToYuan(budget.amountCents)}</strong>
                 <div className="bar"><i style={{ width: `${ratio}%` }} /></div>
               </div>
@@ -1876,7 +1904,7 @@ function Reports({ transactions, categories }: { transactions: Transaction[]; ca
       <div className="panel report-toolbar">
         <div>
           <h2>分析报表</h2>
-          <span>{periodLabel} · 消费结构与支出节奏</span>
+          <span>{periodLabel} · 含历史导入支出，专项单独成类</span>
         </div>
         <div className="report-controls">
           <div className="segmented compact">
@@ -1932,7 +1960,7 @@ function Reports({ transactions, categories }: { transactions: Transaction[]; ca
         <div className="panel chart-panel category-analysis">
           <div className="chart-heading">
             <h2>分类统计</h2>
-            <span>只分析消费分类</span>
+            <span>含历史导入支出</span>
           </div>
           <div className="donut-wrap">
             <InteractiveDonut data={categoryData} total={categoryTotal} selectedIndex={selectedCategoryIndex} onSelect={setSelectedCategoryIndex} kind={categoryKind} />
