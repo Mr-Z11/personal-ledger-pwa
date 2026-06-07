@@ -469,6 +469,60 @@ input[type="month"],
   direction: ltr;
 }
 
+.period-field {
+  position: relative;
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
+  min-height: 2.75rem;
+  padding: 0 0.8rem;
+  border: 1px solid rgba(49, 71, 58, 0.16);
+  border-radius: 0.55rem;
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+  background: #fffdf7;
+  cursor: pointer;
+}
+
+.period-field-label {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+
+.period-field strong {
+  display: block;
+  width: 100%;
+  min-width: 0;
+  overflow: hidden;
+  color: #243127;
+  font-size: 1rem;
+  font-weight: 700;
+  line-height: 1;
+  text-align: center;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.period-field input[type="month"] {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
+  height: 100%;
+  min-height: 0;
+  padding: 0;
+  border: 0;
+  opacity: 0;
+  cursor: pointer;
+}
+
 .primary {
   border: 0;
   border-radius: 0.55rem;
@@ -1068,6 +1122,11 @@ input[type="month"],
 
 .report-controls input.year-input {
   width: 8rem;
+}
+
+.report-controls .period-field {
+  width: min(100%, 12rem);
+  flex: 0 1 12rem;
 }
 
 .report-metrics {
@@ -1681,6 +1740,7 @@ input[type="month"],
   }
 
   .report-controls .segmented,
+  .report-controls .period-field,
   .report-controls input.year-input {
     width: 100%;
   }

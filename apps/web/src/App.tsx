@@ -131,6 +131,25 @@ function monthLabel(value: string) {
   return `${year}年${Number(month)}月`;
 }
 
+function MonthField({ value, onChange, label }: {
+  value: string;
+  onChange: (value: string) => void;
+  label: string;
+}) {
+  return (
+    <label className="period-field">
+      <span className="period-field-label">{label}</span>
+      <strong aria-hidden="true">{monthLabel(value)}</strong>
+      <input
+        aria-label={label}
+        value={value}
+        onChange={(event) => onChange(event.target.value)}
+        type="month"
+      />
+    </label>
+  );
+}
+
 function yearLabel(value: string) {
   return `${value}年`;
 }
@@ -1728,7 +1747,7 @@ function BudgetPanel({ budgets, categories, transactions, onSave }: {
         setAmount("");
       }}>
         <h2>新增预算</h2>
-        <input value={month} onChange={(event) => setMonth(event.target.value)} type="month" />
+        <MonthField value={month} onChange={setMonth} label="预算月份" />
         <select value={categoryId} onChange={(event) => setCategoryId(event.target.value)}>
           <option value="">日常支出</option>
           {expenseCategories.map((category) => <option key={category.id} value={category.id}>{category.name}</option>)}
@@ -1928,7 +1947,7 @@ function Reports({ transactions, categories }: { transactions: Transaction[]; ca
             ))}
           </div>
           {period === "month" ? (
-            <input value={month} onChange={(event) => setMonth(event.target.value)} type="month" />
+            <MonthField value={month} onChange={setMonth} label="报表月份" />
           ) : (
             <input className="year-input" value={year} onChange={(event) => setYear(event.target.value)} type="number" min="1970" max="2100" />
           )}
