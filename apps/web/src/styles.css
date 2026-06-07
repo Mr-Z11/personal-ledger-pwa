@@ -462,6 +462,13 @@ select {
   font-size: 16px;
 }
 
+input[type="month"],
+.report-toolbar input[type="month"],
+.form-stack input[type="month"] {
+  text-align: left;
+  direction: ltr;
+}
+
 .primary {
   border: 0;
   border-radius: 0.55rem;
@@ -825,6 +832,10 @@ select {
   display: grid;
   gap: 0.6rem;
   margin-top: 0.8rem;
+}
+
+.category-kind-tabs {
+  margin-top: 0.75rem;
 }
 
 .account-line,

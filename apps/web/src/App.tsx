@@ -264,7 +264,8 @@ function mealDefaultAccount(accounts: Account[]) {
 }
 
 function preferredExpenseAccount(accounts: Account[]) {
-  return accounts.find((account) => account.name.includes("招行信用卡6847"))
+  return accounts.find((account) => account.name === "消费卡")
+    ?? accounts.find((account) => account.name.includes("招行信用卡6847"))
     ?? accounts.find((account) => account.name.includes("招行信用卡"))
     ?? accounts.find((account) => account.type === "credit")
     ?? accounts[0];
@@ -295,7 +296,7 @@ function isMealCategory(category: Category | undefined, categories: Category[]) 
 
 function isNonDailyExpenseCategory(category: Category | undefined, categories: Category[]) {
   const path = categoryPath(category, categories);
-  return /非日常支出|未分类大额|本金还款|利息支出|保险|课外培训|培训进修|教育|购车|私家车保养/.test(path);
+  return /专项支出|非日常支出|未分类大额|贷款本金|本金还款|贷款利息|利息支出|保险|教育培训|课外培训|培训进修|教育|购车|养车|私家车保养/.test(path);
 }
 
 function dailyExpenseTransactions(transactions: Transaction[], categories: Category[]) {
@@ -1162,7 +1163,7 @@ function TransactionList({ transactions, accounts, categories, onDelete, onEdit,
   onSaveCategory: (item: Category) => Promise<void>;
 }) {
   const [query, setQuery] = useState("");
-  const [type, setType] = useState<TransactionType | "all">("all");
+  const [type, setType] = useState<"all" | "expense" | "transfer">("all");
   const [groupMode, setGroupMode] = useState<LedgerGroupMode>("day");
   const [expandedGroups, setExpandedGroups] = useState<Set<string>>(() => new Set());
   const [visibleLimit, setVisibleLimit] = useState(120);
@@ -1175,6 +1176,7 @@ function TransactionList({ transactions, accounts, categories, onDelete, onEdit,
   const filtered = useMemo(() => {
     const needle = query.toLowerCase();
     return transactions
+      .filter((item) => item.type !== "income")
       .filter((item) => {
         const category = categories.find((entry) => entry.id === item.categoryId);
         const haystack = [item.note, item.merchant, accounts.find((account) => account.id === item.accountId)?.name, category?.name, categoryPath(category, categories)].join(" ");
@@ -1186,12 +1188,11 @@ function TransactionList({ transactions, accounts, categories, onDelete, onEdit,
   const selectedTransactions = useMemo(() => visibleTransactions.filter((item) => selectedIds.has(item.id)), [selectedIds, visibleTransactions]);
   const visibleTransactionIds = useMemo(() => new Set(visibleTransactions.map((item) => item.id)), [visibleTransactions]);
   const transactionGroups = useMemo(() => {
-    const groups = new Map<string, { key: string; transactions: Transaction[]; incomeCents: number; expenseCents: number }>();
+    const groups = new Map<string, { key: string; transactions: Transaction[]; expenseCents: number }>();
     visibleTransactions.forEach((item) => {
       const key = transactionGroupKey(item, groupMode);
-      const group = groups.get(key) ?? { key, transactions: [], incomeCents: 0, expenseCents: 0 };
+      const group = groups.get(key) ?? { key, transactions: [], expenseCents: 0 };
       group.transactions.push(item);
-      if (item.type === "income") group.incomeCents += item.amountCents;
       if (item.type === "expense") group.expenseCents += item.amountCents;
       groups.set(key, group);
     });
@@ -1244,10 +1245,9 @@ function TransactionList({ transactions, accounts, categories, onDelete, onEdit,
     <section className="panel">
       <div className="filters">
         <label className="search"><Search size={16} /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="搜索流水" /></label>
-        <select value={type} onChange={(event) => setType(event.target.value as TransactionType | "all")}>
+        <select value={type} onChange={(event) => setType(event.target.value as "all" | "expense" | "transfer")}>
           <option value="all">全部</option>
           <option value="expense">支出</option>
-          <option value="income">收入</option>
           <option value="transfer">转账</option>
         </select>
         <div className="segmented compact group-mode">
@@ -1307,7 +1307,6 @@ function TransactionList({ transactions, accounts, categories, onDelete, onEdit,
       {transactionGroups.length === 0 && <p className="empty">暂无记录</p>}
       {transactionGroups.map((group, index) => {
         const expanded = expandedGroups.has(group.key);
-        const netCents = group.incomeCents - group.expenseCents;
         return (
           <section className={`day-group tone-${index % 4} ${expanded ? "open" : "collapsed"}`} key={group.key}>
             <button className="day-summary" type="button" onClick={() => toggleGroup(group.key)} aria-expanded={expanded}>
@@ -1316,9 +1315,7 @@ function TransactionList({ transactions, accounts, categories, onDelete, onEdit,
                 <span>{group.transactions.length} 笔 · 按{groupMode === "day" ? "日" : groupMode === "month" ? "月" : "年"}折叠</span>
               </div>
               <div className="day-totals">
-                <span className="income">收 ¥{centsToYuan(group.incomeCents)}</span>
                 <span className="expense">支 ¥{centsToYuan(group.expenseCents)}</span>
-                <b className={netCents >= 0 ? "income" : "expense"}>{netCents >= 0 ? "+" : "-"}¥{centsToYuan(Math.abs(netCents))}</b>
               </div>
               <span className="fold-indicator">{expanded ? "折叠" : "展开"}</span>
             </button>
@@ -1556,17 +1553,19 @@ function AccountsPanel({ accounts, onSave, onDelete }: { accounts: Account[]; on
 function CategoriesPanel({ categories, onSave, onDelete }: { categories: Category[]; onSave: (item: Category) => Promise<void>; onDelete: (items: Category[]) => Promise<void> }) {
   const [name, setName] = useState("");
   const [kind, setKind] = useState<Category["kind"]>("expense");
+  const [visibleKind, setVisibleKind] = useState<Category["kind"]>("expense");
   const [parentId, setParentId] = useState("__other__");
   const [editing, setEditing] = useState<Category | null>(null);
   const [openCategoryIds, setOpenCategoryIds] = useState<Set<string>>(() => new Set());
   const activeCategories = activeOnly(categories);
   const topCategories = activeCategories.filter((category) => !category.parentId && category.kind === kind && category.id !== editing?.id);
-  const groupedParents = activeCategories.filter((category) => !category.parentId);
+  const groupedParents = activeCategories.filter((category) => !category.parentId && category.kind === visibleKind);
 
   function editCategory(category: Category) {
     setEditing(category);
     setName(category.name);
     setKind(category.kind);
+    setVisibleKind(category.kind);
     setParentId(category.parentId ?? "");
   }
 
@@ -1629,7 +1628,22 @@ function CategoriesPanel({ categories, onSave, onDelete }: { categories: Categor
     <>
       <div className="panel management-panel">
         <h2>分类</h2>
-        <p className="empty">按一级分类折叠管理，展开后可编辑或删除子分类。</p>
+        <p className="empty">先选择一级方向，再展开维护二级分类，日常只维护消费分类即可。</p>
+        <div className="segmented compact category-kind-tabs">
+          {(["expense", "income"] as Category["kind"][]).map((item) => (
+            <button
+              key={item}
+              type="button"
+              className={visibleKind === item ? "active" : ""}
+              onClick={() => {
+                setVisibleKind(item);
+                if (!editing) setKind(item);
+              }}
+            >
+              {item === "expense" ? "消费分类" : "收入分类"}
+            </button>
+          ))}
+        </div>
         <div className="category-tree">
           {groupedParents.map((parent) => {
             const children = activeCategories.filter((category) => category.parentId === parent.id);
@@ -1638,7 +1652,7 @@ function CategoriesPanel({ categories, onSave, onDelete }: { categories: Categor
               <div className="category-group" key={parent.id}>
                 <div className="category-line">
                   <button className="category-toggle" type="button" onClick={() => toggleCategoryGroup(parent.id)}>
-                    <strong>{parent.kind === "income" ? "收入" : "支出"} · {parent.name}</strong>
+                    <strong>{parent.name}</strong>
                     <span>{children.length} 个子分类 · {open ? "收起" : "展开"}</span>
                   </button>
                   <button className="text-action" onClick={() => editCategory(parent)} type="button"><Pencil size={15} />编辑</button>
@@ -1660,7 +1674,7 @@ function CategoriesPanel({ categories, onSave, onDelete }: { categories: Categor
         <h2>{editing ? "编辑分类" : "新增分类"}</h2>
         <input value={name} onChange={(event) => setName(event.target.value)} placeholder="分类名称" required />
         <select value={kind} onChange={(event) => setKind(event.target.value as Category["kind"])}>
-          <option value="expense">支出</option>
+          <option value="expense">消费</option>
           <option value="income">收入</option>
         </select>
         <select value={parentId} onChange={(event) => setParentId(event.target.value)}>
@@ -1716,7 +1730,7 @@ function BudgetPanel({ budgets, categories, transactions, onSave }: {
         <h2>新增预算</h2>
         <input value={month} onChange={(event) => setMonth(event.target.value)} type="month" />
         <select value={categoryId} onChange={(event) => setCategoryId(event.target.value)}>
-          <option value="">全部支出</option>
+          <option value="">日常支出</option>
           {expenseCategories.map((category) => <option key={category.id} value={category.id}>{category.name}</option>)}
         </select>
         <input value={amount} onChange={(event) => setAmount(event.target.value)} placeholder="预算金额" inputMode="decimal" required />
