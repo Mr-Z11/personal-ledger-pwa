@@ -1,7 +1,5 @@
 import {
   activeOnly,
-  calculateAccountBalance,
-  calculateNetWorthContribution,
   centsToYuan,
   monthKey,
   summarizeMonth,
@@ -305,6 +303,14 @@ function dailyExpenseTransactions(transactions: Transaction[], categories: Categ
     if (item.type !== "expense") return false;
     const category = categories.find((entry) => entry.id === item.categoryId);
     return !isNonDailyExpenseCategory(category, categories);
+  });
+}
+
+function specialExpenseTransactions(transactions: Transaction[], categories: Category[]) {
+  return transactions.filter((item) => {
+    if (item.type !== "expense") return false;
+    const category = categories.find((entry) => entry.id === item.categoryId);
+    return isNonDailyExpenseCategory(category, categories);
   });
 }
 
@@ -722,7 +728,7 @@ export function App() {
           }} onSaveCategory={(item) => saveLocalAndQueue("categories", item)} />
         )}
         {view === "accounts" && (
-          <AccountsPanel accounts={activeAccounts} transactions={activeTransactions} onSave={async (item) => {
+          <AccountsPanel accounts={activeAccounts} onSave={async (item) => {
             await saveLocalAndQueue("accounts", item);
             setToast("账户已保存");
           }} onDelete={async (item) => {
@@ -874,12 +880,12 @@ function Overview({ summary, budgetCents, accounts, categories, transactions }: 
       </section>
 
       <section className="panel">
-        <h2>账户记录</h2>
+        <h2>记账账户</h2>
         <div className="account-strip compact">
           {accounts.map((account) => (
             <div className="mini-card" key={account.id} style={{ borderColor: account.color }}>
               <span>{account.name}</span>
-              <strong>¥{centsToYuan(calculateNetWorthContribution(account, transactions))}</strong>
+              <strong>{accountTypeLabels[account.type]}</strong>
             </div>
           ))}
         </div>
@@ -1464,31 +1470,25 @@ function SettingsPanel({
   );
 }
 
-function AccountsPanel({ accounts, transactions, onSave, onDelete }: { accounts: Account[]; transactions: Transaction[]; onSave: (item: Account) => Promise<void>; onDelete: (item: Account) => Promise<void> }) {
+function AccountsPanel({ accounts, onSave, onDelete }: { accounts: Account[]; onSave: (item: Account) => Promise<void>; onDelete: (item: Account) => Promise<void> }) {
   const [name, setName] = useState("");
   const [type, setType] = useState<Account["type"]>("bank");
-  const [opening, setOpening] = useState("0");
   const [color, setColor] = useState("#1f5f74");
   const [editing, setEditing] = useState<Account | null>(null);
-  const netAssets = accounts.reduce((sum, account) => sum + calculateNetWorthContribution(account, transactions), 0);
-  const editingBalance = editing ? calculateAccountBalance(editing, transactions) : 0;
 
   function editAccount(account: Account) {
     setEditing(account);
     setName(account.name);
     setType(account.type);
-    setOpening(centsToYuan(account.openingBalanceCents));
     setColor(account.color);
   }
 
   async function deleteAccount(account: Account) {
-    const balance = calculateAccountBalance(account, transactions);
-    const confirmed = window.confirm(`删除账户“${account.name}”？历史流水会保留，只是不再作为可选账户显示。当前余额：¥${centsToYuan(balance)}`);
+    const confirmed = window.confirm(`删除账户“${account.name}”？历史流水会保留，只是不再作为可选账户显示。`);
     if (!confirmed) return;
     if (editing?.id === account.id) {
       setEditing(null);
       setName("");
-      setOpening("0");
       setColor("#1f5f74");
     }
     await onDelete(account);
@@ -1498,20 +1498,17 @@ function AccountsPanel({ accounts, transactions, onSave, onDelete }: { accounts:
     <section className="grid two">
       <div className="panel management-panel">
         <h2>账户</h2>
-        <div className={`account-net-card ${netAssets >= 0 ? "positive" : "negative"}`}>
-          <span>净资产</span>
-          <strong>¥{centsToYuan(netAssets)}</strong>
-          <small>负债账户按负资产计，余额仅作记录估算</small>
-        </div>
+        <p className="empty">账户只作为支付渠道使用，不统计账户余额。</p>
         <div className="account-list">
           {accounts.map((account) => (
             <div className="account-line" key={account.id}>
               <i style={{ background: account.color }} />
-              <span>{account.name}</span>
+              <span title={account.name}>{account.name}</span>
               <em>{accountTypeLabels[account.type]}</em>
-              <strong>¥{centsToYuan(calculateNetWorthContribution(account, transactions))}</strong>
-              <button className="text-action" onClick={() => editAccount(account)} type="button"><Pencil size={15} />编辑</button>
-              <button className="text-action danger" onClick={() => void deleteAccount(account)} type="button"><Trash2 size={15} />删除</button>
+              <div className="account-actions">
+                <button className="text-action" onClick={() => editAccount(account)} type="button"><Pencil size={15} />编辑</button>
+                <button className="text-action danger" onClick={() => void deleteAccount(account)} type="button"><Trash2 size={15} />删除</button>
+              </div>
             </div>
           ))}
         </div>
@@ -1522,14 +1519,13 @@ function AccountsPanel({ accounts, transactions, onSave, onDelete }: { accounts:
           ...(editing ?? entityStamp()),
           name,
           type,
-          openingBalanceCents: yuanToCents(opening),
+          openingBalanceCents: editing?.openingBalanceCents ?? 0,
           color,
           version: editing ? editing.version + 1 : 1,
           updatedAt: new Date().toISOString(),
           deletedAt: null
         });
         setName("");
-        setOpening("0");
         setColor("#1f5f74");
         setEditing(null);
       }}>
@@ -1545,18 +1541,11 @@ function AccountsPanel({ accounts, transactions, onSave, onDelete }: { accounts:
           <option value="loan">贷款/债务</option>
           <option value="other">其他</option>
         </select>
-        <label>余额校准<input value={opening} onChange={(event) => setOpening(event.target.value)} placeholder="初始余额" inputMode="decimal" /></label>
-        {editing && (
-          <button type="button" className="ghost" onClick={() => setOpening(centsToYuan(editing.openingBalanceCents - editingBalance))}>
-            将当前显示余额校准为 0
-          </button>
-        )}
         <input value={color} onChange={(event) => setColor(event.target.value)} type="color" />
         <button className="primary">保存账户</button>
         {editing && <button type="button" className="ghost" onClick={() => {
           setEditing(null);
           setName("");
-          setOpening("0");
           setColor("#1f5f74");
         }}>取消编辑</button>}
       </form>
@@ -1822,24 +1811,33 @@ function Reports({ transactions, categories }: { transactions: Transaction[]; ca
       return monthKey(previousDate);
     })()
     : String(Number(selectedYear) - 1);
-  const reportTransactions = transactions.filter((item) => item.occurredAt.startsWith(periodKey));
-  const previousTransactions = transactions.filter((item) => item.occurredAt.startsWith(previousKey));
-  const periodSummary = summarizeTransactions(reportTransactions);
-  const previousSummary = summarizeTransactions(previousTransactions);
-  const expenseChange = percentDelta(periodSummary.expenseCents, previousSummary.expenseCents);
-  const rawCategoryTotal = reportTransactions
-    .filter((item) => item.type === categoryKind)
-    .reduce((sum, item) => sum + item.amountCents, 0);
-  const categoryTotal = Math.max(1, rawCategoryTotal);
   const periodDays = period === "month" ? daysInMonth(month) : daysInYear(selectedYear);
   const isCurrentPeriod = period === "month" ? month === monthKey() : selectedYear === currentYear;
   const elapsedDays = isCurrentPeriod ? Math.max(1, period === "month" ? new Date().getDate() : dayOfYear(new Date())) : periodDays;
+  const reportTransactions = transactions.filter((item) => item.occurredAt.startsWith(periodKey));
+  const previousTransactions = transactions
+    .filter((item) => item.occurredAt.startsWith(previousKey))
+    .filter((item) => {
+      if (!isCurrentPeriod) return true;
+      const occurredAt = new Date(item.occurredAt);
+      return period === "month" ? occurredAt.getDate() <= elapsedDays : dayOfYear(occurredAt) <= elapsedDays;
+    });
+  const dailyReportTransactions = dailyExpenseTransactions(reportTransactions, categories);
+  const specialReportTransactions = specialExpenseTransactions(reportTransactions, categories);
+  const dailyPreviousTransactions = dailyExpenseTransactions(previousTransactions, categories);
+  const periodSummary = summarizeTransactions(dailyReportTransactions);
+  const specialSummary = summarizeTransactions(specialReportTransactions);
+  const previousSummary = summarizeTransactions(dailyPreviousTransactions);
+  const expenseChange = percentDelta(periodSummary.expenseCents, previousSummary.expenseCents);
+  const expenseChangeText = expenseChange === 0 ? "持平" : expenseChange > 0 ? `增加 ${expenseChange}%` : `下降 ${Math.abs(expenseChange)}%`;
+  const rawCategoryTotal = dailyReportTransactions.reduce((sum, item) => sum + item.amountCents, 0);
+  const categoryTotal = Math.max(1, rawCategoryTotal);
   const dailyAverageExpense = Math.round(periodSummary.expenseCents / elapsedDays);
   const projectedExpense = Math.round(dailyAverageExpense * periodDays);
 
   const categoryData = useMemo(() => {
     const totals = new Map<string, { id: string; name: string; value: number; color: string }>();
-    reportTransactions.filter((item) => item.type === categoryKind).forEach((item) => {
+    dailyReportTransactions.forEach((item) => {
       const category = categories.find((entry) => entry.id === item.categoryId);
       const id = category?.id ?? "uncategorized";
       const current = totals.get(id) ?? {
@@ -1854,11 +1852,11 @@ function Reports({ transactions, categories }: { transactions: Transaction[]; ca
     return Array.from(totals.values())
       .sort((left, right) => right.value - left.value)
       .map((entry, index) => ({ ...entry, color: reportColor(index) }));
-  }, [reportTransactions, categories, categoryKind]);
+  }, [dailyReportTransactions, categories]);
 
-  const expenseCategoryData = useMemo(() => {
+  const specialCategoryData = useMemo(() => {
     const totals = new Map<string, { id: string; name: string; value: number; color: string }>();
-    reportTransactions.filter((item) => item.type === "expense").forEach((item) => {
+    specialReportTransactions.forEach((item) => {
       const category = categories.find((entry) => entry.id === item.categoryId);
       const id = category?.id ?? "uncategorized";
       const current = totals.get(id) ?? {
@@ -1871,12 +1869,13 @@ function Reports({ transactions, categories }: { transactions: Transaction[]; ca
       totals.set(id, current);
     });
     return Array.from(totals.values()).sort((left, right) => right.value - left.value);
-  }, [reportTransactions, categories]);
+  }, [specialReportTransactions, categories]);
 
-  const topExpense = expenseCategoryData[0];
+  const topExpense = categoryData[0];
   const topExpenseRatio = topExpense && periodSummary.expenseCents > 0 ? Math.round((topExpense.value / periodSummary.expenseCents) * 100) : 0;
-  const topThreeExpense = expenseCategoryData.slice(0, 3).reduce((sum, item) => sum + item.value, 0);
+  const topThreeExpense = categoryData.slice(0, 3).reduce((sum, item) => sum + item.value, 0);
   const concentrationRatio = periodSummary.expenseCents > 0 ? Math.round((topThreeExpense / periodSummary.expenseCents) * 100) : 0;
+  const specialTop = specialCategoryData[0];
 
   const trendData = Array.from({ length: period === "month" ? 12 : 6 }, (_, index) => {
     const key = period === "month"
@@ -1886,7 +1885,7 @@ function Reports({ transactions, categories }: { transactions: Transaction[]; ca
         return monthKey(date);
       })()
       : String(Number(selectedYear) - (5 - index));
-    const summary = summarizeTransactions(transactions.filter((item) => item.occurredAt.startsWith(key)));
+    const summary = summarizeTransactions(dailyExpenseTransactions(transactions.filter((item) => item.occurredAt.startsWith(key)), categories));
     return {
       period: key,
       expense: summary.expenseCents
@@ -1904,7 +1903,7 @@ function Reports({ transactions, categories }: { transactions: Transaction[]; ca
       <div className="panel report-toolbar">
         <div>
           <h2>分析报表</h2>
-          <span>{periodLabel} · 含历史导入支出，专项单独成类</span>
+          <span>{periodLabel} · 日常消费看趋势，专项支出单独统计</span>
         </div>
         <div className="report-controls">
           <div className="segmented compact">
@@ -1923,9 +1922,9 @@ function Reports({ transactions, categories }: { transactions: Transaction[]; ca
       </div>
 
       <div className="report-metrics">
-        <Metric title={period === "month" ? "月消费" : "年消费"} value={periodSummary.expenseCents} icon={ArrowUpRight} tone="warn" />
-        <Metric title="日均消费" value={dailyAverageExpense} icon={CalendarDays} tone="blue" />
-        <Metric title="预计消费" value={projectedExpense} icon={ArrowRightLeft} tone="neutral" />
+        <Metric title={period === "month" ? "日常月消费" : "日常年消费"} value={periodSummary.expenseCents} icon={ArrowUpRight} tone="warn" />
+        <Metric title="专项支出" value={specialSummary.expenseCents} icon={Banknote} tone="blue" />
+        <Metric title="预计日常消费" value={projectedExpense} icon={ArrowRightLeft} tone="neutral" />
       </div>
 
       <div className="finance-insights">
@@ -1935,9 +1934,9 @@ function Reports({ transactions, categories }: { transactions: Transaction[]; ca
           <p>{topExpense ? `占本期支出的 ${topExpenseRatio}%，金额 ¥${centsToYuan(topExpense.value)}。` : "本期还没有支出数据。"}</p>
         </article>
         <article className={expenseChange > 15 ? "insight-card warn" : "insight-card neutral"}>
-          <span>{period === "month" ? "支出环比" : "支出年比"}</span>
-          <strong>{expenseChange >= 0 ? "+" : ""}{expenseChange}%</strong>
-          <p>{expenseChange > 15 ? "支出增长较快，建议查看分类统计里的前三项。" : "支出变化在可控范围内。"}</p>
+          <span>{period === "month" ? "日常支出环比" : "日常支出年比"}</span>
+          <strong>{expenseChangeText}</strong>
+          <p>参考历史导入数据中的上一个{period === "month" ? "月" : "年"}{isCurrentPeriod ? "同期" : ""}日常支出；负数表示本期下降。</p>
         </article>
         <article className="insight-card">
           <span>日均支出</span>
@@ -1954,13 +1953,36 @@ function Reports({ transactions, categories }: { transactions: Transaction[]; ca
           <strong>¥{centsToYuan(recentExpenseAverage)}</strong>
           <p>用长期均值对照当前支出，能更快发现异常月份和一次性大额消费。</p>
         </article>
+        <article className={specialSummary.expenseCents > periodSummary.expenseCents ? "insight-card warn" : "insight-card neutral"}>
+          <span>专项支出提醒</span>
+          <strong>{specialTop ? specialTop.name : "暂无"}</strong>
+          <p>{specialTop ? `本期专项最高为 ¥${centsToYuan(specialTop.value)}，不纳入正常消费趋势。` : "本期没有贷款、保险、教育或大额未分类专项支出。"}</p>
+        </article>
       </div>
+
+      {specialCategoryData.length > 0 && (
+        <section className="panel special-expense-panel">
+          <div className="chart-heading">
+            <h2>专项支出</h2>
+            <span>不纳入正常消费分析</span>
+          </div>
+          <div className="special-expense-grid">
+            {specialCategoryData.map((entry) => (
+              <div className="budget-line special-expense-line" key={entry.id}>
+                <span>{entry.name}</span>
+                <strong>¥{centsToYuan(entry.value)}</strong>
+                <div className="bar"><i style={{ width: `${Math.max(3, Math.round((entry.value / Math.max(1, specialSummary.expenseCents)) * 100))}%` }} /></div>
+              </div>
+            ))}
+          </div>
+        </section>
+      )}
 
       <section className="grid two report-grid">
         <div className="panel chart-panel category-analysis">
           <div className="chart-heading">
             <h2>分类统计</h2>
-            <span>含历史导入支出</span>
+            <span>日常消费，含历史导入数据</span>
           </div>
           <div className="donut-wrap">
             <InteractiveDonut data={categoryData} total={categoryTotal} selectedIndex={selectedCategoryIndex} onSelect={setSelectedCategoryIndex} kind={categoryKind} />
