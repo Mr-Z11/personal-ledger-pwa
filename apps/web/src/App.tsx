@@ -32,7 +32,7 @@ import {
   X
 } from "lucide-react";
 import Papa from "papaparse";
-import { useCallback, useEffect, useMemo, useState, type CSSProperties } from "react";
+import { useCallback, useEffect, useMemo, useState, type CSSProperties, type ReactNode } from "react";
 import { api } from "./api";
 import { clearOutbox, db, enqueue, readOutboxPayload, resetLocalData, saveSnapshot } from "./db";
 
@@ -128,13 +128,14 @@ function monthLabel(value: string) {
   return `${year}年${Number(month)}月`;
 }
 
-function MonthField({ value, onChange, label }: {
+function MonthField({ value, onChange, label, className = "" }: {
   value: string;
   onChange: (value: string) => void;
   label: string;
+  className?: string;
 }) {
   return (
-    <label className="period-field">
+    <label className={`period-field ${className}`.trim()}>
       <span className="period-field-label">{label}</span>
       <strong aria-hidden="true">{monthLabel(value)}</strong>
       <input
@@ -227,6 +228,14 @@ function transactionGroupLabel(key: string, mode: LedgerGroupMode) {
   if (mode === "year") return yearLabel(key);
   if (mode === "month") return monthLabel(key);
   return dateLabel(key);
+}
+
+function transactionGroupTone(key: string, mode: LedgerGroupMode) {
+  if (mode !== "day") return "weekday-period";
+  const [year, month, day] = key.split("-").map(Number);
+  if (!year || !month || !day) return "weekday-period";
+  const weekday = new Date(year, month - 1, day).getDay();
+  return ["weekday-sun", "weekday-mon", "weekday-tue", "weekday-wed", "weekday-thu", "weekday-fri", "weekday-sat"][weekday];
 }
 
 function categoryUsageCounts(transactions: Transaction[], kind: Category["kind"]) {
@@ -1320,10 +1329,10 @@ function TransactionList({ transactions, accounts, categories, onDelete, onEdit,
         </div>
       )}
       {transactionGroups.length === 0 && <p className="empty">暂无记录</p>}
-      {transactionGroups.map((group, index) => {
+      {transactionGroups.map((group) => {
         const expanded = expandedGroups.has(group.key);
         return (
-          <section className={`day-group tone-${index % 4} ${expanded ? "open" : "collapsed"}`} key={group.key}>
+          <section className={`day-group ${transactionGroupTone(group.key, groupMode)} ${expanded ? "open" : "collapsed"}`} key={group.key}>
             <button className="day-summary" type="button" onClick={() => toggleGroup(group.key)} aria-expanded={expanded}>
               <div>
                 <strong>{transactionGroupLabel(group.key, groupMode)}</strong>
@@ -1448,49 +1457,65 @@ function SettingsPanel({
   onDeleteCategories: (items: Category[]) => Promise<void>;
 }) {
   return (
-    <section className="grid two settings-grid">
-      <div className="panel form-stack data-tools-panel">
-        <div>
-          <h2>数据管理</h2>
-          <p className="empty">导入导出放在这里，日常记账页面保持轻量。</p>
-        </div>
-        <label>导出格式
-          <select value={exportFormat} onChange={(event) => onExportFormatChange(event.target.value as ExportFormat)}>
-            {exportFormats.map((item) => <option key={item.id} value={item.id}>{item.label}</option>)}
-          </select>
-        </label>
-        <label>文件类型
-          <select value={exportFileType} onChange={(event) => onExportFileTypeChange(event.target.value as ExportFileType)}>
-            <option value="xlsx">Excel</option>
-            <option value="csv">CSV</option>
-          </select>
-        </label>
-        <div className="data-actions">
-          <button className="primary" type="button" onClick={onExport}><Download size={17} />导出账单</button>
-          <label className="primary import-button">
-            <Upload size={17} />
-            导入账单
-            <input type="file" accept=".csv,.tsv,.txt,.xls,.xlsx,.xlsm,text/csv,text/tab-separated-values,text/plain,text/html,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" hidden onChange={(event) => {
-              const file = event.currentTarget.files?.[0];
-              if (file) {
-                void onImportFile(file).then(onImported).catch(onImportError);
-              }
-              event.currentTarget.value = "";
-            }} />
+    <section className="settings-stack">
+      <SettingsSection title="数据管理" description="导入、导出和数据统计。" defaultOpen>
+        <div className="form-stack data-tools-panel">
+          <label>导出格式
+            <select value={exportFormat} onChange={(event) => onExportFormatChange(event.target.value as ExportFormat)}>
+              {exportFormats.map((item) => <option key={item.id} value={item.id}>{item.label}</option>)}
+            </select>
           </label>
+          <label>文件类型
+            <select value={exportFileType} onChange={(event) => onExportFileTypeChange(event.target.value as ExportFileType)}>
+              <option value="xlsx">Excel</option>
+              <option value="csv">CSV</option>
+            </select>
+          </label>
+          <div className="data-actions">
+            <button className="primary" type="button" onClick={onExport}><Download size={17} />导出账单</button>
+            <label className="primary import-button">
+              <Upload size={17} />
+              导入账单
+              <input type="file" accept=".csv,.tsv,.txt,.xls,.xlsx,.xlsm,text/csv,text/tab-separated-values,text/plain,text/html,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" hidden onChange={(event) => {
+                const file = event.currentTarget.files?.[0];
+                if (file) {
+                  void onImportFile(file).then(onImported).catch(onImportError);
+                }
+                event.currentTarget.value = "";
+              }} />
+            </label>
+          </div>
+          <div className="data-stat-strip">
+            <span>{transactions.length} 笔流水</span>
+            <span>{accounts.length} 个账户</span>
+            <span>{categories.length} 个分类</span>
+          </div>
         </div>
-        <div className="data-stat-strip">
-          <span>{transactions.length} 笔流水</span>
-          <span>{accounts.length} 个账户</span>
-          <span>{categories.length} 个分类</span>
-        </div>
-      </div>
-      <AccountsPanel accounts={accounts} onSave={onSaveAccount} onDelete={onDeleteAccount} />
-      <div className="settings-wide">
+      </SettingsSection>
+      <SettingsSection title="账户管理" description="维护储蓄卡、消费卡和额度。">
+        <AccountsPanel accounts={accounts} onSave={onSaveAccount} onDelete={onDeleteAccount} />
+      </SettingsSection>
+      <SettingsSection title="预算管理" description="设置日常支出预算，并查看执行情况。">
         <BudgetPanel budgets={budgets} categories={categories} transactions={transactions} onSave={onSaveBudget} />
-      </div>
-      <CategoriesPanel categories={categories} onSave={onSaveCategory} onDelete={onDeleteCategories} />
+      </SettingsSection>
+      <SettingsSection title="分类维护" description="按一级、二级分类折叠维护。">
+        <CategoriesPanel categories={categories} onSave={onSaveCategory} onDelete={onDeleteCategories} />
+      </SettingsSection>
     </section>
+  );
+}
+
+function SettingsSection({ title, description, children, defaultOpen = false }: { title: string; description: string; children: ReactNode; defaultOpen?: boolean }) {
+  return (
+    <details className="settings-section" open={defaultOpen}>
+      <summary>
+        <div>
+          <strong>{title}</strong>
+          <span>{description}</span>
+        </div>
+      </summary>
+      <div className="settings-section-body">{children}</div>
+    </details>
   );
 }
 
@@ -1961,7 +1986,7 @@ function Reports({ transactions, categories }: { transactions: Transaction[]; ca
             ))}
           </div>
           {period === "month" ? (
-            <MonthField value={month} onChange={setMonth} label="报表月份" />
+            <MonthField value={month} onChange={setMonth} label="报表月份" className="report-period-field" />
           ) : (
             <input className="year-input" value={year} onChange={(event) => setYear(event.target.value)} type="number" min="1970" max="2100" />
           )}
