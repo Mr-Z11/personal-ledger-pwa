@@ -15,7 +15,6 @@ import {
   ArrowRightLeft,
   ArrowUpRight,
   Banknote,
-  CalendarDays,
   Download,
   FolderPlus,
   Home,
@@ -37,7 +36,7 @@ import { useCallback, useEffect, useMemo, useState, type CSSProperties } from "r
 import { api } from "./api";
 import { clearOutbox, db, enqueue, readOutboxPayload, resetLocalData, saveSnapshot } from "./db";
 
-type View = "overview" | "entry" | "transactions" | "accounts" | "budget" | "reports" | "settings" | "trash";
+type View = "overview" | "entry" | "transactions" | "reports" | "settings" | "trash";
 type LedgerGroupMode = "day" | "month" | "year";
 type ReportPeriod = "month" | "year";
 type ExportFormat = "ledger" | "portable" | "suishouji" | "qianji";
@@ -46,8 +45,6 @@ type ExportFileType = "csv" | "xlsx";
 const navItems: { id: View; label: string; icon: typeof Home }[] = [
   { id: "overview", label: "总览", icon: Home },
   { id: "transactions", label: "流水", icon: ListFilter },
-  { id: "accounts", label: "账户", icon: Banknote },
-  { id: "budget", label: "预算", icon: CalendarDays },
   { id: "reports", label: "报表", icon: PieChartIcon },
   { id: "settings", label: "设置", icon: Settings2 }
 ];
@@ -348,6 +345,11 @@ function otherCategory(categories: Category[], kind: Category["kind"]) {
 function viewTitle(view: View) {
   if (view === "entry") return "记一笔";
   return navItems.find((item) => item.id === view)?.label ?? "总览";
+}
+
+function accountLimitText(account: Account) {
+  const value = Math.abs(account.openingBalanceCents ?? 0);
+  return value > 0 ? `¥${centsToYuan(value)}` : "未设置";
 }
 
 function authHeaders(token: string | null): Record<string, string> {
@@ -747,18 +749,6 @@ export function App() {
             setToast(`已批量更新 ${items.length} 笔流水`);
           }} onSaveCategory={(item) => saveLocalAndQueue("categories", item)} />
         )}
-        {view === "accounts" && (
-          <AccountsPanel accounts={activeAccounts} onSave={async (item) => {
-            await saveLocalAndQueue("accounts", item);
-            setToast("账户已保存");
-          }} onDelete={async (item) => {
-            const deleted = { ...item, deletedAt: new Date().toISOString(), updatedAt: new Date().toISOString(), version: item.version + 1 };
-            await saveLocalAndQueue("accounts", deleted);
-          }} />
-        )}
-        {view === "budget" && (
-          <BudgetPanel budgets={activeOnly(budgets)} categories={activeCategories} transactions={activeTransactions} onSave={(item) => saveLocalAndQueue("budgets", item)} />
-        )}
         {view === "reports" && (
           <Reports transactions={activeTransactions} categories={activeCategories} />
         )}
@@ -767,6 +757,7 @@ export function App() {
             accounts={activeAccounts}
             categories={activeCategories}
             transactions={activeTransactions}
+            budgets={activeOnly(budgets)}
             exportFormat={exportFormat}
             exportFileType={exportFileType}
             onExportFormatChange={setExportFormat}
@@ -775,6 +766,16 @@ export function App() {
             onImportFile={(file) => importCsv(file, activeAccounts, activeCategories, saveLocalAndQueue)}
             onImported={(count) => setToast(`已导入 ${count} 笔流水`)}
             onImportError={(error) => setToast(error instanceof Error ? error.message : "导入失败")}
+            onSaveAccount={async (item) => {
+              await saveLocalAndQueue("accounts", item);
+              setToast("账户已保存");
+            }}
+            onDeleteAccount={async (item) => {
+              const deleted = { ...item, deletedAt: new Date().toISOString(), updatedAt: new Date().toISOString(), version: item.version + 1 };
+              await saveLocalAndQueue("accounts", deleted);
+              setToast("账户已删除");
+            }}
+            onSaveBudget={(item) => saveLocalAndQueue("budgets", item)}
             onSaveCategory={(item) => saveLocalAndQueue("categories", item)}
             onDeleteCategories={(items) => saveManyLocalAndQueue("categories", items)}
           />
@@ -900,18 +901,6 @@ function Overview({ summary, budgetCents, accounts, categories, transactions }: 
       </section>
 
       <section className="panel">
-        <h2>记账账户</h2>
-        <div className="account-strip compact">
-          {accounts.map((account) => (
-            <div className="mini-card" key={account.id} style={{ borderColor: account.color }}>
-              <span>{account.name}</span>
-              <strong>{accountTypeLabels[account.type]}</strong>
-            </div>
-          ))}
-        </div>
-      </section>
-
-      <section className="panel">
         <h2>最近流水</h2>
         <TransactionRows transactions={recentTransactions} accounts={accounts} categories={categories} compact />
       </section>
@@ -1018,7 +1007,7 @@ function EntryForm({ accounts, categories, transactions, onSave, onSaveCategory,
 
   return (
     <section className="panel entry-panel">
-      <div className="segmented">
+      <div className="entry-type-switch">
         {typeOptions.map((item) => (
           <button key={item} className={type === item ? "active" : ""} onClick={() => setType(item)} type="button">{typeLabels[item]}</button>
         ))}
@@ -1032,11 +1021,18 @@ function EntryForm({ accounts, categories, transactions, onSave, onSaveCategory,
         ) : (
           <CategoryPicker categories={categories} options={filteredCategories} usageCounts={usageCounts} kind={categoryKind} value={categoryId} onChange={setCategoryId} onCreate={onSaveCategory} />
         )}
-        <label>时间<input value={occurredAt} onChange={(event) => setOccurredAt(event.target.value)} type="datetime-local" /></label>
-        <label>商户<input value={merchant} onChange={(event) => setMerchant(event.target.value)} placeholder="超市、餐厅、客户..." /></label>
-        <label className="full">备注<input value={note} onChange={(event) => setNote(event.target.value)} placeholder="补充说明" /></label>
-        <button className="primary full">{editing ? "保存修改" : "保存流水"}</button>
-        {editing && onCancel && <button type="button" className="ghost full" onClick={onCancel}><X size={16} />取消编辑</button>}
+        <div className="entry-actions full">
+          <button className="primary">{editing ? "保存修改" : "保存流水"}</button>
+          {editing && onCancel && <button type="button" className="ghost" onClick={onCancel}><X size={16} />取消编辑</button>}
+        </div>
+        <details className="entry-more full">
+          <summary>时间、商户、备注</summary>
+          <div className="entry-more-grid">
+            <label>时间<input value={occurredAt} onChange={(event) => setOccurredAt(event.target.value)} type="datetime-local" /></label>
+            <label>商户<input value={merchant} onChange={(event) => setMerchant(event.target.value)} placeholder="超市、餐厅、客户..." /></label>
+            <label>备注<input value={note} onChange={(event) => setNote(event.target.value)} placeholder="补充说明" /></label>
+          </div>
+        </details>
       </form>
     </section>
   );
@@ -1418,6 +1414,7 @@ function SettingsPanel({
   accounts,
   categories,
   transactions,
+  budgets,
   exportFormat,
   exportFileType,
   onExportFormatChange,
@@ -1426,12 +1423,16 @@ function SettingsPanel({
   onImportFile,
   onImported,
   onImportError,
+  onSaveAccount,
+  onDeleteAccount,
+  onSaveBudget,
   onSaveCategory,
   onDeleteCategories
 }: {
   accounts: Account[];
   categories: Category[];
   transactions: Transaction[];
+  budgets: Budget[];
   exportFormat: ExportFormat;
   exportFileType: ExportFileType;
   onExportFormatChange: (format: ExportFormat) => void;
@@ -1440,6 +1441,9 @@ function SettingsPanel({
   onImportFile: (file: File) => Promise<number>;
   onImported: (count: number) => void;
   onImportError: (error: unknown) => void;
+  onSaveAccount: (item: Account) => Promise<void>;
+  onDeleteAccount: (item: Account) => Promise<void>;
+  onSaveBudget: (item: Budget) => Promise<void>;
   onSaveCategory: (item: Category) => Promise<void>;
   onDeleteCategories: (items: Category[]) => Promise<void>;
 }) {
@@ -1481,6 +1485,10 @@ function SettingsPanel({
           <span>{categories.length} 个分类</span>
         </div>
       </div>
+      <AccountsPanel accounts={accounts} onSave={onSaveAccount} onDelete={onDeleteAccount} />
+      <div className="settings-wide">
+        <BudgetPanel budgets={budgets} categories={categories} transactions={transactions} onSave={onSaveBudget} />
+      </div>
       <CategoriesPanel categories={categories} onSave={onSaveCategory} onDelete={onDeleteCategories} />
     </section>
   );
@@ -1490,6 +1498,7 @@ function AccountsPanel({ accounts, onSave, onDelete }: { accounts: Account[]; on
   const [name, setName] = useState("");
   const [type, setType] = useState<Account["type"]>("bank");
   const [color, setColor] = useState("#1f5f74");
+  const [limit, setLimit] = useState("");
   const [editing, setEditing] = useState<Account | null>(null);
 
   function editAccount(account: Account) {
@@ -1497,6 +1506,7 @@ function AccountsPanel({ accounts, onSave, onDelete }: { accounts: Account[]; on
     setName(account.name);
     setType(account.type);
     setColor(account.color);
+    setLimit(account.openingBalanceCents ? centsToYuan(Math.abs(account.openingBalanceCents)) : "");
   }
 
   async function deleteAccount(account: Account) {
@@ -1506,21 +1516,22 @@ function AccountsPanel({ accounts, onSave, onDelete }: { accounts: Account[]; on
       setEditing(null);
       setName("");
       setColor("#1f5f74");
+      setLimit("");
     }
     await onDelete(account);
   }
 
   return (
-    <section className="grid two">
+    <section className="grid two account-management">
       <div className="panel management-panel">
-        <h2>账户</h2>
-        <p className="empty">账户只作为支付渠道使用，不统计账户余额。</p>
+        <h2>账户管理</h2>
+        <p className="empty">新增、编辑、删除账户集中在设置中维护。</p>
         <div className="account-list">
           {accounts.map((account) => (
             <div className="account-line" key={account.id}>
               <i style={{ background: account.color }} />
               <span title={account.name}>{account.name}</span>
-              <em>{accountTypeLabels[account.type]}</em>
+              <em>{accountTypeLabels[account.type]} · 额度 {accountLimitText(account)}</em>
               <div className="account-actions">
                 <button className="text-action" onClick={() => editAccount(account)} type="button"><Pencil size={15} />编辑</button>
                 <button className="text-action danger" onClick={() => void deleteAccount(account)} type="button"><Trash2 size={15} />删除</button>
@@ -1535,7 +1546,7 @@ function AccountsPanel({ accounts, onSave, onDelete }: { accounts: Account[]; on
           ...(editing ?? entityStamp()),
           name,
           type,
-          openingBalanceCents: editing?.openingBalanceCents ?? 0,
+          openingBalanceCents: limit ? yuanToCents(limit) : 0,
           color,
           version: editing ? editing.version + 1 : 1,
           updatedAt: new Date().toISOString(),
@@ -1543,6 +1554,7 @@ function AccountsPanel({ accounts, onSave, onDelete }: { accounts: Account[]; on
         });
         setName("");
         setColor("#1f5f74");
+        setLimit("");
         setEditing(null);
       }}>
         <h2>{editing ? "编辑账户" : "新增账户"}</h2>
@@ -1557,12 +1569,14 @@ function AccountsPanel({ accounts, onSave, onDelete }: { accounts: Account[]; on
           <option value="loan">贷款/债务</option>
           <option value="other">其他</option>
         </select>
+        <input value={limit} onChange={(event) => setLimit(event.target.value)} placeholder="额度（可选）" inputMode="decimal" />
         <input value={color} onChange={(event) => setColor(event.target.value)} type="color" />
         <button className="primary">保存账户</button>
         {editing && <button type="button" className="ghost" onClick={() => {
           setEditing(null);
           setName("");
           setColor("#1f5f74");
+          setLimit("");
         }}>取消编辑</button>}
       </form>
     </section>
