@@ -1898,7 +1898,7 @@ function Reports({ transactions, accounts, categories }: { transactions: Transac
   const [period, setPeriod] = useState<ReportPeriod>("month");
   const [month, setMonth] = useState(monthKey());
   const [year, setYear] = useState(currentYear);
-  const [selectedCategoryIndex, setSelectedCategoryIndex] = useState(0);
+  const [selectedCategoryIndex, setSelectedCategoryIndex] = useState<number | null>(null);
   const categoryKind: Category["kind"] = "expense";
   const selectedYear = year.trim() || currentYear;
   const periodKey = period === "month" ? month : selectedYear;
@@ -1975,7 +1975,7 @@ function Reports({ transactions, accounts, categories }: { transactions: Transac
   const topThreeExpense = categoryData.slice(0, 3).reduce((sum, item) => sum + item.value, 0);
   const concentrationRatio = periodSummary.expenseCents > 0 ? Math.round((topThreeExpense / periodSummary.expenseCents) * 100) : 0;
   const specialTop = specialCategoryData[0];
-  const selectedCategory = categoryData[selectedCategoryIndex];
+  const selectedCategory = selectedCategoryIndex === null ? undefined : categoryData[selectedCategoryIndex];
   const selectedCategoryTransactions = selectedCategory
     ? dailyReportTransactions
       .filter((item) => selectedCategory.id === "uncategorized" ? !item.categoryId : item.categoryId === selectedCategory.id)
@@ -2000,7 +2000,7 @@ function Reports({ transactions, accounts, categories }: { transactions: Transac
   const recentExpenseAverage = Math.round(trendData.slice(-3).reduce((sum, item) => sum + item.expense, 0) / 3);
 
   useEffect(() => {
-    if (selectedCategoryIndex > Math.max(0, categoryData.length - 1)) setSelectedCategoryIndex(0);
+    if (selectedCategoryIndex !== null && selectedCategoryIndex > categoryData.length - 1) setSelectedCategoryIndex(null);
   }, [categoryData.length, selectedCategoryIndex]);
 
   return (
@@ -2090,7 +2090,7 @@ function Reports({ transactions, accounts, categories }: { transactions: Transac
             <span>日常消费，含历史导入数据</span>
           </div>
           <div className="donut-wrap">
-            <InteractiveDonut data={categoryData} total={categoryTotal} selectedIndex={selectedCategoryIndex} onSelect={setSelectedCategoryIndex} kind={categoryKind} />
+            <InteractiveDonut data={categoryData} total={categoryTotal} selectedIndex={selectedCategoryIndex ?? -1} onSelect={setSelectedCategoryIndex} kind={categoryKind} />
           </div>
           <div className="donut-list">
             {categoryData.length === 0 && <p className="empty">本期暂无{categoryKind === "expense" ? "支出" : "收入"}分类数据</p>}
@@ -2131,7 +2131,7 @@ function Reports({ transactions, accounts, categories }: { transactions: Transac
           <div className="trend-legend">
             <span><i className="legend expense-bar" />支出</span>
           </div>
-          <div className="trend-bars monthly-flow">
+          <div className={`trend-bars monthly-flow ${period === "month" ? "monthly-trend" : "yearly-trend"}`}>
             {trendData.map((item) => {
               return (
                 <div className="trend-month" key={item.period}>

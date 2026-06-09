@@ -1595,7 +1595,6 @@ input[type="month"],
 .trend-bars {
   min-height: 17rem;
   display: grid;
-  grid-template-columns: repeat(12, minmax(1.8rem, 1fr));
   gap: 0.7rem;
   align-items: end;
   margin-top: 1.2rem;
@@ -1603,16 +1602,45 @@ input[type="month"],
 
 .monthly-flow {
   overflow-x: auto;
-  padding-bottom: 0.2rem;
+  padding: 0 0 0.45rem;
+  scroll-snap-type: x proximity;
+}
+
+.monthly-trend {
+  grid-template-columns: repeat(12, minmax(3.45rem, 1fr));
+}
+
+.yearly-trend {
+  grid-template-columns: repeat(6, minmax(4rem, 1fr));
 }
 
 .trend-month {
+  min-width: 0;
   display: grid;
-  gap: 0.45rem;
+  gap: 0.38rem;
   align-items: end;
   text-align: center;
   color: rgba(36, 49, 39, 0.68);
   font-size: 0.82rem;
+  scroll-snap-align: start;
+}
+
+.trend-month span,
+.trend-month small {
+  display: block;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.trend-month span {
+  font-weight: 900;
+}
+
+.trend-month small {
+  font-size: 0.66rem;
+  line-height: 1.1;
 }
 
 .trend-stack {
