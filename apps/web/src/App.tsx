@@ -1880,15 +1880,17 @@ function InteractiveDonut({ data, total, selectedIndex, onSelect, kind }: {
           ))}
         </svg>
         <div className="donut-center">
-          <strong>¥{centsToYuan(selected?.value ?? 0)}</strong>
-          <span>{selected?.name ?? (kind === "expense" ? "分类支出" : "分类收入")}</span>
+          <strong>¥{centsToYuan(selected?.value ?? total)}</strong>
+          <span>{selected?.name ?? "点击饼图看明细"}</span>
           {selectedSegment && <em>{selectedSegment.ratio}%</em>}
         </div>
       </div>
-      <div className="donut-actions">
-        <button type="button" className="ghost" onClick={() => selectOffset(-1)}>上一项</button>
-        <button type="button" className="ghost" onClick={() => selectOffset(1)}>下一项</button>
-      </div>
+      {selectedSegment && (
+        <div className="donut-actions">
+          <button type="button" className="ghost" onClick={() => selectOffset(-1)}>上一项</button>
+          <button type="button" className="ghost" onClick={() => selectOffset(1)}>下一项</button>
+        </div>
+      )}
     </div>
   );
 }
@@ -2092,28 +2094,7 @@ function Reports({ transactions, accounts, categories }: { transactions: Transac
           <div className="donut-wrap">
             <InteractiveDonut data={categoryData} total={categoryTotal} selectedIndex={selectedCategoryIndex ?? -1} onSelect={setSelectedCategoryIndex} kind={categoryKind} />
           </div>
-          <div className="donut-list">
-            {categoryData.length === 0 && <p className="empty">本期暂无{categoryKind === "expense" ? "支出" : "收入"}分类数据</p>}
-            {categoryData.map((entry, index) => {
-              const ratio = Math.round((entry.value / categoryTotal) * 100);
-              return (
-                <div
-                  className={selectedCategoryIndex === index ? "budget-line report-category-line active" : "budget-line report-category-line"}
-                  key={entry.id}
-                  onClick={() => setSelectedCategoryIndex(index)}
-                  role="button"
-                  tabIndex={0}
-                  onKeyDown={(event) => {
-                    if (event.key === "Enter" || event.key === " ") setSelectedCategoryIndex(index);
-                  }}
-                >
-                  <span><i className="dot" style={{ background: entry.color }} />{entry.name}</span>
-                  <strong>¥{centsToYuan(entry.value)} · {ratio}%</strong>
-                  <div className="bar"><i style={{ width: `${ratio}%`, background: entry.color }} /></div>
-                </div>
-              );
-            })}
-          </div>
+          {categoryData.length === 0 && <p className="empty">本期暂无{categoryKind === "expense" ? "支出" : "收入"}分类数据</p>}
           {selectedCategory && (
             <div className="report-category-details">
               <div className="chart-heading">
