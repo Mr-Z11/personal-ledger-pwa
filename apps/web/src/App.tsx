@@ -759,7 +759,7 @@ export function App() {
           }} onSaveCategory={(item) => saveLocalAndQueue("categories", item)} />
         )}
         {view === "reports" && (
-          <Reports transactions={activeTransactions} categories={activeCategories} />
+          <Reports transactions={activeTransactions} accounts={activeAccounts} categories={activeCategories} />
         )}
         {view === "settings" && (
           <SettingsPanel
@@ -866,9 +866,15 @@ function Overview({ summary, budgetCents, accounts, categories, transactions }: 
   transactions: Transaction[];
 }) {
   const monthTransactions = transactions.filter((item) => item.occurredAt.startsWith(monthKey()));
+  const monthExpenseTransactionsAll = monthTransactions.filter((item) => item.type === "expense");
   const monthExpenseTransactions = dailyExpenseTransactions(monthTransactions, categories);
+  const specialMonthExpenses = specialExpenseTransactions(monthTransactions, categories);
   const elapsedDays = Math.max(1, new Date().getDate());
   const dailyAverage = Math.round(summary.expenseCents / elapsedDays);
+  const totalExpenseCents = monthExpenseTransactionsAll.reduce((sum, item) => sum + item.amountCents, 0);
+  const specialExpenseCents = specialMonthExpenses.reduce((sum, item) => sum + item.amountCents, 0);
+  const dailyExpenseRatio = totalExpenseCents > 0 ? Math.round((summary.expenseCents / totalExpenseCents) * 100) : 0;
+  const specialExpenseRatio = totalExpenseCents > 0 ? Math.round((specialExpenseCents / totalExpenseCents) * 100) : 0;
   const largestExpense = monthExpenseTransactions.reduce((max, item) => Math.max(max, item.amountCents), 0);
   const expenseByCategory = monthExpenseTransactions.reduce((totals, item) => {
     const id = item.categoryId ?? "uncategorized";
@@ -907,6 +913,27 @@ function Overview({ summary, budgetCents, accounts, categories, transactions }: 
           <strong>{topCategory ? categoryPath(topCategory, categories) : "暂无支出"}</strong>
         </div>
         <b>{topCategoryEntry ? `¥${centsToYuan(topCategoryEntry[1])}` : "¥0.00"}</b>
+      </section>
+
+      <section className="panel overview-spending">
+        <div className="chart-heading">
+          <h2>本月整体支出</h2>
+          <strong>¥{centsToYuan(totalExpenseCents)}</strong>
+        </div>
+        <div className="spending-split">
+          <div>
+            <span>日常消费</span>
+            <strong>¥{centsToYuan(summary.expenseCents)}</strong>
+            <em>{dailyExpenseRatio}%</em>
+            <div className="bar"><i style={{ width: `${dailyExpenseRatio}%` }} /></div>
+          </div>
+          <div>
+            <span>专项支出</span>
+            <strong>¥{centsToYuan(specialExpenseCents)}</strong>
+            <em>{specialExpenseRatio}%</em>
+            <div className="bar special"><i style={{ width: `${specialExpenseRatio}%` }} /></div>
+          </div>
+        </div>
       </section>
 
       <section className="panel">
@@ -1866,7 +1893,7 @@ function InteractiveDonut({ data, total, selectedIndex, onSelect, kind }: {
   );
 }
 
-function Reports({ transactions, categories }: { transactions: Transaction[]; categories: Category[] }) {
+function Reports({ transactions, accounts, categories }: { transactions: Transaction[]; accounts: Account[]; categories: Category[] }) {
   const currentYear = String(new Date().getFullYear());
   const [period, setPeriod] = useState<ReportPeriod>("month");
   const [month, setMonth] = useState(monthKey());
@@ -1948,6 +1975,12 @@ function Reports({ transactions, categories }: { transactions: Transaction[]; ca
   const topThreeExpense = categoryData.slice(0, 3).reduce((sum, item) => sum + item.value, 0);
   const concentrationRatio = periodSummary.expenseCents > 0 ? Math.round((topThreeExpense / periodSummary.expenseCents) * 100) : 0;
   const specialTop = specialCategoryData[0];
+  const selectedCategory = categoryData[selectedCategoryIndex];
+  const selectedCategoryTransactions = selectedCategory
+    ? dailyReportTransactions
+      .filter((item) => selectedCategory.id === "uncategorized" ? !item.categoryId : item.categoryId === selectedCategory.id)
+      .sort((left, right) => right.occurredAt.localeCompare(left.occurredAt))
+    : [];
 
   const trendData = Array.from({ length: period === "month" ? 12 : 6 }, (_, index) => {
     const key = period === "month"
@@ -2081,6 +2114,16 @@ function Reports({ transactions, categories }: { transactions: Transaction[]; ca
               );
             })}
           </div>
+          {selectedCategory && (
+            <div className="report-category-details">
+              <div className="chart-heading">
+                <h3>{selectedCategory.name}</h3>
+                <span>{selectedCategoryTransactions.length} 笔 · ¥{centsToYuan(selectedCategory.value)}</span>
+              </div>
+              <TransactionRows transactions={selectedCategoryTransactions.slice(0, 20)} accounts={accounts} categories={categories} compact />
+              {selectedCategoryTransactions.length > 20 && <p className="empty">已显示最近 20 笔，更多明细可到流水页筛选查看。</p>}
+            </div>
+          )}
         </div>
 
         <div className="panel chart-panel trend-panel">
