@@ -421,6 +421,29 @@ function splitCategoryName(value: string) {
   return { primary: "", secondary: parts[0] ?? "" };
 }
 
+function normalizeEducationCategory(kind: Category["kind"], primaryName: string, secondaryName: string, row: Record<string, string>) {
+  if (kind !== "expense") return { primaryName, secondaryName };
+  const noteText = rowValue(row, ["备注", "说明", "摘要", "用途", "内容", "项目"]);
+  const merchantText = rowValue(row, ["商户", "商家", "交易对方", "对象", "店铺"]);
+  const text = [primaryName, secondaryName, noteText, merchantText].join(" ");
+  const categorySignal = [primaryName, secondaryName].join(" ");
+  const childEducationSignal = /孩子教育|亲子教育|学费|托管|延时|课后|暑托|暑假班|培训|兴趣|课程|补习|辅导|机器人|书法|武术|语文|电脑课|夏令营|文具|教辅|课外书|书本杂费|校服|班费|春游|秋游|考级|考试|竞赛|比赛|学校|教育/.test(text);
+  if (!childEducationSignal) return { primaryName, secondaryName };
+  if (/学习成长|书籍资料|书报杂志/.test(categorySignal) && !/孩子|儿童|学校|学费|托管|延时|课后|暑托|暑假班|教辅|课外|校服|班费/.test(text)) {
+    return { primaryName, secondaryName };
+  }
+
+  let childName = "教育杂费";
+  if (/考级|考试|竞赛|比赛|等级考试/.test(text)) childName = "考试竞赛";
+  else if (/春游|秋游|亲子|旅游|活动/.test(text)) childName = "亲子活动";
+  else if (/校服|书包|书皮|水杯|作业本|班费/.test(text)) childName = "校服用品";
+  else if (/书|文具|教辅|课外阅读|字帖|教材|资料|报纸|杂志|科学大众|少年报|算盘/.test(text)) childName = "图书文具";
+  else if (/学费|托管|延时|课后服务|暑托|餐费|伙食费/.test(text)) childName = "学费托管";
+  else if (/培训|兴趣|课程|补习|辅导|机器人|书法|武术|语文|电脑课|夏令营|营地|竹笛|葫芦丝|国画|人文素养|硬笔/.test(text)) childName = "兴趣课程";
+
+  return { primaryName: "孩子教育", secondaryName: childName };
+}
+
 function csvRowsFromText(text: string) {
   const parsed = Papa.parse<Record<string, string>>(text, { header: true, skipEmptyLines: true });
   return parsed.data;
@@ -2161,8 +2184,9 @@ async function importCsv(
   async function findOrCreateCategory(kind: Category["kind"], row: Record<string, string>) {
     const combined = rowValue(row, ["分类", "类别", "账目分类", "收支分类", "科目"]);
     const split = splitCategoryName(combined);
-    const primaryName = rowValue(row, ["一级分类", "大类", "父分类"]) || split.primary || "其他";
-    const secondaryName = rowValue(row, ["二级分类", "子分类", "小类", "明细分类"]) || split.secondary;
+    const importedPrimaryName = rowValue(row, ["一级分类", "大类", "父分类"]) || split.primary || "其他";
+    const importedSecondaryName = rowValue(row, ["二级分类", "子分类", "小类", "明细分类"]) || split.secondary;
+    const { primaryName, secondaryName } = normalizeEducationCategory(kind, importedPrimaryName, importedSecondaryName, row);
     let parent = nextCategories.find((item) => item.kind === kind && !item.parentId && item.name === primaryName);
     if (!parent) {
       parent = makeCategory({ name: primaryName, kind, parentId: null, icon: "folder", color: kind === "expense" ? "#6b6f3f" : "#2f7d4f" });
