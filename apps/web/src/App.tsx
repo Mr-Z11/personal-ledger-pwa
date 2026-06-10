@@ -1734,6 +1734,30 @@ function CategoriesPanel({ categories, onSave, onDelete }: { categories: Categor
 
   return (
     <>
+      <form className="panel form-stack category-editor-panel" onSubmit={submit}>
+        <div className="inline-form-head">
+          <div>
+            <h2>{editing ? "编辑分类" : "新增分类"}</h2>
+            <p>{editing ? `正在编辑：${categoryPath(editing, activeCategories)}` : "新增分类会优先放入“其他”，也可以手动选择一级分类。"}</p>
+          </div>
+        </div>
+        <input value={name} onChange={(event) => setName(event.target.value)} placeholder="分类名称" required />
+        <select value={kind} onChange={(event) => setKind(event.target.value as Category["kind"])}>
+          <option value="expense">消费</option>
+          <option value="income">收入</option>
+        </select>
+        <select value={parentId} onChange={(event) => setParentId(event.target.value)}>
+          <option value="">作为一级分类</option>
+          {!editing && <option value="__other__">放入其他（默认）</option>}
+          {topCategories.map((category) => <option key={category.id} value={category.id}>{category.name}</option>)}
+        </select>
+        <button className="primary">保存分类</button>
+        {editing && <button type="button" className="ghost" onClick={() => {
+          setEditing(null);
+          setName("");
+          setParentId("__other__");
+        }}>取消编辑</button>}
+      </form>
       <div className="panel management-panel">
         <h2>分类</h2>
         <p className="empty">先选择一级方向，再展开维护二级分类，日常只维护消费分类即可。</p>
@@ -1756,9 +1780,10 @@ function CategoriesPanel({ categories, onSave, onDelete }: { categories: Categor
           {groupedParents.map((parent) => {
             const children = activeCategories.filter((category) => category.parentId === parent.id);
             const open = openCategoryIds.has(parent.id);
+            const parentEditing = editing?.id === parent.id;
             return (
               <div className="category-group" key={parent.id}>
-                <div className="category-line">
+                <div className={parentEditing ? "category-line editing" : "category-line"}>
                   <button className="category-toggle" type="button" onClick={() => toggleCategoryGroup(parent.id)}>
                     <strong>{parent.name}</strong>
                     <span>{children.length} 个子分类 · {open ? "收起" : "展开"}</span>
@@ -1767,7 +1792,7 @@ function CategoriesPanel({ categories, onSave, onDelete }: { categories: Categor
                   <button className="text-action danger" onClick={() => void deleteCategory(parent)} type="button"><Trash2 size={15} />删除</button>
                 </div>
                 {open && children.map((child) => (
-                  <div className="category-line child" key={child.id}>
+                  <div className={editing?.id === child.id ? "category-line child editing" : "category-line child"} key={child.id}>
                     <span>{child.name}</span>
                     <button className="text-action" onClick={() => editCategory(child)} type="button"><Pencil size={15} />编辑</button>
                     <button className="text-action danger" onClick={() => void deleteCategory(child)} type="button"><Trash2 size={15} />删除</button>
@@ -1778,25 +1803,6 @@ function CategoriesPanel({ categories, onSave, onDelete }: { categories: Categor
           })}
         </div>
       </div>
-      <form className="panel form-stack" onSubmit={submit}>
-        <h2>{editing ? "编辑分类" : "新增分类"}</h2>
-        <input value={name} onChange={(event) => setName(event.target.value)} placeholder="分类名称" required />
-        <select value={kind} onChange={(event) => setKind(event.target.value as Category["kind"])}>
-          <option value="expense">消费</option>
-          <option value="income">收入</option>
-        </select>
-        <select value={parentId} onChange={(event) => setParentId(event.target.value)}>
-          <option value="">作为一级分类</option>
-          {!editing && <option value="__other__">放入其他（默认）</option>}
-          {topCategories.map((category) => <option key={category.id} value={category.id}>{category.name}</option>)}
-        </select>
-        <button className="primary">保存分类</button>
-        {editing && <button type="button" className="ghost" onClick={() => {
-          setEditing(null);
-          setName("");
-          setParentId("__other__");
-        }}>取消编辑</button>}
-      </form>
     </>
   );
 }

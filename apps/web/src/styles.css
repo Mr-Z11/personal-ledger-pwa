@@ -1183,6 +1183,11 @@ input[type="month"],
   background: rgba(255, 255, 255, 0.32);
 }
 
+.category-line.editing {
+  border: 1px solid rgba(47, 125, 79, 0.28);
+  background: rgba(47, 125, 79, 0.1);
+}
+
 .category-toggle {
   border: 0;
   min-width: 0;
@@ -1199,6 +1204,32 @@ input[type="month"],
   color: rgba(36, 49, 39, 0.55);
   font-size: 0.76rem;
   font-weight: 800;
+}
+
+.category-editor-panel {
+  margin-bottom: 0.75rem;
+  grid-template-columns: minmax(0, 1.05fr) minmax(8rem, 0.8fr) minmax(9rem, 0.9fr) auto auto;
+  align-items: end;
+}
+
+.category-editor-panel .inline-form-head {
+  grid-column: 1 / -1;
+}
+
+.inline-form-head h2 {
+  margin: 0;
+}
+
+.inline-form-head p {
+  margin: 0.18rem 0 0;
+  color: rgba(36, 49, 39, 0.58);
+  font-size: 0.82rem;
+  font-weight: 800;
+}
+
+.category-editor-panel .primary,
+.category-editor-panel .ghost {
+  min-height: 2.75rem;
 }
 
 .text-action {
@@ -2039,6 +2070,15 @@ input[type="month"],
   .settings-section-body .account-management,
   .settings-section-body .grid.two {
     grid-template-columns: 1fr;
+  }
+
+  .category-editor-panel {
+    grid-template-columns: 1fr;
+  }
+
+  .category-editor-panel .primary,
+  .category-editor-panel .ghost {
+    width: 100%;
   }
 
   .form-grid,
