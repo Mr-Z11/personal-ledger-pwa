@@ -31,7 +31,6 @@ import {
   Upload,
   X
 } from "lucide-react";
-import Papa from "papaparse";
 import { useCallback, useEffect, useMemo, useState, type CSSProperties, type ReactNode } from "react";
 import { api } from "./api";
 import { clearOutbox, db, enqueue, readOutboxPayload, resetLocalData, saveSnapshot } from "./db";
@@ -444,7 +443,8 @@ function normalizeEducationCategory(kind: Category["kind"], primaryName: string,
   return { primaryName: "孩子教育", secondaryName: childName };
 }
 
-function csvRowsFromText(text: string) {
+async function csvRowsFromText(text: string) {
+  const { default: Papa } = await import("papaparse");
   const parsed = Papa.parse<Record<string, string>>(text, { header: true, skipEmptyLines: true });
   return parsed.data;
 }
@@ -514,7 +514,7 @@ async function readImportRows(file: File) {
   const text = await file.text();
   if (/^\s*</.test(text) && /<table/i.test(text)) return rowsFromHtmlTable(text);
   const normalized = text.replace(/\r\n/g, "\n");
-  return csvRowsFromText(normalized);
+  return await csvRowsFromText(normalized);
 }
 
 function downloadCsv(filename: string, rows: (string | number | null | undefined)[][]) {
@@ -581,19 +581,22 @@ export function App() {
     setLastSync(nextLastSync?.value);
   }, []);
 
-  const activeAccounts = activeOnly(accounts);
-  const activeCategories = activeOnly(categories);
-  const activeTransactions = activeOnly(transactions);
+  const activeAccounts = useMemo(() => activeOnly(accounts), [accounts]);
+  const activeCategories = useMemo(() => activeOnly(categories), [categories]);
+  const activeTransactions = useMemo(() => activeOnly(transactions), [transactions]);
   const isLocalPreview = token?.startsWith("local-preview:") ?? false;
   const currentMonth = monthKey();
-  const dailyMonthExpenses = dailyExpenseTransactions(activeTransactions.filter((item) => item.occurredAt.startsWith(currentMonth)), activeCategories);
-  const dailyMonthExpenseCents = dailyMonthExpenses.reduce((sum, item) => sum + item.amountCents, 0);
-  const dailySummary = {
+  const dailyMonthExpenses = useMemo(
+    () => dailyExpenseTransactions(activeTransactions.filter((item) => item.occurredAt.startsWith(currentMonth)), activeCategories),
+    [activeCategories, activeTransactions, currentMonth]
+  );
+  const dailyMonthExpenseCents = useMemo(() => dailyMonthExpenses.reduce((sum, item) => sum + item.amountCents, 0), [dailyMonthExpenses]);
+  const dailySummary = useMemo(() => ({
     incomeCents: 0,
     expenseCents: dailyMonthExpenseCents,
     netCents: -dailyMonthExpenseCents
-  };
-  const currentBudgetCents = monthBudgetTotal(activeOnly(budgets), currentMonth);
+  }), [dailyMonthExpenseCents]);
+  const currentBudgetCents = useMemo(() => monthBudgetTotal(activeOnly(budgets), currentMonth), [budgets, currentMonth]);
 
   async function hydrateFromServer(nextToken = token) {
     if (!nextToken) return;
@@ -649,8 +652,20 @@ export function App() {
   }
 
   useEffect(() => {
-    void refreshLocal();
-    if (token) void hydrateFromServer(token);
+    let cancelled = false;
+    let syncTimer: number | undefined;
+
+    void refreshLocal().finally(() => {
+      if (!token || cancelled) return;
+      syncTimer = window.setTimeout(() => {
+        if (!cancelled) void hydrateFromServer(token);
+      }, 450);
+    });
+
+    return () => {
+      cancelled = true;
+      if (syncTimer) window.clearTimeout(syncTimer);
+    };
   }, []);
 
   useEffect(() => {

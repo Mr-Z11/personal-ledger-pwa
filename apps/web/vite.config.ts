@@ -23,6 +23,7 @@ export default defineConfig({
       },
       workbox: {
         navigateFallback: "/index.html",
+        globIgnores: ["**/xlsx-*.js", "**/papaparse*.js"],
         runtimeCaching: [
           {
             urlPattern: ({ url }) => url.pathname.startsWith("/api"),
@@ -36,6 +37,16 @@ export default defineConfig({
       }
     })
   ],
+  build: {
+    rollupOptions: {
+      output: {
+        manualChunks: {
+          "react-vendor": ["react", "react-dom"],
+          "storage-vendor": ["dexie"]
+        }
+      }
+    }
+  },
   server: {
     port: 5173,
     proxy: {
