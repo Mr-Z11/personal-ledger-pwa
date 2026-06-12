@@ -10,6 +10,7 @@ import {
   type Transaction,
   type TransactionType
 } from "@ledger/shared";
+import "./styles.css";
 import {
   ArrowDownLeft,
   ArrowRightLeft,

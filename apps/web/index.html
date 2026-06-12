@@ -10,9 +10,178 @@
     <link rel="icon" href="/icon.svg" />
     <link rel="apple-touch-icon" href="/icon.svg" />
     <title>Ledger Box</title>
+    <style>
+      :root {
+        color: #243127;
+        background: #f6f1e7;
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        margin: 0;
+        min-height: 100vh;
+        background:
+          linear-gradient(135deg, rgba(49, 71, 58, 0.08) 0 24%, transparent 24% 100%),
+          #f6f1e7;
+      }
+
+      .boot-shell {
+        min-height: 100vh;
+        padding: calc(0.9rem + env(safe-area-inset-top)) 0.9rem calc(5.2rem + env(safe-area-inset-bottom));
+        display: grid;
+        grid-template-rows: auto 1fr auto;
+        gap: 1rem;
+      }
+
+      .boot-top {
+        min-height: 3.2rem;
+        display: flex;
+        align-items: flex-start;
+        justify-content: space-between;
+        gap: 1rem;
+      }
+
+      .boot-date {
+        color: rgba(36, 49, 39, 0.58);
+        font-size: 0.82rem;
+        font-weight: 800;
+      }
+
+      .boot-title {
+        margin: 0.1rem 0 0;
+        font-size: 1.52rem;
+        line-height: 1.05;
+        font-weight: 900;
+      }
+
+      .boot-brand {
+        min-height: 2.7rem;
+        padding: 0.42rem 0.62rem;
+        border: 1px solid rgba(49, 71, 58, 0.1);
+        border-radius: 0.72rem;
+        display: inline-flex;
+        align-items: center;
+        gap: 0.5rem;
+        background: rgba(255, 250, 240, 0.82);
+        box-shadow: 0 0.55rem 1.4rem rgba(36, 49, 39, 0.08);
+        font-weight: 900;
+        white-space: nowrap;
+      }
+
+      .boot-brand i {
+        width: 1.85rem;
+        height: 1.85rem;
+        border-radius: 0.5rem;
+        display: grid;
+        place-items: center;
+        background: #31473a;
+        color: #fff7df;
+        font-style: normal;
+      }
+
+      .boot-card {
+        align-self: start;
+        margin-top: 0.15rem;
+        padding: 1rem;
+        border: 1px solid rgba(49, 71, 58, 0.12);
+        border-radius: 0.75rem;
+        display: grid;
+        gap: 0.8rem;
+        background: rgba(255, 250, 240, 0.82);
+        box-shadow: 0 1rem 2rem rgba(36, 49, 39, 0.08);
+      }
+
+      .boot-line {
+        height: 0.82rem;
+        border-radius: 999px;
+        background: linear-gradient(90deg, rgba(49, 71, 58, 0.18), rgba(214, 178, 94, 0.28), rgba(49, 71, 58, 0.12));
+        background-size: 180% 100%;
+        animation: bootPulse 1.1s ease-in-out infinite;
+      }
+
+      .boot-line.short {
+        width: 58%;
+      }
+
+      .boot-metric {
+        height: 4.8rem;
+        border-radius: 0.68rem;
+        background: rgba(255, 255, 255, 0.5);
+      }
+
+      .boot-nav {
+        position: fixed;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        padding: 0.48rem 0.55rem max(0.48rem, env(safe-area-inset-bottom));
+        display: grid;
+        grid-template-columns: repeat(4, 1fr);
+        gap: 0.3rem;
+        background: rgba(36, 49, 39, 0.96);
+        color: rgba(246, 241, 231, 0.78);
+      }
+
+      .boot-nav span {
+        min-height: 3.1rem;
+        border-radius: 0.7rem;
+        display: grid;
+        place-items: center;
+        font-size: 0.75rem;
+        font-weight: 800;
+      }
+
+      .boot-nav span:first-child {
+        background: rgba(255, 255, 255, 0.13);
+        color: #fff7df;
+      }
+
+      @keyframes bootPulse {
+        0%, 100% { background-position: 0% 50%; }
+        50% { background-position: 100% 50%; }
+      }
+
+      @media (min-width: 941px) {
+        .boot-shell {
+          max-width: 48rem;
+          margin: 0 auto;
+          padding-bottom: 2rem;
+        }
+
+        .boot-nav {
+          display: none;
+        }
+      }
+    </style>
   </head>
   <body>
-    <div id="root"></div>
+    <div id="root">
+      <div class="boot-shell">
+        <header class="boot-top">
+          <div>
+            <div class="boot-date">正在打开账本</div>
+            <h1 class="boot-title">总览</h1>
+          </div>
+          <div class="boot-brand"><i>¥</i>消费账本</div>
+        </header>
+        <main class="boot-card" aria-label="正在载入">
+          <div class="boot-line short"></div>
+          <div class="boot-metric"></div>
+          <div class="boot-line"></div>
+          <div class="boot-line short"></div>
+        </main>
+        <nav class="boot-nav" aria-hidden="true">
+          <span>总览</span>
+          <span>流水</span>
+          <span>报表</span>
+          <span>设置</span>
+        </nav>
+      </div>
+    </div>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>
