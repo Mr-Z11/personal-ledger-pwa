@@ -1027,6 +1027,23 @@ function EntryForm({ accounts, categories, transactions, onSave, onSaveCategory,
   const selectedCategory = categories.find((category) => category.id === categoryId);
   const accountOptions = useMemo(() => quickEntryAccounts(accounts, type, editing), [accounts, type, editing]);
   const typeOptions: TransactionType[] = editing ? ["expense", "income", "transfer"] : ["expense", "income"];
+  const selectedAccount = accountOptions.find((account) => account.id === accountId) ?? accounts.find((account) => account.id === accountId);
+  const selectedTargetAccount = accounts.find((account) => account.id === toAccountId);
+  const selectedCategoryPath = selectedCategory ? categoryPath(selectedCategory, categories) : "选择分类";
+  const EntryTypeIcon = type === "income" ? ArrowDownLeft : type === "transfer" ? ArrowRightLeft : ArrowUpRight;
+  const amountPreview = useMemo(() => {
+    const text = amount.trim();
+    if (!text) return "0.00";
+    try {
+      return centsToYuan(yuanToCents(text));
+    } catch {
+      return text;
+    }
+  }, [amount]);
+  const entryContext = type === "transfer"
+    ? `${selectedAccount?.name ?? "付款账户"} → ${selectedTargetAccount?.name ?? "转入账户"}`
+    : `${selectedCategoryPath} · ${selectedAccount?.name ?? "选择账户"}`;
+  const entryIntent = type === "income" ? "记录一笔收入" : type === "transfer" ? "记录账户流转" : "记录一笔消费";
 
   useEffect(() => {
     if (!editing) return;
@@ -1081,15 +1098,36 @@ function EntryForm({ accounts, categories, transactions, onSave, onSaveCategory,
   }
 
   return (
-    <section className="panel entry-panel">
-      <div className="entry-type-switch">
-        {typeOptions.map((item) => (
-          <button key={item} className={type === item ? "active" : ""} onClick={() => setType(item)} type="button">{typeLabels[item]}</button>
-        ))}
+    <section className={`panel entry-panel entry-panel-${type}`}>
+      <div className="entry-hero">
+        <div className="entry-hero-top">
+          <div className="entry-state">
+            <span><EntryTypeIcon size={17} /></span>
+            <strong>{editing ? "正在编辑流水" : entryIntent}</strong>
+          </div>
+          <div className="entry-type-switch">
+            {typeOptions.map((item) => (
+              <button key={item} className={type === item ? "active" : ""} onClick={() => setType(item)} type="button">{typeLabels[item]}</button>
+            ))}
+          </div>
+        </div>
+        <div className="entry-amount-card">
+          <span>{type === "income" ? "本次收入" : type === "transfer" ? "流转金额" : "本次支出"}</span>
+          <strong>¥{amountPreview}</strong>
+          <small>{entryContext}</small>
+        </div>
       </div>
-      <form className="form-grid" onSubmit={submit}>
-        {saveFeedback && <div className="save-confirm full" role="status">{saveFeedback}</div>}
-        <label>金额<input value={amount} onChange={(event) => setAmount(event.target.value)} placeholder="0.00" inputMode="decimal" required /></label>
+      <form className="form-grid entry-form-grid" onSubmit={submit}>
+        {saveFeedback && (
+          <div className="save-confirm entry-confirm full" role="status">
+            <span className="confirm-mark">✓</span>
+            <div>
+              <strong>{saveFeedback}</strong>
+              <small>已加入流水，可以继续记下一笔</small>
+            </div>
+          </div>
+        )}
+        <label className="entry-amount-field full">金额<input value={amount} onChange={(event) => setAmount(event.target.value)} placeholder="0.00" inputMode="decimal" required /></label>
         <label>{type === "income" ? "收款账户" : type === "expense" ? "信用卡" : "付款账户"}<select value={accountId} onChange={(event) => setAccountId(event.target.value)}>{accountOptions.map((account) => <option key={account.id} value={account.id}>{account.name}</option>)}</select></label>
         {type === "transfer" ? (
           <label>转入账户<select value={toAccountId} onChange={(event) => setToAccountId(event.target.value)}>{accounts.filter((item) => item.id !== accountId).map((account) => <option key={account.id} value={account.id}>{account.name}</option>)}</select></label>
@@ -1097,7 +1135,7 @@ function EntryForm({ accounts, categories, transactions, onSave, onSaveCategory,
           <CategoryPicker categories={categories} options={filteredCategories} usageCounts={usageCounts} kind={categoryKind} value={categoryId} onChange={setCategoryId} onCreate={onSaveCategory} />
         )}
         <div className="entry-actions full">
-          <button className="primary">{editing ? "保存修改" : "保存流水"}</button>
+          <button className="primary">{editing ? "保存修改" : `保存这笔${typeLabels[type]}`}</button>
           {editing && onCancel && <button type="button" className="ghost" onClick={onCancel}><X size={16} />取消编辑</button>}
         </div>
         <details className="entry-more full">
