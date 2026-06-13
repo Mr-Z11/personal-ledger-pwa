@@ -88,6 +88,54 @@ const REPORT_PALETTE = [
   "#4f6f9f"
 ];
 
+const BEIJING_TIME_ZONE = "Asia/Shanghai";
+const beijingDateTimeFormatter = new Intl.DateTimeFormat("en-CA", {
+  timeZone: BEIJING_TIME_ZONE,
+  year: "numeric",
+  month: "2-digit",
+  day: "2-digit",
+  hour: "2-digit",
+  minute: "2-digit",
+  second: "2-digit",
+  hourCycle: "h23"
+});
+
+function beijingDateTimeParts(value: string | Date = new Date()) {
+  const date = typeof value === "string" ? new Date(value) : value;
+  const safeDate = Number.isNaN(date.getTime()) ? new Date() : date;
+  const parts = Object.fromEntries(
+    beijingDateTimeFormatter
+      .formatToParts(safeDate)
+      .filter((part) => part.type !== "literal")
+      .map((part) => [part.type, part.value])
+  );
+  return {
+    year: parts.year,
+    month: parts.month,
+    day: parts.day,
+    hour: parts.hour,
+    minute: parts.minute,
+    second: parts.second
+  };
+}
+
+function toBeijingDatetimeLocal(value: string | Date = new Date()) {
+  const parts = beijingDateTimeParts(value);
+  return `${parts.year}-${parts.month}-${parts.day}T${parts.hour}:${parts.minute}`;
+}
+
+function toBeijingTransactionTimestamp(value: string | Date = new Date()) {
+  const parts = beijingDateTimeParts(value);
+  return `${parts.year}-${parts.month}-${parts.day}T${parts.hour}:${parts.minute}:${parts.second}.000+08:00`;
+}
+
+function beijingDatetimeLocalToTimestamp(value: string) {
+  const match = value.match(/^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})$/);
+  if (!match) return toBeijingTransactionTimestamp(value);
+  const [, year, month, day, hour, minute] = match;
+  return `${year}-${month}-${day}T${hour}:${minute}:00.000+08:00`;
+}
+
 function reportColor(index: number) {
   return REPORT_PALETTE[index % REPORT_PALETTE.length];
 }
@@ -108,11 +156,8 @@ function daysInMonth(value: string) {
 }
 
 function dateKey(value: string) {
-  const date = new Date(value);
-  const year = date.getFullYear();
-  const month = `${date.getMonth() + 1}`.padStart(2, "0");
-  const day = `${date.getDate()}`.padStart(2, "0");
-  return `${year}-${month}-${day}`;
+  const parts = beijingDateTimeParts(value);
+  return `${parts.year}-${parts.month}-${parts.day}`;
 }
 
 function dateLabel(value: string) {
@@ -993,12 +1038,6 @@ function Metric({ title, value, icon: Icon, tone }: { title: string; value: numb
   );
 }
 
-function toDatetimeLocal(value: string) {
-  const date = new Date(value);
-  const offsetMs = date.getTimezoneOffset() * 60_000;
-  return new Date(date.getTime() - offsetMs).toISOString().slice(0, 16);
-}
-
 function EntryForm({ accounts, categories, transactions, onSave, onSaveCategory, editing, onCancel }: {
   accounts: Account[];
   categories: Category[];
@@ -1015,7 +1054,8 @@ function EntryForm({ accounts, categories, transactions, onSave, onSaveCategory,
   const [amount, setAmount] = useState(editing ? centsToYuan(editing.amountCents) : "");
   const [merchant, setMerchant] = useState(editing?.merchant ?? "");
   const [note, setNote] = useState(editing?.note ?? "");
-  const [occurredAt, setOccurredAt] = useState(() => editing ? toDatetimeLocal(editing.occurredAt) : new Date().toISOString().slice(0, 16));
+  const [occurredAt, setOccurredAt] = useState(() => editing ? toBeijingDatetimeLocal(editing.occurredAt) : toBeijingDatetimeLocal());
+  const [timeTouched, setTimeTouched] = useState(Boolean(editing));
   const [saveFeedback, setSaveFeedback] = useState("");
 
   const categoryKind = type === "income" ? "income" : "expense";
@@ -1054,7 +1094,8 @@ function EntryForm({ accounts, categories, transactions, onSave, onSaveCategory,
     setAmount(centsToYuan(editing.amountCents));
     setMerchant(editing.merchant ?? "");
     setNote(editing.note ?? "");
-    setOccurredAt(toDatetimeLocal(editing.occurredAt));
+    setOccurredAt(toBeijingDatetimeLocal(editing.occurredAt));
+    setTimeTouched(true);
   }, [editing]);
 
   useEffect(() => {
@@ -1079,7 +1120,7 @@ function EntryForm({ accounts, categories, transactions, onSave, onSaveCategory,
       toAccountId: type === "transfer" ? toAccountId : null,
       categoryId: type === "transfer" ? null : categoryId,
       amountCents: yuanToCents(amount),
-      occurredAt: new Date(occurredAt).toISOString(),
+      occurredAt: editing || timeTouched ? beijingDatetimeLocalToTimestamp(occurredAt) : toBeijingTransactionTimestamp(),
       merchant,
       note,
       tags: editing?.tags ?? [],
@@ -1092,7 +1133,8 @@ function EntryForm({ accounts, categories, transactions, onSave, onSaveCategory,
       setAmount("");
       setMerchant("");
       setNote("");
-      setOccurredAt(toDatetimeLocal(new Date().toISOString()));
+      setOccurredAt(toBeijingDatetimeLocal());
+      setTimeTouched(false);
       setSaveFeedback(`${typeLabels[type]} ¥${centsToYuan(item.amountCents)} 已保存`);
     }
   }
@@ -1141,7 +1183,10 @@ function EntryForm({ accounts, categories, transactions, onSave, onSaveCategory,
         <details className="entry-more full">
           <summary>时间、商户、备注</summary>
           <div className="entry-more-grid">
-            <label>时间<input value={occurredAt} onChange={(event) => setOccurredAt(event.target.value)} type="datetime-local" /></label>
+            <label>时间<input value={occurredAt} onChange={(event) => {
+              setOccurredAt(event.target.value);
+              setTimeTouched(true);
+            }} type="datetime-local" /></label>
             <label>商户<input value={merchant} onChange={(event) => setMerchant(event.target.value)} placeholder="超市、餐厅、客户..." /></label>
             <label>备注<input value={note} onChange={(event) => setNote(event.target.value)} placeholder="补充说明" /></label>
           </div>
