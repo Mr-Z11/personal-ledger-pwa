@@ -1206,15 +1206,29 @@ function CategoryPicker({ categories, options, usageCounts, kind, value, onChang
   onCreate: (item: Category) => Promise<void>;
 }) {
   const [query, setQuery] = useState("");
-  const normalizedQuery = query.trim().toLowerCase();
+  const queryText = query.trim();
+  const normalizedQuery = queryText.toLowerCase();
   const selectedCategory = options.find((category) => category.id === value);
-  const matches = normalizedQuery
-    ? options.filter((category) => categoryPath(category, categories).toLowerCase().includes(normalizedQuery))
-    : [];
-  const canCreate = query.trim().length > 0 && !options.some((category) => category.name.toLowerCase() === normalizedQuery);
+  const matches = useMemo(() => {
+    if (!normalizedQuery) return options;
+    return options.filter((category) => categoryPath(category, categories).toLowerCase().includes(normalizedQuery));
+  }, [categories, normalizedQuery, options]);
+  const selectOptions = normalizedQuery && selectedCategory && !matches.some((category) => category.id === selectedCategory.id)
+    ? [selectedCategory, ...matches]
+    : matches;
+  const hasExactMatch = options.some((category) => {
+    const path = categoryPath(category, categories).toLowerCase();
+    return path === normalizedQuery || category.name.toLowerCase() === normalizedQuery;
+  });
+  const canCreate = queryText.length > 0 && !hasExactMatch;
+
+  function chooseCategory(id: string) {
+    onChange(id);
+    setQuery("");
+  }
 
   async function createQuickCategory() {
-    const name = query.trim();
+    const name = queryText;
     if (!name) return;
     let parent = otherCategory(categories, kind);
     if (!parent) {
@@ -1228,41 +1242,63 @@ function CategoryPicker({ categories, options, usageCounts, kind, value, onChang
   }
 
   return (
-    <label className="category-picker full">
-      分类
-      <select value={selectedCategory?.id ?? ""} onChange={(event) => onChange(event.target.value)} required>
-        <option value="" disabled>选择分类</option>
-        {options.map((category) => {
+    <div className="category-picker full">
+      <span className="field-label">分类</span>
+      <div className="category-search">
+        <Search size={15} />
+        <input
+          value={query}
+          onChange={(event) => setQuery(event.target.value)}
+          onKeyDown={(event) => {
+            if (event.key === "Enter") {
+              event.preventDefault();
+              if (matches[0]) chooseCategory(matches[0].id);
+              else if (canCreate) void createQuickCategory();
+            }
+            if (event.key === "Escape") setQuery("");
+          }}
+          placeholder="搜索分类，例如三餐、教育、停车"
+        />
+        {query && (
+          <button type="button" className="category-search-clear" onClick={() => setQuery("")} title="清空搜索">
+            <X size={14} />
+          </button>
+        )}
+      </div>
+      {normalizedQuery && (
+        <small className="category-search-meta">
+          {matches.length > 0 ? `找到 ${matches.length} 个匹配分类` : "没有匹配分类，可以新增到其他分类"}
+        </small>
+      )}
+      <select className={normalizedQuery ? "category-select filtered" : "category-select"} value={selectedCategory?.id ?? ""} onChange={(event) => chooseCategory(event.target.value)} required>
+        <option value="" disabled>{normalizedQuery ? "选择搜索结果" : "选择分类"}</option>
+        {selectOptions.map((category) => {
           const usage = usageCounts.get(category.id) ?? 0;
           return (
             <option key={category.id} value={category.id}>
-              {categoryPath(category, categories)}{usage > 0 ? ` · 常用 ${usage}` : ""}
+              {normalizedQuery && category.id === selectedCategory?.id && !matches.some((item) => item.id === category.id) ? "当前：" : ""}{categoryPath(category, categories)}{usage > 0 ? ` · 常用 ${usage}` : ""}
             </option>
           );
         })}
       </select>
-      <div className="category-search">
-        <Search size={15} />
-        <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="搜索或新增分类" />
-      </div>
       <div className="category-chip-list">
         {!normalizedQuery && selectedCategory && (
-          <button type="button" className="category-chip active" onClick={() => onChange(selectedCategory.id)}>
+          <button type="button" className="category-chip active" onClick={() => chooseCategory(selectedCategory.id)}>
             {categoryPath(selectedCategory, categories)}
           </button>
         )}
-        {matches.map((category) => (
-          <button type="button" className={value === category.id ? "category-chip active" : "category-chip"} key={category.id} onClick={() => onChange(category.id)}>
+        {normalizedQuery && matches.map((category) => (
+          <button type="button" className={value === category.id ? "category-chip active" : "category-chip"} key={category.id} onClick={() => chooseCategory(category.id)}>
             {categoryPath(category, categories)}
           </button>
         ))}
         {canCreate && (
           <button type="button" className="category-chip create" onClick={() => void createQuickCategory()}>
-            新增：其他 &gt; {query.trim()}
+            新增：其他 &gt; {queryText}
           </button>
         )}
       </div>
-    </label>
+    </div>
   );
 }
 

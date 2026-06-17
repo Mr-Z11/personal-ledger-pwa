@@ -1417,7 +1417,16 @@ input[type="month"],
 }
 
 .category-picker {
+  display: grid;
   gap: 0.5rem;
+  font-size: 0.9rem;
+  font-weight: 700;
+}
+
+.field-label {
+  color: #243127;
+  font-size: 0.9rem;
+  font-weight: 800;
 }
 
 .category-search {
@@ -1433,6 +1442,33 @@ input[type="month"],
 
 .category-search input {
   padding-left: 2.15rem;
+  padding-right: 2.35rem;
+}
+
+.category-search-clear {
+  position: absolute;
+  top: 50%;
+  right: 0.42rem;
+  width: 1.85rem;
+  min-height: 1.85rem;
+  border: 0;
+  border-radius: 999px;
+  display: grid;
+  place-items: center;
+  transform: translateY(-50%);
+  background: rgba(49, 71, 58, 0.08);
+  color: rgba(36, 49, 39, 0.72);
+}
+
+.category-search-meta {
+  color: rgba(36, 49, 39, 0.62);
+  font-size: 0.78rem;
+  font-weight: 900;
+}
+
+.category-select.filtered {
+  border-color: rgba(214, 178, 94, 0.62);
+  background: #fffaf0;
 }
 
 .category-chip-list {
