@@ -181,13 +181,13 @@ main {
 .app-heading {
   min-height: 3.15rem;
   padding: 0.48rem 0.72rem;
-  border: 1px solid rgba(49, 71, 58, 0.12);
+  border: 1px solid rgba(31, 95, 116, 0.14);
   border-radius: 0.72rem;
   display: inline-flex;
   align-items: center;
   gap: 0.58rem;
-  background: rgba(255, 250, 240, 0.78);
-  box-shadow: 0 0.7rem 1.6rem rgba(36, 49, 39, 0.08);
+  background: rgba(255, 255, 255, 0.54);
+  box-shadow: 0 0.7rem 1.4rem rgba(31, 95, 116, 0.07);
 }
 
 .app-heading-mark {
@@ -196,7 +196,7 @@ main {
   border-radius: 0.55rem;
   display: grid;
   place-items: center;
-  background: #31473a;
+  background: #1f5f74;
   color: #fff7df;
 }
 
@@ -1359,20 +1359,95 @@ input[type="month"],
 }
 
 .special-expense-panel {
+  padding: 0;
+  overflow: hidden;
+}
+
+.special-expense-panel summary {
+  list-style: none;
+}
+
+.special-expense-panel summary::-webkit-details-marker {
+  display: none;
+}
+
+.special-expense-summary {
+  min-height: 2.65rem;
+  padding: 0.58rem 0.72rem;
   display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  align-items: center;
   gap: 0.55rem;
+  cursor: pointer;
+}
+
+.special-expense-summary div {
+  min-width: 0;
+  display: inline-flex;
+  align-items: baseline;
+  gap: 0.48rem;
+  overflow: hidden;
+}
+
+.special-expense-summary span,
+.special-expense-summary em {
+  color: rgba(36, 49, 39, 0.58);
+  font-size: 0.74rem;
+  font-style: normal;
+  font-weight: 900;
+}
+
+.special-expense-summary strong {
+  color: #243127;
+  font-size: 1rem;
+  white-space: nowrap;
+}
+
+.special-expense-summary::after {
+  content: "展开";
+  padding: 0.22rem 0.48rem;
+  border-radius: 999px;
+  background: rgba(138, 113, 84, 0.12);
+  color: rgba(36, 49, 39, 0.64);
+  font-size: 0.68rem;
+  font-weight: 900;
+}
+
+.special-expense-panel[open] .special-expense-summary::after {
+  content: "收起";
 }
 
 .special-expense-grid {
+  padding: 0 0.72rem 0.72rem;
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 0.5rem;
+  grid-template-columns: repeat(auto-fit, minmax(9rem, 1fr));
+  gap: 0.36rem;
 }
 
 .special-expense-line {
-  padding: 0.58rem;
-  border-radius: 0.55rem;
+  padding: 0.42rem 0.5rem;
+  border-radius: 0.48rem;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 0.24rem 0.45rem;
   background: rgba(255, 255, 255, 0.46);
+}
+
+.special-expense-line span {
+  min-width: 0;
+  overflow: hidden;
+  font-size: 0.74rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.special-expense-line strong {
+  font-size: 0.8rem;
+  white-space: nowrap;
+}
+
+.special-expense-line .bar {
+  grid-column: 1 / -1;
+  height: 0.32rem;
 }
 
 .special-expense-line .bar i {
@@ -1941,6 +2016,7 @@ input[type="month"],
   gap: 0.1rem 0.7rem;
   align-items: center;
   background: rgba(255, 255, 255, 0.46);
+  animation: selectedTrendPop 260ms cubic-bezier(0.18, 0.92, 0.24, 1.2);
 }
 
 .trend-selected span,
@@ -1980,7 +2056,8 @@ input[type="month"],
   min-width: 0;
   min-height: 1.58rem;
   border: 0;
-  padding: 0;
+  border-radius: 0.68rem;
+  padding: 0 0.2rem 0 0;
   display: grid;
   grid-template-columns: 3.7rem minmax(0, 1fr);
   gap: 0.55rem;
@@ -1989,6 +2066,12 @@ input[type="month"],
   color: rgba(36, 49, 39, 0.7);
   font-size: 0.74rem;
   text-align: left;
+  transition:
+    min-height 180ms ease,
+    padding 180ms ease,
+    transform 180ms ease,
+    background 180ms ease,
+    box-shadow 180ms ease;
 }
 
 .trend-row:focus-visible {
@@ -2031,18 +2114,68 @@ input[type="month"],
   transition: width 220ms ease, filter 160ms ease, transform 160ms ease;
 }
 
+.trend-row.active {
+  min-height: 2.72rem;
+  padding: 0.34rem 0.55rem 0.34rem 0;
+  background:
+    linear-gradient(90deg, rgba(255, 250, 240, 0.92), rgba(255, 250, 240, 0.48)),
+    rgba(31, 95, 116, 0.08);
+  box-shadow: inset 0.28rem 0 0 var(--row-color, #1f5f74), 0 0.85rem 1.7rem rgba(36, 49, 39, 0.1);
+  transform: translateX(0.18rem);
+  animation: pickedTrendRow 300ms cubic-bezier(0.18, 0.92, 0.24, 1.2);
+}
+
 .trend-row:hover .trend-fill,
 .trend-row.active .trend-fill {
   filter: saturate(1.1) brightness(1.03);
 }
 
+.trend-row.active .trend-fill {
+  box-shadow: 0 0.55rem 1.1rem rgba(31, 95, 116, 0.18);
+}
+
 .trend-row.active .trend-track {
+  height: 1.42rem;
   background: rgba(255, 250, 240, 0.78);
-  box-shadow: inset 0 0 0 1px rgba(49, 71, 58, 0.16), 0 0.55rem 1rem rgba(36, 49, 39, 0.08);
+  box-shadow:
+    inset 0 0 0 1px rgba(31, 95, 116, 0.18),
+    0 0.55rem 1rem rgba(36, 49, 39, 0.08);
 }
 
 .trend-row.active .trend-y-label {
   color: #243127;
+  font-size: 0.9rem;
+}
+
+@keyframes pickedTrendRow {
+  0% {
+    transform: translateX(0) scale(0.98);
+  }
+
+  60% {
+    transform: translateX(0.24rem) scale(1.018);
+  }
+
+  100% {
+    transform: translateX(0.18rem) scale(1);
+  }
+}
+
+@keyframes selectedTrendPop {
+  0% {
+    transform: scale(0.985);
+    filter: brightness(0.98);
+  }
+
+  65% {
+    transform: scale(1.018);
+    filter: brightness(1.02);
+  }
+
+  100% {
+    transform: scale(1);
+    filter: brightness(1);
+  }
 }
 
 .trend-swatch {
@@ -2769,6 +2902,14 @@ input[type="month"],
 
   .report-page .panel {
     padding: 0.68rem;
+  }
+
+  .special-expense-summary {
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+
+  .special-expense-summary em {
+    display: none;
   }
 
   .trend-bars {

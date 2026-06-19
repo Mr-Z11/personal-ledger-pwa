@@ -824,10 +824,10 @@ export function App() {
             <h1>{viewTitle(view)}</h1>
           </div>
           <div className="app-heading">
-            <div className="app-heading-mark"><Banknote size={18} /></div>
+            <div className="app-heading-mark"><PieChartIcon size={18} /></div>
             <div>
-              <strong>消费账本</strong>
-              <span>记录支出，分析现金流</span>
+              <strong>消费分析</strong>
+              <span>趋势、预算、支出结构</span>
             </div>
           </div>
         </header>
@@ -2277,11 +2277,14 @@ function Reports({ transactions, accounts, categories }: { transactions: Transac
       </div>
 
       {specialCategoryData.length > 0 && (
-        <section className="panel special-expense-panel">
-          <div className="chart-heading">
-            <h2>专项支出</h2>
-            <span>不纳入正常消费分析</span>
-          </div>
+        <details className="panel special-expense-panel">
+          <summary className="special-expense-summary">
+            <div>
+              <span>专项支出</span>
+              <strong>¥{centsToYuan(specialSummary.expenseCents)}</strong>
+            </div>
+            <em>{specialCategoryData.length} 类 · 单独统计</em>
+          </summary>
           <div className="special-expense-grid">
             {specialCategoryData.map((entry) => (
               <div className="budget-line special-expense-line" key={entry.id}>
@@ -2291,7 +2294,7 @@ function Reports({ transactions, accounts, categories }: { transactions: Transac
               </div>
             ))}
           </div>
-        </section>
+        </details>
       )}
 
       <section className="grid two report-grid">
@@ -2326,7 +2329,7 @@ function Reports({ transactions, accounts, categories }: { transactions: Transac
               <span><i className="legend trend-swatch" />日常消费</span>
             </div>
           </div>
-          <div className="trend-selected">
+          <div className="trend-selected" key={selectedTrend?.period ?? "empty"}>
             <span>{selectedTrendLabel}</span>
             <strong>¥{centsToYuan(selectedTrend?.expense ?? 0)}</strong>
             <em>点击下方月份查看金额</em>
@@ -2343,6 +2346,7 @@ function Reports({ transactions, accounts, categories }: { transactions: Transac
                   className={isActive ? "trend-row active" : "trend-row"}
                   key={item.period}
                   onClick={() => setSelectedTrendIndex(index)}
+                  style={{ "--row-color": trendColor(index) } as CSSProperties}
                   type="button"
                 >
                   <span className="trend-y-label">{label}</span>
