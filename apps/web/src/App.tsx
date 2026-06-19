@@ -88,6 +88,17 @@ const REPORT_PALETTE = [
   "#4f6f9f"
 ];
 
+const TREND_PALETTE = [
+  "#1f5f74",
+  "#2f7d4f",
+  "#d6b25e",
+  "#8a7154",
+  "#6b6f3f",
+  "#8a5fb0",
+  "#2f7d86",
+  "#ad7f24"
+];
+
 const BEIJING_TIME_ZONE = "Asia/Shanghai";
 const beijingDateTimeFormatter = new Intl.DateTimeFormat("en-CA", {
   timeZone: BEIJING_TIME_ZONE,
@@ -138,6 +149,10 @@ function beijingDatetimeLocalToTimestamp(value: string) {
 
 function reportColor(index: number) {
   return REPORT_PALETTE[index % REPORT_PALETTE.length];
+}
+
+function trendColor(index: number) {
+  return TREND_PALETTE[index % TREND_PALETTE.length];
 }
 
 function dateFromMonthKey(value: string) {
@@ -2274,14 +2289,21 @@ function Reports({ transactions, accounts, categories }: { transactions: Transac
         <div className="panel chart-panel trend-panel">
           <h2>{period === "month" ? "月度" : "年度"}消费趋势</h2>
           <div className="trend-legend">
-            <span><i className="legend expense-bar" />支出</span>
+            <span><i className="legend trend-swatch" />日常消费</span>
           </div>
           <div className={`trend-bars monthly-flow ${period === "month" ? "monthly-trend" : "yearly-trend"}`}>
-            {trendData.map((item) => {
+            {trendData.map((item, index) => {
               return (
                 <div className="trend-month" key={item.period}>
                   <div className="trend-stack">
-                    <i className="expense-bar" title={`支出 ¥${centsToYuan(item.expense)}`} style={{ height: `${Math.max(4, (item.expense / maxTrend) * 100)}%` }} />
+                    <i
+                      className="expense-bar trend-bar"
+                      title={`支出 ¥${centsToYuan(item.expense)}`}
+                      style={{
+                        "--trend-color": trendColor(index),
+                        height: `${Math.max(4, (item.expense / maxTrend) * 100)}%`
+                      } as CSSProperties}
+                    />
                   </div>
                   <span>{period === "month" ? item.period.slice(5) : item.period}</span>
                   <small className="net-negative-text">{centsToYuan(item.expense)}</small>
