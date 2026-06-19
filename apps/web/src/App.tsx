@@ -188,6 +188,11 @@ function monthLabel(value: string) {
   return `${year}年${Number(month)}月`;
 }
 
+function shortMonthLabel(value: string) {
+  const [year, month] = value.split("-");
+  return `${year.slice(-2)}/${month.padStart(2, "0")}`;
+}
+
 function MonthField({ value, onChange, label, className = "" }: {
   value: string;
   onChange: (value: string) => void;
@@ -983,11 +988,12 @@ function Overview({ summary, budgetCents, accounts, categories, transactions }: 
   const topCategoryEntry = Array.from(expenseByCategory.entries()).sort((left, right) => right[1] - left[1])[0];
   const topCategory = topCategoryEntry ? categories.find((category) => category.id === topCategoryEntry[0]) : undefined;
   const budgetUsage = budgetCents > 0 ? Math.min(100, Math.round((summary.expenseCents / budgetCents) * 100)) : 0;
-  const recentTransactions = transactions.slice(0, 6);
+  const recentTransactions = transactions.slice(0, 4);
   return (
     <section className="overview-dashboard">
       <div className="overview-hero">
         <div className="overview-hero-main">
+          <em>{monthLabel(monthKey())}</em>
           <span>本月日常消费</span>
           <strong>¥{centsToYuan(summary.expenseCents)}</strong>
           <p>{budgetCents > 0 ? `日常预算 ¥${centsToYuan(budgetCents)}，剩余 ¥${centsToYuan(Math.max(0, budgetCents - summary.expenseCents))}` : "本月还没有设置日常预算"}</p>
@@ -1000,19 +1006,28 @@ function Overview({ summary, budgetCents, accounts, categories, transactions }: 
         </div>
       </div>
 
-      <div className="overview-kpis">
-        <Metric title="本月消费" value={summary.expenseCents} icon={ArrowUpRight} tone="warn" />
-        <Metric title="日均支出" value={dailyAverage} icon={ArrowUpRight} tone="warn" />
-        <Metric title="最大单笔" value={largestExpense} icon={Banknote} tone="blue" />
-      </div>
-
-      <section className="panel overview-insight">
-        <div>
-          <span>最大支出分类</span>
+      <div className="overview-quick-grid">
+        <article className="overview-quick-card">
+          <span>本月总支出</span>
+          <strong>¥{centsToYuan(totalExpenseCents)}</strong>
+          <em>日常 + 专项</em>
+        </article>
+        <article className="overview-quick-card">
+          <span>日均消费</span>
+          <strong>¥{centsToYuan(dailyAverage)}</strong>
+          <em>按已过天数估算</em>
+        </article>
+        <article className="overview-quick-card">
+          <span>最大单笔</span>
+          <strong>¥{centsToYuan(largestExpense)}</strong>
+          <em>本月日常消费</em>
+        </article>
+        <article className="overview-quick-card category">
+          <span>最大分类</span>
           <strong>{topCategory ? categoryPath(topCategory, categories) : "暂无支出"}</strong>
-        </div>
-        <b>{topCategoryEntry ? `¥${centsToYuan(topCategoryEntry[1])}` : "¥0.00"}</b>
-      </section>
+          <em>{topCategoryEntry ? `¥${centsToYuan(topCategoryEntry[1])}` : "¥0.00"}</em>
+        </article>
+      </div>
 
       <section className="panel overview-spending">
         <div className="chart-heading">
@@ -2179,6 +2194,11 @@ function Reports({ transactions, accounts, categories }: { transactions: Transac
   });
   const maxTrend = Math.max(1, ...trendData.map((entry) => entry.expense));
   const recentExpenseAverage = Math.round(trendData.slice(-3).reduce((sum, item) => sum + item.expense, 0) / 3);
+  const trendStart = trendData[0]?.period ?? periodKey;
+  const trendEnd = trendData[trendData.length - 1]?.period ?? periodKey;
+  const trendRangeLabel = period === "month"
+    ? `${monthLabel(trendStart)} - ${monthLabel(trendEnd)}`
+    : `${yearLabel(trendStart)} - ${yearLabel(trendEnd)}`;
 
   useEffect(() => {
     if (selectedCategoryIndex !== null && selectedCategoryIndex > categoryData.length - 1) setSelectedCategoryIndex(null);
@@ -2287,9 +2307,14 @@ function Reports({ transactions, accounts, categories }: { transactions: Transac
         </div>
 
         <div className="panel chart-panel trend-panel">
-          <h2>{period === "month" ? "月度" : "年度"}消费趋势</h2>
-          <div className="trend-legend">
-            <span><i className="legend trend-swatch" />日常消费</span>
+          <div className="chart-heading trend-heading">
+            <div>
+              <h2>{period === "month" ? "近12个月消费趋势" : "近6年消费趋势"}</h2>
+              <span>{trendRangeLabel}</span>
+            </div>
+            <div className="trend-legend">
+              <span><i className="legend trend-swatch" />日常消费</span>
+            </div>
           </div>
           <div className={`trend-bars monthly-flow ${period === "month" ? "monthly-trend" : "yearly-trend"}`}>
             {trendData.map((item, index) => {
@@ -2305,7 +2330,7 @@ function Reports({ transactions, accounts, categories }: { transactions: Transac
                       } as CSSProperties}
                     />
                   </div>
-                  <span>{period === "month" ? item.period.slice(5) : item.period}</span>
+                  <span>{period === "month" ? shortMonthLabel(item.period) : item.period}</span>
                   <small className="net-negative-text">{centsToYuan(item.expense)}</small>
                 </div>
               );
