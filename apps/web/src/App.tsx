@@ -2095,6 +2095,7 @@ function Reports({ transactions, accounts, categories }: { transactions: Transac
   const [month, setMonth] = useState(monthKey());
   const [year, setYear] = useState(currentYear);
   const [selectedCategoryIndex, setSelectedCategoryIndex] = useState<number | null>(null);
+  const [selectedTrendIndex, setSelectedTrendIndex] = useState<number | null>(null);
   const categoryKind: Category["kind"] = "expense";
   const selectedYear = year.trim() || currentYear;
   const periodKey = period === "month" ? month : selectedYear;
@@ -2199,10 +2200,19 @@ function Reports({ transactions, accounts, categories }: { transactions: Transac
   const trendRangeLabel = period === "month"
     ? `${monthLabel(trendStart)} - ${monthLabel(trendEnd)}`
     : `${yearLabel(trendStart)} - ${yearLabel(trendEnd)}`;
+  const activeTrendIndex = selectedTrendIndex ?? trendData.length - 1;
+  const selectedTrend = trendData[activeTrendIndex] ?? trendData[trendData.length - 1];
+  const selectedTrendLabel = selectedTrend
+    ? period === "month" ? monthLabel(selectedTrend.period) : yearLabel(selectedTrend.period)
+    : "暂无数据";
 
   useEffect(() => {
     if (selectedCategoryIndex !== null && selectedCategoryIndex > categoryData.length - 1) setSelectedCategoryIndex(null);
   }, [categoryData.length, selectedCategoryIndex]);
+
+  useEffect(() => {
+    setSelectedTrendIndex(trendData.length > 0 ? trendData.length - 1 : null);
+  }, [month, period, selectedYear]);
 
   return (
     <section className="report-page">
@@ -2316,23 +2326,37 @@ function Reports({ transactions, accounts, categories }: { transactions: Transac
               <span><i className="legend trend-swatch" />日常消费</span>
             </div>
           </div>
-          <div className={`trend-bars monthly-flow ${period === "month" ? "monthly-trend" : "yearly-trend"}`}>
+          <div className="trend-selected">
+            <span>{selectedTrendLabel}</span>
+            <strong>¥{centsToYuan(selectedTrend?.expense ?? 0)}</strong>
+            <em>点击下方月份查看金额</em>
+          </div>
+          <div className={`trend-bars trend-bar-list ${period === "month" ? "monthly-trend" : "yearly-trend"}`}>
             {trendData.map((item, index) => {
+              const isActive = index === activeTrendIndex;
+              const fillWidth = item.expense > 0 ? Math.max(3, (item.expense / maxTrend) * 100) : 0;
+              const label = period === "month" ? shortMonthLabel(item.period) : item.period;
               return (
-                <div className="trend-month" key={item.period}>
-                  <div className="trend-stack">
+                <button
+                  aria-label={`${period === "month" ? monthLabel(item.period) : yearLabel(item.period)} 日常消费 ¥${centsToYuan(item.expense)}`}
+                  aria-pressed={isActive}
+                  className={isActive ? "trend-row active" : "trend-row"}
+                  key={item.period}
+                  onClick={() => setSelectedTrendIndex(index)}
+                  type="button"
+                >
+                  <span className="trend-y-label">{label}</span>
+                  <span className="trend-track">
                     <i
-                      className="expense-bar trend-bar"
+                      className="trend-fill trend-bar"
                       title={`支出 ¥${centsToYuan(item.expense)}`}
                       style={{
                         "--trend-color": trendColor(index),
-                        height: `${Math.max(4, (item.expense / maxTrend) * 100)}%`
+                        width: `${fillWidth}%`
                       } as CSSProperties}
                     />
-                  </div>
-                  <span>{period === "month" ? shortMonthLabel(item.period) : item.period}</span>
-                  <small className="net-negative-text">{centsToYuan(item.expense)}</small>
-                </div>
+                  </span>
+                </button>
               );
             })}
           </div>

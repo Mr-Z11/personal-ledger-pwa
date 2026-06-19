@@ -1925,115 +1925,128 @@ input[type="month"],
 }
 
 .trend-bars {
-  min-height: 10.85rem;
+  min-height: 0;
   display: grid;
-  gap: 0.48rem;
-  align-items: end;
+  gap: 0.38rem;
   margin-top: 0.56rem;
 }
 
-.monthly-flow {
-  overflow-x: auto;
-  padding: 0 0 0.28rem;
-  scroll-snap-type: x proximity;
-}
-
-.monthly-trend {
-  grid-template-columns: repeat(12, minmax(3.05rem, 1fr));
-}
-
-.yearly-trend {
-  grid-template-columns: repeat(6, minmax(3.25rem, 1fr));
-}
-
-.trend-month {
-  min-width: 0;
+.trend-selected {
+  margin-top: 0.62rem;
+  padding: 0.66rem 0.72rem;
+  border: 1px solid rgba(49, 71, 58, 0.12);
+  border-radius: 0.62rem;
   display: grid;
-  gap: 0.3rem;
-  align-items: end;
-  text-align: center;
-  color: rgba(36, 49, 39, 0.68);
-  font-size: 0.74rem;
-  scroll-snap-align: start;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 0.1rem 0.7rem;
+  align-items: center;
+  background: rgba(255, 255, 255, 0.46);
 }
 
-.trend-month span,
-.trend-month small {
-  display: block;
+.trend-selected span,
+.trend-selected em {
   min-width: 0;
   overflow: hidden;
+  color: rgba(36, 49, 39, 0.58);
+  font-size: 0.76rem;
+  font-style: normal;
+  font-weight: 900;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.trend-month span {
+.trend-selected strong {
+  grid-row: 1 / 3;
+  grid-column: 2;
+  color: #243127;
+  font-size: 1.28rem;
+  line-height: 1;
+  white-space: nowrap;
+}
+
+.trend-bar-list {
+  padding-left: 0.1rem;
+}
+
+.monthly-trend {
+  grid-template-columns: 1fr;
+}
+
+.yearly-trend {
+  grid-template-columns: 1fr;
+}
+
+.trend-row {
+  min-width: 0;
+  min-height: 1.58rem;
+  border: 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: 3.7rem minmax(0, 1fr);
+  gap: 0.55rem;
+  align-items: center;
+  background: transparent;
+  color: rgba(36, 49, 39, 0.7);
+  font-size: 0.74rem;
+  text-align: left;
+}
+
+.trend-row:focus-visible {
+  outline: 2px solid rgba(31, 95, 116, 0.35);
+  outline-offset: 3px;
+}
+
+.trend-y-label {
+  display: block;
+  min-width: 0;
+  overflow: hidden;
+  color: rgba(36, 49, 39, 0.64);
   font-weight: 900;
+  text-align: right;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
-.trend-month small {
-  font-size: 0.66rem;
-  line-height: 1.1;
+.trend-track {
+  position: relative;
+  height: 0.92rem;
+  border-radius: 999px;
+  overflow: hidden;
+  background:
+    linear-gradient(90deg, rgba(49, 71, 58, 0.08), rgba(49, 71, 58, 0.03)),
+    rgba(255, 255, 255, 0.52);
+  box-shadow: inset 0 0 0 1px rgba(49, 71, 58, 0.06);
 }
 
-.trend-stack {
-  height: 7.85rem;
-  display: flex;
-  align-items: end;
-  justify-content: center;
-  gap: 0.18rem;
-  padding: 0.45rem 0.2rem 0;
-  border-bottom: 1px solid rgba(49, 71, 58, 0.12);
+.trend-fill {
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 0;
+  min-width: 0;
+  border-radius: inherit;
+  background:
+    linear-gradient(90deg, rgba(255, 250, 240, 0.22), rgba(255, 250, 240, 0)),
+    var(--trend-color, #1f5f74);
+  box-shadow: 0 0.35rem 0.8rem rgba(31, 95, 116, 0.14);
+  transition: width 220ms ease, filter 160ms ease, transform 160ms ease;
 }
 
-.trend-stack i {
-  width: 0.72rem;
-  min-height: 0.2rem;
-  border-radius: 999px 999px 0 0;
-  box-shadow: 0 0.4rem 0.9rem rgba(31, 95, 116, 0.14);
+.trend-row:hover .trend-fill,
+.trend-row.active .trend-fill {
+  filter: saturate(1.1) brightness(1.03);
 }
 
-.income-bar {
-  background: #2f7d4f;
+.trend-row.active .trend-track {
+  background: rgba(255, 250, 240, 0.78);
+  box-shadow: inset 0 0 0 1px rgba(49, 71, 58, 0.16), 0 0.55rem 1rem rgba(36, 49, 39, 0.08);
 }
 
-.expense-bar {
-  background: #d45b3f;
+.trend-row.active .trend-y-label {
+  color: #243127;
 }
 
 .trend-swatch {
   background: linear-gradient(135deg, #1f5f74, #2f7d4f 48%, #d6b25e);
-}
-
-.trend-bar.expense-bar {
-  background:
-    linear-gradient(180deg, rgba(255, 250, 240, 0.34), rgba(255, 250, 240, 0)),
-    var(--trend-color, #1f5f74);
-}
-
-.net-line {
-  opacity: 0.82;
-}
-
-.net-positive {
-  background: #d6b25e;
-}
-
-.net-negative {
-  background: #9e4b3e;
-}
-
-.net-positive-text,
-.net-negative-text {
-  font-size: 0.68rem;
-  font-weight: 800;
-}
-
-.net-positive-text {
-  color: #2f7d4f;
-}
-
-.net-negative-text {
-  color: #d45b3f;
 }
 
 .floating,
@@ -2759,26 +2772,34 @@ input[type="month"],
   }
 
   .trend-bars {
-    min-height: 10.4rem;
-  }
-
-  .trend-stack {
-    height: 7.6rem;
+    min-height: 0;
+    gap: 0.32rem;
   }
 
   .trend-heading {
     gap: 0.45rem;
   }
 
-  .monthly-trend {
-    grid-template-columns: repeat(12, minmax(2.65rem, 1fr));
+  .trend-selected {
+    padding: 0.56rem 0.62rem;
   }
 
-  .trend-month {
+  .trend-selected strong {
+    font-size: 1.08rem;
+  }
+
+  .monthly-trend {
+    grid-template-columns: 1fr;
+  }
+
+  .trend-row {
+    min-height: 1.42rem;
+    grid-template-columns: 3.25rem minmax(0, 1fr);
+    gap: 0.42rem;
     font-size: 0.68rem;
   }
 
-  .trend-month small {
-    font-size: 0.6rem;
+  .trend-track {
+    height: 0.78rem;
   }
 }
