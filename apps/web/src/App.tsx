@@ -1586,6 +1586,8 @@ function TransactionList({ transactions, accounts, categories, onDelete, onEdit,
   const [selectedIds, setSelectedIds] = useState<Set<string>>(() => new Set());
   const [batchAccountId, setBatchAccountId] = useState("");
   const [batchCategoryId, setBatchCategoryId] = useState("");
+  const [detailTransaction, setDetailTransaction] = useState<Transaction | null>(null);
+  const [actionTransaction, setActionTransaction] = useState<Transaction | null>(null);
   const activeAccounts = activeOnly(accounts);
   const activeCategories = activeOnly(categories);
   const batchCategory = activeCategories.find((category) => category.id === batchCategoryId);
@@ -1655,6 +1657,18 @@ function TransactionList({ transactions, accounts, categories, onDelete, onEdit,
     if (selectedTransactions.length === 0) return;
     await onBulkUpdate(selectedTransactions.map(updater));
     setSelectedIds(new Set());
+  }
+
+  function startEdit(item: Transaction) {
+    setDetailTransaction(null);
+    setActionTransaction(null);
+    onEdit(item);
+  }
+
+  async function deleteTransaction(item: Transaction) {
+    setDetailTransaction(null);
+    setActionTransaction(null);
+    await onDelete(item);
   }
 
   return (
@@ -1740,8 +1754,10 @@ function TransactionList({ transactions, accounts, categories, onDelete, onEdit,
                 transactions={group.transactions}
                 accounts={accounts}
                 categories={categories}
-                onDelete={onDelete}
-                onEdit={onEdit}
+                onDelete={deleteTransaction}
+                onEdit={startEdit}
+                onOpen={setDetailTransaction}
+                onLongAction={setActionTransaction}
                 selectedIds={selectedIds}
                 onToggleSelected={toggleSelected}
               />
@@ -1754,21 +1770,74 @@ function TransactionList({ transactions, accounts, categories, onDelete, onEdit,
           加载更多流水
         </button>
       )}
+      {detailTransaction && (
+        <TransactionDetailDrawer
+          transaction={detailTransaction}
+          accounts={accounts}
+          categories={categories}
+          onClose={() => setDetailTransaction(null)}
+          onDelete={deleteTransaction}
+          onEdit={startEdit}
+        />
+      )}
+      {actionTransaction && (
+        <TransactionActionSheet
+          transaction={actionTransaction}
+          accounts={accounts}
+          categories={categories}
+          onClose={() => setActionTransaction(null)}
+          onDelete={deleteTransaction}
+          onEdit={startEdit}
+        />
+      )}
     </section>
   );
 }
 
-function TransactionRows({ transactions, accounts, categories, onDelete, onEdit, onRestore, selectedIds, onToggleSelected, compact = false }: {
+function TransactionRows({ transactions, accounts, categories, onDelete, onEdit, onOpen, onLongAction, onRestore, selectedIds, onToggleSelected, compact = false }: {
   transactions: Transaction[];
   accounts: Account[];
   categories: Category[];
   onDelete?: (item: Transaction) => Promise<void>;
   onEdit?: (item: Transaction) => void;
+  onOpen?: (item: Transaction) => void;
+  onLongAction?: (item: Transaction) => void;
   onRestore?: (item: Transaction) => Promise<void>;
   selectedIds?: Set<string>;
   onToggleSelected?: (id: string) => void;
   compact?: boolean;
 }) {
+  const longPressTimer = useRef<number | null>(null);
+  const longPressTriggered = useRef(false);
+
+  function clearLongPressTimer() {
+    if (longPressTimer.current) {
+      window.clearTimeout(longPressTimer.current);
+      longPressTimer.current = null;
+    }
+  }
+
+  function isRowControl(target: EventTarget | null) {
+    return target instanceof HTMLElement && Boolean(target.closest("button, input, select, textarea, a"));
+  }
+
+  function startLongPress(item: Transaction, target: EventTarget | null) {
+    if (!onLongAction || isRowControl(target)) return;
+    clearLongPressTimer();
+    longPressTriggered.current = false;
+    longPressTimer.current = window.setTimeout(() => {
+      longPressTriggered.current = true;
+      onLongAction(item);
+    }, 520);
+  }
+
+  function finishLongPress() {
+    clearLongPressTimer();
+    window.setTimeout(() => {
+      longPressTriggered.current = false;
+    }, 0);
+  }
+
   if (transactions.length === 0) return <p className="empty">暂无记录</p>;
   return (
     <div className="rows">
@@ -1778,8 +1847,36 @@ function TransactionRows({ transactions, accounts, categories, onDelete, onEdit,
         const sign = item.type === "expense" ? "-" : item.type === "income" ? "+" : "";
         const title = item.merchant || category?.name || typeLabels[item.type];
         const meta = `${new Date(item.occurredAt).toLocaleDateString()} · ${account?.name ?? ""}${category ? ` · ${category.name}` : ""}`;
+        const interactive = Boolean(onOpen || onLongAction);
+        const rowClassName = `${onToggleSelected ? "row selectable" : "row"} ${interactive ? "interactive" : ""}`.trim();
         return (
-          <article className={onToggleSelected ? "row selectable" : "row"} key={item.id}>
+          <article
+            className={rowClassName}
+            key={item.id}
+            onClick={(event) => {
+              if (isRowControl(event.target)) return;
+              if (longPressTriggered.current) return;
+              onOpen?.(item);
+            }}
+            onContextMenu={(event) => {
+              if (!onLongAction || isRowControl(event.target)) return;
+              event.preventDefault();
+              onLongAction(item);
+            }}
+            onKeyDown={(event) => {
+              if (!onOpen || isRowControl(event.target)) return;
+              if (event.key === "Enter" || event.key === " ") {
+                event.preventDefault();
+                onOpen(item);
+              }
+            }}
+            onPointerCancel={finishLongPress}
+            onPointerDown={(event) => startLongPress(item, event.target)}
+            onPointerLeave={finishLongPress}
+            onPointerUp={finishLongPress}
+            role={interactive ? "button" : undefined}
+            tabIndex={interactive ? 0 : undefined}
+          >
             {onToggleSelected && (
               <input
                 aria-label="选择流水"
@@ -1796,7 +1893,7 @@ function TransactionRows({ transactions, accounts, categories, onDelete, onEdit,
             </div>
             <div className="row-side">
               <b>{sign}¥{centsToYuan(item.amountCents)}</b>
-              {!compact && (
+              {!compact && !onLongAction && (
                 <div className="row-actions">
                   {onEdit && <button className="icon-button mini" onClick={() => onEdit(item)} title="编辑"><Pencil size={14} /></button>}
                   {onDelete && <button className="icon-button mini" onClick={() => onDelete(item)} title="删除"><Trash2 size={14} /></button>}
@@ -1807,6 +1904,106 @@ function TransactionRows({ transactions, accounts, categories, onDelete, onEdit,
           </article>
         );
       })}
+    </div>
+  );
+}
+
+function transactionTitle(transaction: Transaction, categories: Category[]) {
+  const category = categories.find((entry) => entry.id === transaction.categoryId);
+  return transaction.merchant || categoryPath(category, categories) || typeLabels[transaction.type];
+}
+
+function transactionDateTimeLabel(value: string) {
+  return new Date(value).toLocaleString("zh-CN", {
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit"
+  });
+}
+
+function TransactionDetailDrawer({ transaction, accounts, categories, onClose, onEdit, onDelete, onRestore }: {
+  transaction: Transaction;
+  accounts: Account[];
+  categories: Category[];
+  onClose: () => void;
+  onEdit?: (item: Transaction) => void;
+  onDelete?: (item: Transaction) => Promise<void>;
+  onRestore?: (item: Transaction) => Promise<void>;
+}) {
+  const account = accounts.find((entry) => entry.id === transaction.accountId);
+  const targetAccount = accounts.find((entry) => entry.id === transaction.toAccountId);
+  const category = categories.find((entry) => entry.id === transaction.categoryId);
+  const sign = transaction.type === "expense" ? "-" : transaction.type === "income" ? "+" : "";
+  const fields = [
+    { label: "类型", value: typeLabels[transaction.type] },
+    { label: "分类", value: category ? categoryPath(category, categories) : transaction.type === "transfer" ? "账户流转" : "未分类" },
+    { label: "账户", value: account?.name ?? "未记录账户" },
+    ...(targetAccount ? [{ label: "转入账户", value: targetAccount.name }] : []),
+    { label: "时间", value: transactionDateTimeLabel(transaction.occurredAt) },
+    { label: "商户", value: transaction.merchant || "未填写" },
+    { label: "备注", value: transaction.note || "未填写" },
+    { label: "标签", value: transaction.tags.length > 0 ? transaction.tags.join("、") : "无" },
+    { label: "来源", value: "未记录来源" },
+    { label: "更新时间", value: transactionDateTimeLabel(transaction.updatedAt) }
+  ];
+
+  return (
+    <div className="transaction-detail-backdrop" onClick={onClose}>
+      <section className="transaction-detail-sheet" onClick={(event) => event.stopPropagation()} role="dialog" aria-modal="true" aria-label="流水详情">
+        <div className="transaction-detail-head">
+          <div>
+            <span>{typeLabels[transaction.type]}</span>
+            <h2>{transactionTitle(transaction, categories)}</h2>
+          </div>
+          <button className="icon-button mini" onClick={onClose} type="button" title="关闭"><X size={15} /></button>
+        </div>
+        <div className={`transaction-detail-amount ${transaction.type}`}>
+          <strong>{sign}¥{centsToYuan(transaction.amountCents)}</strong>
+          <span>{transactionDateTimeLabel(transaction.occurredAt)}</span>
+        </div>
+        <dl className="transaction-detail-grid">
+          {fields.map((field) => (
+            <div key={field.label}>
+              <dt>{field.label}</dt>
+              <dd>{field.value}</dd>
+            </div>
+          ))}
+        </dl>
+        {(onEdit || onDelete || onRestore) && (
+          <div className="transaction-detail-actions">
+            {onEdit && <button className="ghost" onClick={() => onEdit(transaction)} type="button"><Pencil size={16} />编辑</button>}
+            {onRestore && <button className="ghost" onClick={() => void onRestore(transaction)} type="button"><Undo2 size={16} />恢复</button>}
+            {onDelete && <button className="ghost danger" onClick={() => void onDelete(transaction)} type="button"><Trash2 size={16} />删除</button>}
+          </div>
+        )}
+      </section>
+    </div>
+  );
+}
+
+function TransactionActionSheet({ transaction, accounts, categories, onClose, onEdit, onDelete }: {
+  transaction: Transaction;
+  accounts: Account[];
+  categories: Category[];
+  onClose: () => void;
+  onEdit: (item: Transaction) => void;
+  onDelete: (item: Transaction) => Promise<void>;
+}) {
+  const account = accounts.find((entry) => entry.id === transaction.accountId);
+  return (
+    <div className="transaction-action-backdrop" onClick={onClose}>
+      <section className="transaction-action-sheet" onClick={(event) => event.stopPropagation()} role="dialog" aria-modal="true" aria-label="流水操作">
+        <div>
+          <span>流水操作</span>
+          <strong>{transactionTitle(transaction, categories)}</strong>
+          <em>{account?.name ?? "未记录账户"} · ¥{centsToYuan(transaction.amountCents)}</em>
+        </div>
+        <button type="button" className="ghost" onClick={() => onEdit(transaction)}><Pencil size={16} />编辑流水</button>
+        <button type="button" className="ghost danger" onClick={() => void onDelete(transaction)}><Trash2 size={16} />删除流水</button>
+        <button type="button" className="ghost" onClick={onClose}>取消</button>
+      </section>
     </div>
   );
 }
@@ -2274,6 +2471,7 @@ function Reports({ transactions, accounts, categories }: { transactions: Transac
   const [selectedCategoryIndex, setSelectedCategoryIndex] = useState<number | null>(null);
   const [selectedTrendIndex, setSelectedTrendIndex] = useState<number | null>(null);
   const [expandedInsightId, setExpandedInsightId] = useState<string | null>(null);
+  const [detailTransaction, setDetailTransaction] = useState<Transaction | null>(null);
   const categoryKind: Category["kind"] = "expense";
   const selectedYear = year.trim() || currentYear;
   const periodKey = period === "month" ? month : selectedYear;
@@ -2466,6 +2664,7 @@ function Reports({ transactions, accounts, categories }: { transactions: Transac
 
   useEffect(() => {
     setExpandedInsightId(null);
+    setDetailTransaction(null);
   }, [month, period, selectedYear]);
 
   return (
@@ -2570,7 +2769,7 @@ function Reports({ transactions, accounts, categories }: { transactions: Transac
                 <h3>{selectedCategory.name}</h3>
                 <span>{selectedCategoryTransactions.length} 笔 · ¥{centsToYuan(selectedCategory.value)}</span>
               </div>
-              <TransactionRows transactions={selectedCategoryTransactions.slice(0, 20)} accounts={accounts} categories={categories} compact />
+              <TransactionRows transactions={selectedCategoryTransactions.slice(0, 20)} accounts={accounts} categories={categories} onOpen={setDetailTransaction} compact />
               {selectedCategoryTransactions.length > 20 && <p className="empty">已显示最近 20 笔，更多明细可到流水页筛选查看。</p>}
             </div>
           )}
@@ -2623,6 +2822,14 @@ function Reports({ transactions, accounts, categories }: { transactions: Transac
           </div>
         </div>
       </section>
+      {detailTransaction && (
+        <TransactionDetailDrawer
+          transaction={detailTransaction}
+          accounts={accounts}
+          categories={categories}
+          onClose={() => setDetailTransaction(null)}
+        />
+      )}
     </section>
   );
 }
