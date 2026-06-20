@@ -32,7 +32,7 @@ import {
   Upload,
   X
 } from "lucide-react";
-import { useCallback, useEffect, useMemo, useState, type CSSProperties, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import { api } from "./api";
 import { clearOutbox, db, enqueue, readOutboxPayload, resetLocalData, saveSnapshot } from "./db";
 
@@ -648,6 +648,7 @@ export function App() {
   const [outboxCount, setOutboxCount] = useState(0);
   const [lastSync, setLastSync] = useState<string | undefined>();
   const [editingTransaction, setEditingTransaction] = useState<Transaction | null>(null);
+  const [entryFocusSignal, setEntryFocusSignal] = useState(0);
   const [quickCategoryOpen, setQuickCategoryOpen] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
   const [exportFormat, setExportFormat] = useState<ExportFormat>("ledger");
@@ -796,6 +797,11 @@ export function App() {
     if (!isLocalPreview && navigator.onLine) void syncNow();
   }
 
+  const openEntry = useCallback(() => {
+    setView("entry");
+    setEntryFocusSignal((value) => value + 1);
+  }, []);
+
   if (!token) {
     return <AuthScreen onAuth={async (result) => {
       localStorage.setItem("ledger-token", result.token);
@@ -869,6 +875,7 @@ export function App() {
               setToast(`${typeLabels[item.type]} ¥${centsToYuan(item.amountCents)} 已记录`);
             }}
             onSaveCategory={(item) => saveLocalAndQueue("categories", item)}
+            focusSignal={entryFocusSignal}
           />
         )}
         {view === "transactions" && (
@@ -932,7 +939,7 @@ export function App() {
             onClose={() => setQuickCategoryOpen(false)}
           />
         )}
-        <button className="floating entry-fab" onClick={() => setView("entry")} title="记一笔"><Plus size={30} /></button>
+        <button className="floating entry-fab" onClick={openEntry} title="记一笔"><Plus size={30} /></button>
       </main>
     </div>
   );
@@ -1091,7 +1098,7 @@ function Metric({ title, value, icon: Icon, tone }: { title: string; value: numb
   );
 }
 
-function EntryForm({ accounts, categories, transactions, onSave, onSaveCategory, editing, onCancel }: {
+function EntryForm({ accounts, categories, transactions, onSave, onSaveCategory, editing, onCancel, focusSignal = 0 }: {
   accounts: Account[];
   categories: Category[];
   transactions: Transaction[];
@@ -1099,6 +1106,7 @@ function EntryForm({ accounts, categories, transactions, onSave, onSaveCategory,
   onSaveCategory: (item: Category) => Promise<void>;
   editing?: Transaction | null;
   onCancel?: () => void;
+  focusSignal?: number;
 }) {
   const [type, setType] = useState<TransactionType>(editing?.type ?? "expense");
   const [accountId, setAccountId] = useState(editing?.accountId ?? accounts[0]?.id ?? "");
@@ -1110,6 +1118,7 @@ function EntryForm({ accounts, categories, transactions, onSave, onSaveCategory,
   const [occurredAt, setOccurredAt] = useState(() => editing ? toBeijingDatetimeLocal(editing.occurredAt) : toBeijingDatetimeLocal());
   const [timeTouched, setTimeTouched] = useState(Boolean(editing));
   const [saveFeedback, setSaveFeedback] = useState("");
+  const amountInputRef = useRef<HTMLInputElement>(null);
 
   const categoryKind = type === "income" ? "income" : "expense";
   const recentUsageCounts = useMemo(() => categoryUsageCounts(transactions, categoryKind, monthsAgo(3)), [transactions, categoryKind]);
@@ -1149,6 +1158,22 @@ function EntryForm({ accounts, categories, transactions, onSave, onSaveCategory,
     ? `${selectedAccount?.name ?? "付款账户"} → ${selectedTargetAccount?.name ?? "转入账户"}`
     : `${selectedCategoryPath} · ${selectedAccount?.name ?? "选择账户"}`;
   const entryIntent = type === "income" ? "记录一笔收入" : type === "transfer" ? "记录账户流转" : "记录一笔消费";
+  const focusAmountInput = useCallback((force = false) => {
+    if (editing) return;
+    const input = amountInputRef.current;
+    if (!input) return;
+    const activeElement = document.activeElement;
+    if (
+      !force &&
+      activeElement instanceof HTMLElement &&
+      activeElement !== document.body &&
+      activeElement !== input &&
+      input.form?.contains(activeElement)
+    ) {
+      return;
+    }
+    input.focus();
+  }, [editing]);
 
   useEffect(() => {
     if (!editing) return;
@@ -1176,6 +1201,18 @@ function EntryForm({ accounts, categories, transactions, onSave, onSaveCategory,
     if (mealAccount) setAccountId(mealAccount.id);
   }, [accounts, categories, editing, selectedCategory, type]);
 
+  useEffect(() => {
+    if (editing) return undefined;
+    const focus = () => focusAmountInput();
+    focus();
+    const frame = window.requestAnimationFrame(focus);
+    const timers = [80, 320, 900].map((delay) => window.setTimeout(focus, delay));
+    return () => {
+      window.cancelAnimationFrame(frame);
+      timers.forEach((timer) => window.clearTimeout(timer));
+    };
+  }, [editing, focusAmountInput, focusSignal]);
+
   async function submit(event: React.FormEvent) {
     event.preventDefault();
     const item: Transaction = {
@@ -1201,6 +1238,8 @@ function EntryForm({ accounts, categories, transactions, onSave, onSaveCategory,
       setOccurredAt(toBeijingDatetimeLocal());
       setTimeTouched(false);
       setSaveFeedback(`${typeLabels[type]} ¥${centsToYuan(item.amountCents)} 已保存`);
+      window.setTimeout(() => focusAmountInput(true), 0);
+      window.setTimeout(() => focusAmountInput(true), 180);
     }
   }
 
@@ -1234,7 +1273,7 @@ function EntryForm({ accounts, categories, transactions, onSave, onSaveCategory,
             </div>
           </div>
         )}
-        <label className="entry-amount-field full">金额<input value={amount} onChange={(event) => setAmount(event.target.value)} placeholder="0.00" inputMode="decimal" autoFocus={!editing} required /></label>
+        <label className="entry-amount-field full">金额<input ref={amountInputRef} value={amount} onChange={(event) => setAmount(event.target.value)} placeholder="0.00" inputMode="decimal" enterKeyHint="done" autoFocus={!editing} required /></label>
         <label>{type === "income" ? "收款账户" : type === "expense" ? "信用卡" : "付款账户"}<select value={accountId} onChange={(event) => setAccountId(event.target.value)}>{accountOptions.map((account) => <option key={account.id} value={account.id}>{account.name}</option>)}</select></label>
         {type === "transfer" ? (
           <label>转入账户<select value={toAccountId} onChange={(event) => setToAccountId(event.target.value)}>{accounts.filter((item) => item.id !== accountId).map((account) => <option key={account.id} value={account.id}>{account.name}</option>)}</select></label>
