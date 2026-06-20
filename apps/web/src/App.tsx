@@ -1155,10 +1155,6 @@ function AmountKeypad({ value, onChange, onCommit }: { value: string; onChange: 
 
   return (
     <div className="amount-keypad full" aria-label="金额数字键盘">
-      <div className="amount-keypad-head">
-        <span>快速输入金额</span>
-        <strong>¥{value || "0.00"}</strong>
-      </div>
       <div className="amount-keypad-grid">
         {keys.map((item) => (
           <button
@@ -1347,7 +1343,7 @@ function EntryForm({ accounts, categories, transactions, onSave, onSaveCategory,
           </div>
         </div>
         <div className="entry-amount-card">
-          <span>{type === "income" ? "本次收入" : type === "transfer" ? "流转金额" : "本次支出"}</span>
+          <span>{type === "income" ? "本次收入" : type === "transfer" ? "流转金额" : "金额"}</span>
           <strong>¥{amountPreview}</strong>
           <small>{entryContext}</small>
         </div>
@@ -1362,18 +1358,20 @@ function EntryForm({ accounts, categories, transactions, onSave, onSaveCategory,
             </div>
           </div>
         )}
-        <label className="entry-amount-field full">金额<input ref={amountInputRef} value={amount} onChange={(event) => setAmount(event.target.value)} placeholder="0.00" inputMode="decimal" enterKeyHint="done" autoFocus={!editing} required /></label>
+        <label className="entry-amount-field full"><span>金额</span><input ref={amountInputRef} value={amount} onChange={(event) => setAmount(event.target.value)} placeholder="0.00" inputMode="decimal" enterKeyHint="done" autoFocus={!editing} required /></label>
         {!editing && <AmountKeypad value={amount} onChange={setAmount} onCommit={commitEntry} />}
-        <label>{type === "income" ? "收款账户" : type === "expense" ? "信用卡" : "付款账户"}<select value={accountId} onChange={(event) => setAccountId(event.target.value)}>{accountOptions.map((account) => <option key={account.id} value={account.id}>{account.name}</option>)}</select></label>
+        <label className="entry-account-field">{type === "income" ? "收款账户" : type === "expense" ? "信用卡" : "付款账户"}<select value={accountId} onChange={(event) => setAccountId(event.target.value)}>{accountOptions.map((account) => <option key={account.id} value={account.id}>{account.name}</option>)}</select></label>
         {type === "transfer" ? (
           <label>转入账户<select value={toAccountId} onChange={(event) => setToAccountId(event.target.value)}>{accounts.filter((item) => item.id !== accountId).map((account) => <option key={account.id} value={account.id}>{account.name}</option>)}</select></label>
         ) : (
           <CategoryPicker categories={categories} options={filteredCategories} usageCounts={recentUsageCounts} kind={categoryKind} value={categoryId} onChange={setCategoryId} onCreate={onSaveCategory} />
         )}
-        <div className="entry-actions full">
-          <button className="primary">{editing ? "保存修改" : `保存这笔${typeLabels[type]}`}</button>
-          {editing && onCancel && <button type="button" className="ghost" onClick={onCancel}><X size={16} />取消编辑</button>}
-        </div>
+        {editing && (
+          <div className="entry-actions full">
+            <button className="primary">保存修改</button>
+            {onCancel && <button type="button" className="ghost" onClick={onCancel}><X size={16} />取消编辑</button>}
+          </div>
+        )}
         <details className="entry-more full">
           <summary>时间、商户、备注</summary>
           <div className="entry-more-grid">
@@ -1400,6 +1398,7 @@ function CategoryPicker({ categories, options, usageCounts, kind, value, onChang
   onCreate: (item: Category) => Promise<void>;
 }) {
   const [query, setQuery] = useState("");
+  const [expanded, setExpanded] = useState(false);
   const queryText = query.trim();
   const normalizedQuery = queryText.toLowerCase();
   const selectedCategory = options.find((category) => category.id === value);
@@ -1412,9 +1411,9 @@ function CategoryPicker({ categories, options, usageCounts, kind, value, onChang
     : matches;
   const quickOptions = useMemo(() => {
     if (normalizedQuery) return matches.slice(0, 12);
-    const topCategories = options.slice(0, 8);
+    const topCategories = options.slice(0, 5);
     if (selectedCategory && !topCategories.some((category) => category.id === selectedCategory.id)) {
-      return [selectedCategory, ...topCategories.slice(0, 7)];
+      return [selectedCategory, ...topCategories.slice(0, 4)];
     }
     return topCategories;
   }, [matches, normalizedQuery, options, selectedCategory]);
@@ -1427,6 +1426,7 @@ function CategoryPicker({ categories, options, usageCounts, kind, value, onChang
   function chooseCategory(id: string) {
     onChange(id);
     setQuery("");
+    setExpanded(false);
   }
 
   async function createQuickCategory() {
@@ -1441,48 +1441,17 @@ function CategoryPicker({ categories, options, usageCounts, kind, value, onChang
     await onCreate(child);
     onChange(child.id);
     setQuery("");
+    setExpanded(false);
   }
 
   return (
     <div className="category-picker full">
-      <span className="field-label">分类</span>
-      <div className="category-search">
-        <Search size={15} />
-        <input
-          value={query}
-          onChange={(event) => setQuery(event.target.value)}
-          onKeyDown={(event) => {
-            if (event.key === "Enter") {
-              event.preventDefault();
-              if (matches[0]) chooseCategory(matches[0].id);
-              else if (canCreate) void createQuickCategory();
-            }
-            if (event.key === "Escape") setQuery("");
-          }}
-          placeholder="搜索分类，例如三餐、教育、停车"
-        />
-        {query && (
-          <button type="button" className="category-search-clear" onClick={() => setQuery("")} title="清空搜索">
-            <X size={14} />
-          </button>
-        )}
+      <div className="category-picker-head">
+        <span className="field-label">分类</span>
+        <button type="button" className="text-action" onClick={() => setExpanded((value) => !value)}>
+          <Search size={14} />{expanded ? "收起" : "搜索"}
+        </button>
       </div>
-      {normalizedQuery && (
-        <small className="category-search-meta">
-          {matches.length > 0 ? `找到 ${matches.length} 个匹配分类` : "没有匹配分类，可以新增到其他分类"}
-        </small>
-      )}
-      <select className={normalizedQuery ? "category-select filtered" : "category-select"} value={selectedCategory?.id ?? ""} onChange={(event) => chooseCategory(event.target.value)} required>
-        <option value="" disabled>{normalizedQuery ? "选择搜索结果" : "选择分类"}</option>
-        {selectOptions.map((category) => {
-          const usage = usageCounts.get(category.id) ?? 0;
-          return (
-            <option key={category.id} value={category.id}>
-              {normalizedQuery && category.id === selectedCategory?.id && !matches.some((item) => item.id === category.id) ? "当前：" : ""}{categoryPath(category, categories)}{usage > 0 ? ` · 常用 ${usage}` : ""}
-            </option>
-          );
-        })}
-      </select>
       <div className="category-chip-list">
         {quickOptions.map((category) => (
           <button type="button" className={value === category.id ? "category-chip active" : "category-chip"} key={category.id} onClick={() => chooseCategory(category.id)}>
@@ -1495,6 +1464,47 @@ function CategoryPicker({ categories, options, usageCounts, kind, value, onChang
           </button>
         )}
       </div>
+      {expanded && (
+        <div className="category-search-panel">
+          <div className="category-search">
+            <Search size={15} />
+            <input
+              value={query}
+              onChange={(event) => setQuery(event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key === "Enter") {
+                  event.preventDefault();
+                  if (matches[0]) chooseCategory(matches[0].id);
+                  else if (canCreate) void createQuickCategory();
+                }
+                if (event.key === "Escape") setQuery("");
+              }}
+              placeholder="搜索分类，例如三餐、教育、停车"
+            />
+            {query && (
+              <button type="button" className="category-search-clear" onClick={() => setQuery("")} title="清空搜索">
+                <X size={14} />
+              </button>
+            )}
+          </div>
+          {normalizedQuery && (
+            <small className="category-search-meta">
+              {matches.length > 0 ? `找到 ${matches.length} 个匹配分类` : "没有匹配分类，可以新增到其他分类"}
+            </small>
+          )}
+          <select className={normalizedQuery ? "category-select filtered" : "category-select"} value={selectedCategory?.id ?? ""} onChange={(event) => chooseCategory(event.target.value)} required>
+            <option value="" disabled>{normalizedQuery ? "选择搜索结果" : "选择分类"}</option>
+            {selectOptions.map((category) => {
+              const usage = usageCounts.get(category.id) ?? 0;
+              return (
+                <option key={category.id} value={category.id}>
+                  {normalizedQuery && category.id === selectedCategory?.id && !matches.some((item) => item.id === category.id) ? "当前：" : ""}{categoryPath(category, categories)}{usage > 0 ? ` · 常用 ${usage}` : ""}
+                </option>
+              );
+            })}
+          </select>
+        </div>
+      )}
     </div>
   );
 }

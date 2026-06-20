@@ -710,7 +710,7 @@ input[type="month"],
 }
 
 .entry-hero {
-  padding: 1rem 1rem 0.95rem;
+  padding: 0.86rem 0.95rem 0.76rem;
   border-bottom: 1px solid rgba(49, 71, 58, 0.1);
   background:
     linear-gradient(135deg, rgba(214, 178, 94, 0.24), transparent 52%),
@@ -792,8 +792,8 @@ input[type="month"],
 
 .entry-amount-card {
   display: grid;
-  gap: 0.24rem;
-  padding-top: 0.95rem;
+  gap: 0.18rem;
+  padding-top: 0.62rem;
 }
 
 .entry-amount-card span,
@@ -808,7 +808,7 @@ input[type="month"],
 
 .entry-amount-card strong {
   color: #243127;
-  font-size: 3.25rem;
+  font-size: 2.82rem;
   line-height: 0.95;
   font-weight: 950;
   letter-spacing: 0;
@@ -823,22 +823,44 @@ input[type="month"],
 }
 
 .entry-form-grid {
-  padding: 1rem;
+  gap: 0.5rem;
+  padding: 0.72rem;
 }
 
 .entry-amount-field {
-  gap: 0.45rem;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  gap: 0.56rem;
+  padding: 0.28rem 0.58rem;
+  border: 1px solid rgba(49, 71, 58, 0.1);
+  border-radius: 0.66rem;
+  background: #fffdf7;
+}
+
+.entry-amount-field span {
+  color: rgba(36, 49, 39, 0.64);
+  font-size: 0.82rem;
+  font-weight: 900;
 }
 
 .entry-amount-field input {
-  min-height: 4.6rem;
-  border-color: rgba(49, 71, 58, 0.12);
-  padding: 0 1rem;
-  background: #fffdf7;
+  min-height: 2.18rem;
+  border: 0;
+  padding: 0;
+  background: transparent;
   color: #243127;
-  font-size: 2.25rem;
+  font-size: 1.42rem;
   font-weight: 950;
   letter-spacing: 0;
+  text-align: right;
+}
+
+.entry-account-field {
+  gap: 0.28rem;
+}
+
+.entry-account-field select {
+  min-height: 2.32rem;
 }
 
 .entry-amount-field input::placeholder {
@@ -847,10 +869,9 @@ input[type="month"],
 
 .amount-keypad {
   display: grid;
-  gap: 0.56rem;
-  padding: 0.62rem;
+  padding: 0.42rem;
   border: 1px solid rgba(49, 71, 58, 0.1);
-  border-radius: 0.84rem;
+  border-radius: 0.74rem;
   background: linear-gradient(145deg, rgba(255, 253, 247, 0.96), rgba(239, 234, 214, 0.76));
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.72);
 }
@@ -877,16 +898,16 @@ input[type="month"],
 .amount-keypad-grid {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 0.42rem;
+  gap: 0.32rem;
 }
 
 .amount-key {
-  min-height: 3rem;
+  min-height: 2.38rem;
   border: 1px solid rgba(49, 71, 58, 0.11);
-  border-radius: 0.72rem;
+  border-radius: 0.62rem;
   background: rgba(255, 250, 240, 0.96);
   color: #243127;
-  font-size: 1.24rem;
+  font-size: 1.08rem;
   font-weight: 950;
   box-shadow: 0 0.32rem 0.8rem rgba(36, 49, 39, 0.08);
   touch-action: manipulation;
@@ -900,14 +921,14 @@ input[type="month"],
 .amount-key.muted {
   background: rgba(49, 71, 58, 0.08);
   color: rgba(36, 49, 39, 0.72);
-  font-size: 0.9rem;
+  font-size: 0.78rem;
 }
 
 .amount-key.save {
   grid-row: span 2;
   background: #243127;
   color: #fff7df;
-  font-size: 1rem;
+  font-size: 0.92rem;
 }
 
 .amount-key.save:disabled {
@@ -1610,9 +1631,22 @@ input[type="month"],
 
 .category-picker {
   display: grid;
-  gap: 0.5rem;
+  gap: 0.36rem;
   font-size: 0.9rem;
   font-weight: 700;
+}
+
+.category-picker-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+
+.category-picker-head .text-action {
+  min-height: 1.9rem;
+  padding: 0 0.5rem;
+  font-size: 0.76rem;
 }
 
 .field-label {
@@ -1623,6 +1657,11 @@ input[type="month"],
 
 .category-search {
   position: relative;
+}
+
+.category-search-panel {
+  display: grid;
+  gap: 0.38rem;
 }
 
 .category-search svg {
@@ -1665,17 +1704,31 @@ input[type="month"],
 
 .category-chip-list {
   display: flex;
-  flex-wrap: wrap;
-  gap: 0.45rem;
+  flex-wrap: nowrap;
+  gap: 0.36rem;
+  overflow-x: auto;
+  padding-bottom: 0.06rem;
+  scrollbar-width: none;
+}
+
+.category-chip-list::-webkit-scrollbar {
+  display: none;
 }
 
 .category-chip {
-  min-height: 2.2rem;
+  min-height: 1.92rem;
+  flex: 0 0 auto;
+  max-width: 13rem;
   border: 1px solid rgba(49, 71, 58, 0.14);
   border-radius: 999px;
-  padding: 0 0.75rem;
+  padding: 0 0.62rem;
   background: rgba(255, 250, 240, 0.9);
   color: #31473a;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 0.78rem;
+  font-weight: 900;
 }
 
 .category-chip.active {
@@ -2939,49 +2992,77 @@ input[type="month"],
   }
 
   .entry-hero {
-    padding: 0.9rem 0.82rem 0.82rem;
+    padding: 0.72rem 0.78rem 0.62rem;
   }
 
   .entry-hero-top {
-    align-items: stretch;
-    flex-direction: column;
-    gap: 0.65rem;
+    align-items: center;
+    flex-direction: row;
+    gap: 0.5rem;
   }
 
   .entry-type-switch {
-    width: 100%;
+    width: min(10rem, 46vw);
+  }
+
+  .entry-state span {
+    width: 1.7rem;
+    height: 1.7rem;
   }
 
   .entry-amount-card {
-    padding-top: 0.7rem;
+    padding-top: 0.46rem;
   }
 
   .entry-amount-card strong {
-    font-size: 2.55rem;
+    font-size: 2.18rem;
   }
 
   .entry-form-grid {
-    padding: 0.82rem;
+    gap: 0.42rem;
+    padding: 0.58rem;
   }
 
   .entry-amount-field input {
-    min-height: 4.25rem;
-    font-size: 2rem;
+    min-height: 2rem;
+    font-size: 1.28rem;
   }
 
   .amount-keypad {
-    gap: 0.48rem;
-    padding: 0.52rem;
+    padding: 0.36rem;
   }
 
   .amount-keypad-grid {
-    gap: 0.36rem;
+    gap: 0.28rem;
   }
 
   .amount-key {
-    min-height: 2.76rem;
-    border-radius: 0.66rem;
-    font-size: 1.12rem;
+    min-height: 2.16rem;
+    border-radius: 0.56rem;
+    font-size: 1rem;
+  }
+
+  .amount-key.muted {
+    font-size: 0.72rem;
+  }
+
+  .amount-key.save {
+    font-size: 0.86rem;
+  }
+
+  .entry-more summary {
+    min-height: 2.08rem;
+  }
+
+  .category-picker {
+    gap: 0.3rem;
+  }
+
+  .category-chip {
+    min-height: 1.78rem;
+    max-width: 10.5rem;
+    padding: 0 0.52rem;
+    font-size: 0.74rem;
   }
 
   .account-strip {
