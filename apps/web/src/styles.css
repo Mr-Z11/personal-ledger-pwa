@@ -1212,7 +1212,7 @@ input[type="month"],
 .row {
   min-height: 3.15rem;
   display: grid;
-  grid-template-columns: 2rem minmax(0, 1fr) auto;
+  grid-template-columns: minmax(0, 1fr);
   align-items: center;
   gap: 0.5rem;
   padding: 0.38rem 0.46rem;
@@ -1228,7 +1228,7 @@ input[type="month"],
 }
 
 .row.interactive:hover,
-.row.interactive:focus-visible {
+.row.interactive:focus-within {
   background: rgba(255, 253, 247, 0.76);
   box-shadow: 0 0.36rem 0.9rem rgba(36, 49, 39, 0.08);
   outline: none;
@@ -1239,13 +1239,43 @@ input[type="month"],
 }
 
 .row.selectable {
-  grid-template-columns: 1.35rem 2rem minmax(0, 1fr) auto;
+  grid-template-columns: 1.35rem minmax(0, 1fr);
 }
 
 .row-check {
   width: 1rem;
   min-height: 1rem;
   accent-color: #31473a;
+}
+
+.row-content-button {
+  width: 100%;
+  min-height: 2.36rem;
+  border: 0;
+  border-radius: 0.42rem;
+  display: grid;
+  grid-template-columns: 2rem minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0;
+  background: transparent;
+  color: inherit;
+  text-align: left;
+  -webkit-tap-highlight-color: transparent;
+  user-select: none;
+}
+
+.row-content-button.passive {
+  cursor: default;
+}
+
+.row-content-button:focus {
+  outline: none;
+}
+
+.row-content-button:focus-visible {
+  outline: 2px solid rgba(49, 71, 58, 0.24);
+  outline-offset: 0.18rem;
 }
 
 .load-more {
@@ -2976,11 +3006,11 @@ input[type="month"],
   }
 
   .row {
-    grid-template-columns: 1.9rem minmax(0, 1fr) auto;
+    grid-template-columns: minmax(0, 1fr);
   }
 
   .row.selectable {
-    grid-template-columns: 1.2rem 1.9rem minmax(0, 1fr) auto;
+    grid-template-columns: 1.2rem minmax(0, 1fr);
   }
 
   .batch-panel {
@@ -3274,13 +3304,19 @@ input[type="month"],
   }
 
   .row {
-    grid-template-columns: 1.75rem minmax(0, 1fr) auto;
+    grid-template-columns: minmax(0, 1fr);
     gap: 0.42rem;
     padding: 0.34rem 0.4rem;
   }
 
   .row.selectable {
-    grid-template-columns: 1.08rem 1.72rem minmax(0, 1fr) auto;
+    grid-template-columns: 1.08rem minmax(0, 1fr);
+  }
+
+  .row-content-button {
+    min-height: 2.24rem;
+    grid-template-columns: 1.75rem minmax(0, 1fr) auto;
+    gap: 0.42rem;
   }
 
   .day-summary {

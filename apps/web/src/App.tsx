@@ -1808,7 +1808,7 @@ function TransactionRows({ transactions, accounts, categories, onDelete, onEdit,
   compact?: boolean;
 }) {
   const longPressTimer = useRef<number | null>(null);
-  const longPressTriggered = useRef(false);
+  const suppressNextClick = useRef(false);
 
   function clearLongPressTimer() {
     if (longPressTimer.current) {
@@ -1817,25 +1817,26 @@ function TransactionRows({ transactions, accounts, categories, onDelete, onEdit,
     }
   }
 
-  function isRowControl(target: EventTarget | null) {
-    return target instanceof HTMLElement && Boolean(target.closest("button, input, select, textarea, a"));
-  }
-
-  function startLongPress(item: Transaction, target: EventTarget | null) {
-    if (!onLongAction || isRowControl(target)) return;
+  function startLongPress(item: Transaction) {
+    if (!onLongAction) return;
     clearLongPressTimer();
-    longPressTriggered.current = false;
+    suppressNextClick.current = false;
     longPressTimer.current = window.setTimeout(() => {
-      longPressTriggered.current = true;
+      suppressNextClick.current = true;
       onLongAction(item);
-    }, 520);
+    }, 560);
   }
 
   function finishLongPress() {
     clearLongPressTimer();
-    window.setTimeout(() => {
-      longPressTriggered.current = false;
-    }, 0);
+  }
+
+  function handleRowClick(item: Transaction) {
+    if (suppressNextClick.current) {
+      suppressNextClick.current = false;
+      return;
+    }
+    onOpen?.(item);
   }
 
   if (transactions.length === 0) return <p className="empty">暂无记录</p>;
@@ -1849,34 +1850,27 @@ function TransactionRows({ transactions, accounts, categories, onDelete, onEdit,
         const meta = `${new Date(item.occurredAt).toLocaleDateString()} · ${account?.name ?? ""}${category ? ` · ${category.name}` : ""}`;
         const interactive = Boolean(onOpen || onLongAction);
         const rowClassName = `${onToggleSelected ? "row selectable" : "row"} ${interactive ? "interactive" : ""}`.trim();
+        const rowBody = (
+          <>
+            <div className={`row-icon ${item.type}`}>{item.type === "transfer" ? <ArrowRightLeft size={15} /> : item.type === "income" ? <ArrowDownLeft size={15} /> : <ArrowUpRight size={15} />}</div>
+            <div className="row-main">
+              <strong>{title}</strong>
+              <span>{meta}</span>
+            </div>
+            <div className="row-side">
+              <b>{sign}¥{centsToYuan(item.amountCents)}</b>
+              {!compact && !interactive && (
+                <div className="row-actions">
+                  {onEdit && <button className="icon-button mini" onClick={() => onEdit(item)} title="编辑"><Pencil size={14} /></button>}
+                  {onDelete && <button className="icon-button mini" onClick={() => onDelete(item)} title="删除"><Trash2 size={14} /></button>}
+                  {onRestore && <button className="icon-button mini" onClick={() => onRestore(item)} title="恢复"><Undo2 size={14} /></button>}
+                </div>
+              )}
+            </div>
+          </>
+        );
         return (
-          <article
-            className={rowClassName}
-            key={item.id}
-            onClick={(event) => {
-              if (isRowControl(event.target)) return;
-              if (longPressTriggered.current) return;
-              onOpen?.(item);
-            }}
-            onContextMenu={(event) => {
-              if (!onLongAction || isRowControl(event.target)) return;
-              event.preventDefault();
-              onLongAction(item);
-            }}
-            onKeyDown={(event) => {
-              if (!onOpen || isRowControl(event.target)) return;
-              if (event.key === "Enter" || event.key === " ") {
-                event.preventDefault();
-                onOpen(item);
-              }
-            }}
-            onPointerCancel={finishLongPress}
-            onPointerDown={(event) => startLongPress(item, event.target)}
-            onPointerLeave={finishLongPress}
-            onPointerUp={finishLongPress}
-            role={interactive ? "button" : undefined}
-            tabIndex={interactive ? 0 : undefined}
-          >
+          <article className={rowClassName} key={item.id}>
             {onToggleSelected && (
               <input
                 aria-label="选择流水"
@@ -1886,21 +1880,31 @@ function TransactionRows({ transactions, accounts, categories, onDelete, onEdit,
                 type="checkbox"
               />
             )}
-            <div className={`row-icon ${item.type}`}>{item.type === "transfer" ? <ArrowRightLeft size={15} /> : item.type === "income" ? <ArrowDownLeft size={15} /> : <ArrowUpRight size={15} />}</div>
-            <div className="row-main">
-              <strong>{title}</strong>
-              <span>{meta}</span>
-            </div>
-            <div className="row-side">
-              <b>{sign}¥{centsToYuan(item.amountCents)}</b>
-              {!compact && !onLongAction && (
-                <div className="row-actions">
-                  {onEdit && <button className="icon-button mini" onClick={() => onEdit(item)} title="编辑"><Pencil size={14} /></button>}
-                  {onDelete && <button className="icon-button mini" onClick={() => onDelete(item)} title="删除"><Trash2 size={14} /></button>}
-                  {onRestore && <button className="icon-button mini" onClick={() => onRestore(item)} title="恢复"><Undo2 size={14} /></button>}
-                </div>
-              )}
-            </div>
+            {interactive ? (
+              <button
+                className="row-content-button"
+                onClick={() => handleRowClick(item)}
+                onContextMenu={(event) => {
+                  if (!onLongAction) return;
+                  event.preventDefault();
+                  suppressNextClick.current = true;
+                  onLongAction(item);
+                }}
+                onPointerCancel={finishLongPress}
+                onPointerDown={() => startLongPress(item)}
+                onPointerLeave={finishLongPress}
+                onPointerUp={finishLongPress}
+                onTouchCancel={finishLongPress}
+                onTouchEnd={finishLongPress}
+                onTouchMove={finishLongPress}
+                onTouchStart={() => startLongPress(item)}
+                type="button"
+              >
+                {rowBody}
+              </button>
+            ) : (
+              <div className="row-content-button passive">{rowBody}</div>
+            )}
           </article>
         );
       })}
