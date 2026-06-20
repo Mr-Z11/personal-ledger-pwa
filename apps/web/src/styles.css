@@ -2393,6 +2393,103 @@ input[type="month"],
   overflow: hidden;
 }
 
+.trend-stack {
+  display: grid;
+  gap: 0.72rem;
+}
+
+.report-page .trend-fold-panel {
+  padding: 0;
+}
+
+.trend-fold-summary {
+  min-height: 4.25rem;
+  list-style: none;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: 0.7rem;
+  padding: 0.82rem;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.trend-fold-summary::-webkit-details-marker {
+  display: none;
+}
+
+.trend-fold-summary::after {
+  content: "";
+  width: 0.52rem;
+  height: 0.52rem;
+  border-right: 2px solid rgba(36, 49, 39, 0.48);
+  border-bottom: 2px solid rgba(36, 49, 39, 0.48);
+  transform: rotate(45deg) translateY(-0.08rem);
+  transition: transform 180ms ease;
+}
+
+.trend-fold-panel[open] .trend-fold-summary::after {
+  transform: rotate(-135deg) translateY(-0.04rem);
+}
+
+.trend-fold-title {
+  min-width: 0;
+}
+
+.trend-fold-title h2 {
+  margin: 0;
+  color: #243127;
+  font-size: 1.02rem;
+}
+
+.trend-fold-title span {
+  display: block;
+  margin-top: 0.16rem;
+  overflow: hidden;
+  color: rgba(36, 49, 39, 0.58);
+  font-size: 0.76rem;
+  font-weight: 900;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.trend-fold-status {
+  min-width: 7.4rem;
+  padding: 0.42rem 0.58rem;
+  border: 1px solid rgba(49, 71, 58, 0.08);
+  border-radius: 0.58rem;
+  display: grid;
+  justify-items: end;
+  background: rgba(255, 255, 255, 0.5);
+}
+
+.daily-trend-panel .trend-fold-status {
+  background: rgba(31, 95, 116, 0.08);
+}
+
+.total-trend-panel .trend-fold-status {
+  background: rgba(212, 91, 63, 0.08);
+}
+
+.trend-fold-status span {
+  color: rgba(36, 49, 39, 0.58);
+  font-size: 0.7rem;
+  font-weight: 900;
+  white-space: nowrap;
+}
+
+.trend-fold-status strong {
+  margin-top: 0.12rem;
+  color: #243127;
+  font-size: 0.98rem;
+  line-height: 1;
+  white-space: nowrap;
+}
+
+.trend-fold-body {
+  padding: 0 0.82rem 0.82rem;
+}
+
 .trend-heading {
   align-items: flex-start;
 }
@@ -2414,6 +2511,17 @@ input[type="month"],
   display: inline-flex;
   align-items: center;
   gap: 0.35rem;
+}
+
+.trend-expanded-legend {
+  justify-content: space-between;
+}
+
+.trend-expanded-legend em {
+  color: rgba(36, 49, 39, 0.48);
+  font-size: 0.72rem;
+  font-style: normal;
+  font-weight: 900;
 }
 
 .legend {
@@ -2603,6 +2711,10 @@ input[type="month"],
 
 .trend-swatch {
   background: linear-gradient(135deg, #1f5f74, #2f7d4f 48%, #d6b25e);
+}
+
+.expense-trend-swatch {
+  background: linear-gradient(135deg, #d45b3f, #d6b25e 52%, #1f5f74);
 }
 
 .floating,
@@ -3411,6 +3523,34 @@ input[type="month"],
 
   .report-page .panel {
     padding: 0.68rem;
+  }
+
+  .report-page .trend-fold-panel {
+    padding: 0;
+  }
+
+  .trend-fold-summary {
+    min-height: 3.9rem;
+    grid-template-columns: minmax(0, 1fr) auto auto;
+    gap: 0.48rem;
+    padding: 0.68rem;
+  }
+
+  .trend-fold-status {
+    min-width: 6.25rem;
+    padding: 0.36rem 0.48rem;
+  }
+
+  .trend-fold-status span {
+    font-size: 0.64rem;
+  }
+
+  .trend-fold-status strong {
+    font-size: 0.88rem;
+  }
+
+  .trend-fold-body {
+    padding: 0 0.68rem 0.68rem;
   }
 
   .special-expense-summary {

@@ -2474,6 +2474,7 @@ function Reports({ transactions, accounts, categories }: { transactions: Transac
   const [year, setYear] = useState(currentYear);
   const [selectedCategoryIndex, setSelectedCategoryIndex] = useState<number | null>(null);
   const [selectedTrendIndex, setSelectedTrendIndex] = useState<number | null>(null);
+  const [selectedTotalTrendIndex, setSelectedTotalTrendIndex] = useState<number | null>(null);
   const [expandedInsightId, setExpandedInsightId] = useState<string | null>(null);
   const [detailTransaction, setDetailTransaction] = useState<Transaction | null>(null);
   const categoryKind: Category["kind"] = "expense";
@@ -2559,7 +2560,7 @@ function Reports({ transactions, accounts, categories }: { transactions: Transac
       .sort((left, right) => right.occurredAt.localeCompare(left.occurredAt))
     : [];
 
-  const trendData = Array.from({ length: period === "month" ? 12 : 6 }, (_, index) => {
+  const dailyTrendData = Array.from({ length: period === "month" ? 12 : 6 }, (_, index) => {
     const key = period === "month"
       ? (() => {
         const date = dateFromMonthKey(month);
@@ -2573,18 +2574,26 @@ function Reports({ transactions, accounts, categories }: { transactions: Transac
       expense: summary.expenseCents
     };
   });
-  const maxTrend = Math.max(1, ...trendData.map((entry) => entry.expense));
-  const recentExpenseAverage = Math.round(trendData.slice(-3).reduce((sum, item) => sum + item.expense, 0) / 3);
-  const trendStart = trendData[0]?.period ?? periodKey;
-  const trendEnd = trendData[trendData.length - 1]?.period ?? periodKey;
-  const trendRangeLabel = period === "month"
-    ? `${monthLabel(trendStart)} - ${monthLabel(trendEnd)}`
-    : `${yearLabel(trendStart)} - ${yearLabel(trendEnd)}`;
-  const activeTrendIndex = selectedTrendIndex ?? trendData.length - 1;
-  const selectedTrend = trendData[activeTrendIndex] ?? trendData[trendData.length - 1];
-  const selectedTrendLabel = selectedTrend
-    ? period === "month" ? monthLabel(selectedTrend.period) : yearLabel(selectedTrend.period)
-    : "暂无数据";
+  const expenseTrendAnchorMonth = period === "month" ? month : selectedYear === currentYear ? monthKey() : `${selectedYear}-12`;
+  const totalExpenseTrendData = Array.from({ length: 12 }, (_, index) => {
+    const date = dateFromMonthKey(expenseTrendAnchorMonth);
+    date.setMonth(date.getMonth() - (11 - index));
+    const key = monthKey(date);
+    const summary = summarizeTransactions(transactions.filter((item) => item.type === "expense" && item.occurredAt.startsWith(key)));
+    return {
+      period: key,
+      expense: summary.expenseCents
+    };
+  });
+  const recentExpenseAverage = Math.round(dailyTrendData.slice(-3).reduce((sum, item) => sum + item.expense, 0) / 3);
+  const dailyTrendStart = dailyTrendData[0]?.period ?? periodKey;
+  const dailyTrendEnd = dailyTrendData[dailyTrendData.length - 1]?.period ?? periodKey;
+  const dailyTrendRangeLabel = period === "month"
+    ? `${monthLabel(dailyTrendStart)} - ${monthLabel(dailyTrendEnd)}`
+    : `${yearLabel(dailyTrendStart)} - ${yearLabel(dailyTrendEnd)}`;
+  const totalTrendStart = totalExpenseTrendData[0]?.period ?? expenseTrendAnchorMonth;
+  const totalTrendEnd = totalExpenseTrendData[totalExpenseTrendData.length - 1]?.period ?? expenseTrendAnchorMonth;
+  const totalExpenseTrendRangeLabel = `${monthLabel(totalTrendStart)} - ${monthLabel(totalTrendEnd)}`;
   const insightCards = [
     {
       id: "top-expense",
@@ -2663,8 +2672,12 @@ function Reports({ transactions, accounts, categories }: { transactions: Transac
   }, [categoryData.length, selectedCategoryIndex]);
 
   useEffect(() => {
-    setSelectedTrendIndex(trendData.length > 0 ? trendData.length - 1 : null);
-  }, [month, period, selectedYear]);
+    setSelectedTrendIndex(dailyTrendData.length > 0 ? dailyTrendData.length - 1 : null);
+  }, [dailyTrendData.length, month, period, selectedYear]);
+
+  useEffect(() => {
+    setSelectedTotalTrendIndex(totalExpenseTrendData.length > 0 ? totalExpenseTrendData.length - 1 : null);
+  }, [expenseTrendAnchorMonth, totalExpenseTrendData.length]);
 
   useEffect(() => {
     setExpandedInsightId(null);
@@ -2779,51 +2792,28 @@ function Reports({ transactions, accounts, categories }: { transactions: Transac
           )}
         </div>
 
-        <div className="panel chart-panel trend-panel">
-          <div className="chart-heading trend-heading">
-            <div>
-              <h2>{period === "month" ? "近12个月消费趋势" : "近6年消费趋势"}</h2>
-              <span>{trendRangeLabel}</span>
-            </div>
-            <div className="trend-legend">
-              <span><i className="legend trend-swatch" />日常消费</span>
-            </div>
-          </div>
-          <div className="trend-selected" key={selectedTrend?.period ?? "empty"}>
-            <span>{selectedTrendLabel}</span>
-            <strong>¥{centsToYuan(selectedTrend?.expense ?? 0)}</strong>
-            <em>点击下方月份查看金额</em>
-          </div>
-          <div className={`trend-bars trend-bar-list ${period === "month" ? "monthly-trend" : "yearly-trend"}`}>
-            {trendData.map((item, index) => {
-              const isActive = index === activeTrendIndex;
-              const fillWidth = item.expense > 0 ? Math.max(3, (item.expense / maxTrend) * 100) : 0;
-              const label = period === "month" ? shortMonthLabel(item.period) : item.period;
-              return (
-                <button
-                  aria-label={`${period === "month" ? monthLabel(item.period) : yearLabel(item.period)} 日常消费 ¥${centsToYuan(item.expense)}`}
-                  aria-pressed={isActive}
-                  className={isActive ? "trend-row active" : "trend-row"}
-                  key={item.period}
-                  onClick={() => setSelectedTrendIndex(index)}
-                  style={{ "--row-color": trendColor(index) } as CSSProperties}
-                  type="button"
-                >
-                  <span className="trend-y-label">{label}</span>
-                  <span className="trend-track">
-                    <i
-                      className="trend-fill trend-bar"
-                      title={`支出 ¥${centsToYuan(item.expense)}`}
-                      style={{
-                        "--trend-color": trendColor(index),
-                        width: `${fillWidth}%`
-                      } as CSSProperties}
-                    />
-                  </span>
-                </button>
-              );
-            })}
-          </div>
+        <div className="trend-stack">
+          <TrendFoldPanel
+            title={period === "month" ? "近12个月消费趋势" : "近6年消费趋势"}
+            rangeLabel={dailyTrendRangeLabel}
+            legendLabel="日常消费"
+            data={dailyTrendData}
+            periodKind={period}
+            selectedIndex={selectedTrendIndex}
+            onSelect={setSelectedTrendIndex}
+            colorOffset={0}
+          />
+          <TrendFoldPanel
+            title="近12个月支出趋势"
+            rangeLabel={totalExpenseTrendRangeLabel}
+            legendLabel="全部支出"
+            data={totalExpenseTrendData}
+            periodKind="month"
+            selectedIndex={selectedTotalTrendIndex}
+            onSelect={setSelectedTotalTrendIndex}
+            colorOffset={3}
+            totalMode
+          />
         </div>
       </section>
       {detailTransaction && (
@@ -2837,6 +2827,89 @@ function Reports({ transactions, accounts, categories }: { transactions: Transac
     </section>
   );
 }
+
+type TrendPoint = {
+  period: string;
+  expense: number;
+};
+
+function TrendFoldPanel({ title, rangeLabel, legendLabel, data, periodKind, selectedIndex, onSelect, colorOffset = 0, totalMode = false }: {
+  title: string;
+  rangeLabel: string;
+  legendLabel: string;
+  data: TrendPoint[];
+  periodKind: ReportPeriod;
+  selectedIndex: number | null;
+  onSelect: (index: number) => void;
+  colorOffset?: number;
+  totalMode?: boolean;
+}) {
+  const maxTrend = Math.max(1, ...data.map((entry) => entry.expense));
+  const activeTrendIndex = selectedIndex ?? data.length - 1;
+  const selectedTrend = data[activeTrendIndex] ?? data[data.length - 1];
+  const selectedTrendLabel = selectedTrend
+    ? periodKind === "month" ? monthLabel(selectedTrend.period) : yearLabel(selectedTrend.period)
+    : "暂无数据";
+
+  return (
+    <details className={`panel chart-panel trend-panel trend-fold-panel ${totalMode ? "total-trend-panel" : "daily-trend-panel"}`}>
+      <summary className="trend-fold-summary">
+        <div className="trend-fold-title">
+          <h2>{title}</h2>
+          <span>{rangeLabel}</span>
+        </div>
+        <div className="trend-fold-status">
+          <span>{selectedTrendLabel}</span>
+          <strong>¥{centsToYuan(selectedTrend?.expense ?? 0)}</strong>
+        </div>
+      </summary>
+      <div className="trend-fold-body">
+        <div className="trend-legend trend-expanded-legend">
+          <span><i className={`legend ${totalMode ? "expense-trend-swatch" : "trend-swatch"}`} />{legendLabel}</span>
+          <em>{periodKind === "month" ? "按月查看" : "按年查看"}</em>
+        </div>
+        <div className="trend-selected" key={selectedTrend?.period ?? "empty"}>
+          <span>{selectedTrendLabel}</span>
+          <strong>¥{centsToYuan(selectedTrend?.expense ?? 0)}</strong>
+          <em>点击下方{periodKind === "month" ? "月份" : "年份"}查看金额</em>
+        </div>
+        <div className={`trend-bars trend-bar-list ${periodKind === "month" ? "monthly-trend" : "yearly-trend"}`}>
+          {data.map((item, index) => {
+            const rowColor = trendColor(index + colorOffset);
+            const isActive = index === activeTrendIndex;
+            const fillWidth = item.expense > 0 ? Math.max(3, (item.expense / maxTrend) * 100) : 0;
+            const label = periodKind === "month" ? shortMonthLabel(item.period) : item.period;
+            const fullLabel = periodKind === "month" ? monthLabel(item.period) : yearLabel(item.period);
+            return (
+              <button
+                aria-label={`${fullLabel} ${legendLabel} ¥${centsToYuan(item.expense)}`}
+                aria-pressed={isActive}
+                className={isActive ? "trend-row active" : "trend-row"}
+                key={item.period}
+                onClick={() => onSelect(index)}
+                style={{ "--row-color": rowColor } as CSSProperties}
+                type="button"
+              >
+                <span className="trend-y-label">{label}</span>
+                <span className="trend-track">
+                  <i
+                    className="trend-fill trend-bar"
+                    title={`${legendLabel} ¥${centsToYuan(item.expense)}`}
+                    style={{
+                      "--trend-color": rowColor,
+                      width: `${fillWidth}%`
+                    } as CSSProperties}
+                  />
+                </span>
+              </button>
+            );
+          })}
+        </div>
+      </div>
+    </details>
+  );
+}
+
 function Trash({ transactions, accounts, categories, onRestore }: { transactions: Transaction[]; accounts: Account[]; categories: Category[]; onRestore: (item: Transaction) => Promise<void> }) {
   return (
     <section className="panel">
