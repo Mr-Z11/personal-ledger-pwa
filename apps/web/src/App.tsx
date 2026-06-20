@@ -1098,6 +1098,90 @@ function Metric({ title, value, icon: Icon, tone }: { title: string; value: numb
   );
 }
 
+type AmountPadKey = "0" | "1" | "2" | "3" | "4" | "5" | "6" | "7" | "8" | "9" | "00" | "." | "backspace" | "clear";
+
+function appendAmountDigits(value: string, digits: string) {
+  let next = value.trim();
+  for (const digit of digits) {
+    if (next.includes(".")) {
+      const fraction = next.split(".")[1] ?? "";
+      if (fraction.length >= 2) break;
+      next += digit;
+      continue;
+    }
+    if (!next || next === "0") {
+      next = digit === "0" ? "0" : digit;
+      continue;
+    }
+    if (next.length >= 8) break;
+    next += digit;
+  }
+  return next;
+}
+
+function nextAmountValue(value: string, key: AmountPadKey) {
+  const current = value.trim();
+  if (key === "clear") return "";
+  if (key === "backspace") return current.slice(0, -1);
+  if (key === ".") return current.includes(".") ? current : `${current || "0"}.`;
+  return appendAmountDigits(current, key);
+}
+
+function AmountKeypad({ value, onChange, onCommit }: { value: string; onChange: (value: string) => void; onCommit: () => void }) {
+  const canCommit = useMemo(() => {
+    try {
+      return yuanToCents(value) > 0;
+    } catch {
+      return false;
+    }
+  }, [value]);
+  const keys: { key: AmountPadKey | "commit"; label: string; tone?: string }[] = [
+    { key: "1", label: "1" },
+    { key: "2", label: "2" },
+    { key: "3", label: "3" },
+    { key: "backspace", label: "退格", tone: "muted" },
+    { key: "4", label: "4" },
+    { key: "5", label: "5" },
+    { key: "6", label: "6" },
+    { key: "clear", label: "清空", tone: "muted" },
+    { key: "7", label: "7" },
+    { key: "8", label: "8" },
+    { key: "9", label: "9" },
+    { key: "commit", label: "保存", tone: "save" },
+    { key: ".", label: "." },
+    { key: "0", label: "0" },
+    { key: "00", label: "00" }
+  ];
+
+  return (
+    <div className="amount-keypad full" aria-label="金额数字键盘">
+      <div className="amount-keypad-head">
+        <span>快速输入金额</span>
+        <strong>¥{value || "0.00"}</strong>
+      </div>
+      <div className="amount-keypad-grid">
+        {keys.map((item) => (
+          <button
+            key={item.key}
+            type="button"
+            className={item.tone ? `amount-key ${item.tone}` : "amount-key"}
+            disabled={item.key === "commit" && !canCommit}
+            onClick={() => {
+              if (item.key === "commit") {
+                onCommit();
+                return;
+              }
+              onChange(nextAmountValue(value, item.key));
+            }}
+          >
+            {item.label}
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 function EntryForm({ accounts, categories, transactions, onSave, onSaveCategory, editing, onCancel, focusSignal = 0 }: {
   accounts: Account[];
   categories: Category[];
@@ -1174,6 +1258,11 @@ function EntryForm({ accounts, categories, transactions, onSave, onSaveCategory,
     }
     input.focus();
   }, [editing]);
+  const commitEntry = useCallback(() => {
+    const form = amountInputRef.current?.form;
+    if (!form) return;
+    form.requestSubmit();
+  }, []);
 
   useEffect(() => {
     if (!editing) return;
@@ -1274,6 +1363,7 @@ function EntryForm({ accounts, categories, transactions, onSave, onSaveCategory,
           </div>
         )}
         <label className="entry-amount-field full">金额<input ref={amountInputRef} value={amount} onChange={(event) => setAmount(event.target.value)} placeholder="0.00" inputMode="decimal" enterKeyHint="done" autoFocus={!editing} required /></label>
+        {!editing && <AmountKeypad value={amount} onChange={setAmount} onCommit={commitEntry} />}
         <label>{type === "income" ? "收款账户" : type === "expense" ? "信用卡" : "付款账户"}<select value={accountId} onChange={(event) => setAccountId(event.target.value)}>{accountOptions.map((account) => <option key={account.id} value={account.id}>{account.name}</option>)}</select></label>
         {type === "transfer" ? (
           <label>转入账户<select value={toAccountId} onChange={(event) => setToAccountId(event.target.value)}>{accounts.filter((item) => item.id !== accountId).map((account) => <option key={account.id} value={account.id}>{account.name}</option>)}</select></label>

@@ -845,6 +845,76 @@ input[type="month"],
   color: rgba(36, 49, 39, 0.3);
 }
 
+.amount-keypad {
+  display: grid;
+  gap: 0.56rem;
+  padding: 0.62rem;
+  border: 1px solid rgba(49, 71, 58, 0.1);
+  border-radius: 0.84rem;
+  background: linear-gradient(145deg, rgba(255, 253, 247, 0.96), rgba(239, 234, 214, 0.76));
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.72);
+}
+
+.amount-keypad-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  color: rgba(36, 49, 39, 0.64);
+  font-size: 0.82rem;
+  font-weight: 900;
+}
+
+.amount-keypad-head strong {
+  color: #243127;
+  font-size: 1rem;
+  font-weight: 950;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.amount-keypad-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 0.42rem;
+}
+
+.amount-key {
+  min-height: 3rem;
+  border: 1px solid rgba(49, 71, 58, 0.11);
+  border-radius: 0.72rem;
+  background: rgba(255, 250, 240, 0.96);
+  color: #243127;
+  font-size: 1.24rem;
+  font-weight: 950;
+  box-shadow: 0 0.32rem 0.8rem rgba(36, 49, 39, 0.08);
+  touch-action: manipulation;
+}
+
+.amount-key:active {
+  transform: translateY(1px);
+  box-shadow: 0 0.16rem 0.4rem rgba(36, 49, 39, 0.08);
+}
+
+.amount-key.muted {
+  background: rgba(49, 71, 58, 0.08);
+  color: rgba(36, 49, 39, 0.72);
+  font-size: 0.9rem;
+}
+
+.amount-key.save {
+  grid-row: span 2;
+  background: #243127;
+  color: #fff7df;
+  font-size: 1rem;
+}
+
+.amount-key.save:disabled {
+  opacity: 0.44;
+  cursor: not-allowed;
+}
+
 .entry-actions {
   position: sticky;
   bottom: calc(5.15rem + max(0.75rem, env(safe-area-inset-bottom)));
@@ -2897,6 +2967,21 @@ input[type="month"],
   .entry-amount-field input {
     min-height: 4.25rem;
     font-size: 2rem;
+  }
+
+  .amount-keypad {
+    gap: 0.48rem;
+    padding: 0.52rem;
+  }
+
+  .amount-keypad-grid {
+    gap: 0.36rem;
+  }
+
+  .amount-key {
+    min-height: 2.76rem;
+    border-radius: 0.66rem;
+    font-size: 1.12rem;
   }
 
   .account-strip {
