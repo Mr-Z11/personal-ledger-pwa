@@ -1760,6 +1760,10 @@ input[type="month"],
   gap: 0.26rem;
   background: rgba(255, 250, 240, 0.88);
   box-shadow: 0 0.55rem 1.4rem rgba(36, 49, 39, 0.06);
+  color: #243127;
+  cursor: pointer;
+  text-align: left;
+  transition: border-color 180ms ease, box-shadow 180ms ease, transform 180ms ease, background 180ms ease;
 }
 
 .insight-card.good {
@@ -1774,6 +1778,28 @@ input[type="month"],
 
 .insight-card.neutral {
   border-color: rgba(214, 178, 94, 0.28);
+}
+
+.insight-card:hover,
+.insight-card:focus-visible {
+  border-color: rgba(31, 95, 116, 0.26);
+  box-shadow: 0 0.8rem 1.7rem rgba(36, 49, 39, 0.09);
+  transform: translateY(-0.08rem);
+}
+
+.insight-card:focus-visible {
+  outline: 2px solid rgba(31, 95, 116, 0.32);
+  outline-offset: 2px;
+}
+
+.insight-card.expanded {
+  grid-column: span 2;
+  border-color: rgba(31, 95, 116, 0.28);
+  background:
+    linear-gradient(135deg, rgba(255, 250, 240, 0.96), rgba(255, 255, 255, 0.72)),
+    rgba(255, 250, 240, 0.92);
+  box-shadow: 0 1rem 2.2rem rgba(36, 49, 39, 0.12);
+  animation: insightOpen 240ms cubic-bezier(0.18, 0.92, 0.24, 1.08);
 }
 
 .insight-card span {
@@ -1798,6 +1824,66 @@ input[type="month"],
   overflow: hidden;
   -webkit-box-orient: vertical;
   -webkit-line-clamp: 2;
+}
+
+.insight-card > em {
+  margin-top: 0.12rem;
+  color: rgba(31, 95, 116, 0.72);
+  font-size: 0.7rem;
+  font-style: normal;
+  font-weight: 900;
+}
+
+.insight-detail {
+  margin-top: 0.35rem;
+  padding-top: 0.52rem;
+  border-top: 1px solid rgba(49, 71, 58, 0.1);
+  display: grid;
+  gap: 0.42rem;
+}
+
+.insight-detail b {
+  color: #243127;
+  font-size: 0.76rem;
+}
+
+.insight-detail p {
+  display: block;
+  overflow: visible;
+  color: rgba(36, 49, 39, 0.74);
+  -webkit-line-clamp: unset;
+}
+
+.insight-detail ul {
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.34rem;
+  list-style: none;
+}
+
+.insight-detail li {
+  padding: 0.18rem 0.42rem;
+  border-radius: 999px;
+  background: rgba(31, 95, 116, 0.08);
+  color: rgba(36, 49, 39, 0.68);
+  font-size: 0.68rem;
+  font-weight: 900;
+}
+
+@keyframes insightOpen {
+  0% {
+    transform: translateY(0) scale(0.985);
+  }
+
+  70% {
+    transform: translateY(-0.1rem) scale(1.01);
+  }
+
+  100% {
+    transform: translateY(0) scale(1);
+  }
 }
 
 .report-grid {
@@ -2526,12 +2612,22 @@ input[type="month"],
     padding: 0.58rem;
   }
 
+  .insight-card.expanded {
+    grid-column: 1 / -1;
+  }
+
   .insight-card strong {
     font-size: 0.9rem;
   }
 
   .insight-card p {
     -webkit-line-clamp: 1;
+  }
+
+  .insight-detail p {
+    display: block;
+    overflow: visible;
+    -webkit-line-clamp: unset;
   }
 
   .special-expense-grid {

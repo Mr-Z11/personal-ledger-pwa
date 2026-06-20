@@ -2096,6 +2096,7 @@ function Reports({ transactions, accounts, categories }: { transactions: Transac
   const [year, setYear] = useState(currentYear);
   const [selectedCategoryIndex, setSelectedCategoryIndex] = useState<number | null>(null);
   const [selectedTrendIndex, setSelectedTrendIndex] = useState<number | null>(null);
+  const [expandedInsightId, setExpandedInsightId] = useState<string | null>(null);
   const categoryKind: Category["kind"] = "expense";
   const selectedYear = year.trim() || currentYear;
   const periodKey = period === "month" ? month : selectedYear;
@@ -2205,6 +2206,78 @@ function Reports({ transactions, accounts, categories }: { transactions: Transac
   const selectedTrendLabel = selectedTrend
     ? period === "month" ? monthLabel(selectedTrend.period) : yearLabel(selectedTrend.period)
     : "暂无数据";
+  const insightCards = [
+    {
+      id: "top-expense",
+      tone: "",
+      title: "最大支出项",
+      value: topExpense ? topExpense.name : "暂无",
+      summary: topExpense ? `占本期支出的 ${topExpenseRatio}%，金额 ¥${centsToYuan(topExpense.value)}。` : "本期还没有支出数据。",
+      detail: topExpense
+        ? `本期日常消费里，${topExpense.name} 是金额最高的分类。它的占比越高，越适合作为优先复盘项；如果它不是刚性支出，可以先从频率、单次金额、消费场景三个角度找控制空间。`
+        : "当前周期没有可分析的日常支出，因此暂时无法判断最大支出项。",
+      evidence: topExpense
+        ? [`分类金额 ¥${centsToYuan(topExpense.value)}`, `日常消费 ¥${centsToYuan(periodSummary.expenseCents)}`, `占比 ${topExpenseRatio}%`]
+        : ["暂无日常支出记录"]
+    },
+    {
+      id: "expense-change",
+      tone: expenseChange > 15 ? "warn" : "neutral",
+      title: period === "month" ? "日常支出环比" : "日常支出年比",
+      value: expenseChangeText,
+      summary: `参考历史导入数据中的上一个${period === "month" ? "月" : "年"}${isCurrentPeriod ? "同期" : ""}日常支出；负数表示本期下降。`,
+      detail: expenseChange > 15
+        ? "本期日常支出增幅较高，建议优先查看分类统计和流水明细，确认是否由高频小额、餐饮出行、临时购物或异常大额造成。"
+        : expenseChange < -15
+          ? "本期日常支出明显下降，这是一个正向信号。可以进一步确认下降来自主动控制，还是因为部分消费被归入专项支出或还未发生。"
+          : "本期和上一参考周期相比变化不大，说明整体消费节奏相对稳定。下一步更适合关注结构，而不是总额。",
+      evidence: [`本期日常消费 ¥${centsToYuan(periodSummary.expenseCents)}`, `参考周期 ¥${centsToYuan(previousSummary.expenseCents)}`, `变化 ${expenseChangeText}`]
+    },
+    {
+      id: "daily-average",
+      tone: "",
+      title: "日均支出",
+      value: `¥${centsToYuan(dailyAverageExpense)}`,
+      summary: isCurrentPeriod ? `按当前节奏，本${period === "month" ? "月" : "年"}预计支出 ¥${centsToYuan(projectedExpense)}。` : `这是该${period === "month" ? "月" : "年"}实际日均支出。`,
+      detail: isCurrentPeriod
+        ? "日均支出用于把当前消费节奏投影到整个周期。它不代表最终一定会花这么多，但很适合提前发现预算压力。"
+        : "该周期已经结束，所以日均支出反映的是实际消费强度，可以用来和其他月份或年份对比。",
+      evidence: [`已统计天数 ${elapsedDays} 天`, `周期天数 ${periodDays} 天`, `预计日常消费 ¥${centsToYuan(projectedExpense)}`]
+    },
+    {
+      id: "concentration",
+      tone: concentrationRatio > 65 ? "warn" : "neutral",
+      title: "前三支出集中度",
+      value: `${concentrationRatio}%`,
+      summary: concentrationRatio > 65 ? "支出集中在少数分类，适合优先做专项控制。" : "支出结构相对分散。",
+      detail: concentrationRatio > 65
+        ? "前三类支出占比偏高，说明控制少数几个分类就可能明显影响总支出。建议先从最高分类开始，避免平均用力。"
+        : "支出分布较分散时，单一分类优化带来的效果有限。更适合先设总预算，再观察哪些分类逐渐抬头。",
+      evidence: [`前三分类合计 ¥${centsToYuan(topThreeExpense)}`, `日常消费 ¥${centsToYuan(periodSummary.expenseCents)}`, `集中度 ${concentrationRatio}%`]
+    },
+    {
+      id: "recent-average",
+      tone: recentExpenseAverage > dailyAverageExpense * periodDays ? "warn" : "neutral",
+      title: period === "month" ? "近三月平均消费" : "近三年平均消费",
+      value: `¥${centsToYuan(recentExpenseAverage)}`,
+      summary: "用长期均值对照当前支出，能更快发现异常月份和一次性大额消费。",
+      detail: "近三期平均值能减少单个周期波动的干扰。如果当前周期明显高于均值，通常需要排查异常大额；如果明显低于均值，可以复盘哪些习惯变化带来了改善。",
+      evidence: [`近三期平均 ¥${centsToYuan(recentExpenseAverage)}`, `当前周期日常消费 ¥${centsToYuan(periodSummary.expenseCents)}`, `当前预计 ¥${centsToYuan(projectedExpense)}`]
+    },
+    {
+      id: "special-expense",
+      tone: specialSummary.expenseCents > periodSummary.expenseCents ? "warn" : "neutral",
+      title: "专项支出提醒",
+      value: specialTop ? specialTop.name : "暂无",
+      summary: specialTop ? `本期专项最高为 ¥${centsToYuan(specialTop.value)}，不纳入正常消费趋势。` : "本期没有贷款、保险、教育或大额未分类专项支出。",
+      detail: specialTop
+        ? "专项支出已经从日常消费分析中拆出，因此不会扭曲日常趋势。它仍然值得单独关注，尤其是贷款、保险、教育和一次性大额支出。"
+        : "本期没有识别到专项支出，当前报表主要反映日常消费行为。",
+      evidence: specialTop
+        ? [`专项总额 ¥${centsToYuan(specialSummary.expenseCents)}`, `最高专项 ${specialTop.name}`, `最高金额 ¥${centsToYuan(specialTop.value)}`]
+        : ["暂无专项支出"]
+    }
+  ];
 
   useEffect(() => {
     if (selectedCategoryIndex !== null && selectedCategoryIndex > categoryData.length - 1) setSelectedCategoryIndex(null);
@@ -2212,6 +2285,10 @@ function Reports({ transactions, accounts, categories }: { transactions: Transac
 
   useEffect(() => {
     setSelectedTrendIndex(trendData.length > 0 ? trendData.length - 1 : null);
+  }, [month, period, selectedYear]);
+
+  useEffect(() => {
+    setExpandedInsightId(null);
   }, [month, period, selectedYear]);
 
   return (
@@ -2244,36 +2321,39 @@ function Reports({ transactions, accounts, categories }: { transactions: Transac
       </div>
 
       <div className="finance-insights">
-        <article className="insight-card">
-          <span>最大支出项</span>
-          <strong>{topExpense ? topExpense.name : "暂无"}</strong>
-          <p>{topExpense ? `占本期支出的 ${topExpenseRatio}%，金额 ¥${centsToYuan(topExpense.value)}。` : "本期还没有支出数据。"}</p>
-        </article>
-        <article className={expenseChange > 15 ? "insight-card warn" : "insight-card neutral"}>
-          <span>{period === "month" ? "日常支出环比" : "日常支出年比"}</span>
-          <strong>{expenseChangeText}</strong>
-          <p>参考历史导入数据中的上一个{period === "month" ? "月" : "年"}{isCurrentPeriod ? "同期" : ""}日常支出；负数表示本期下降。</p>
-        </article>
-        <article className="insight-card">
-          <span>日均支出</span>
-          <strong>¥{centsToYuan(dailyAverageExpense)}</strong>
-          <p>{isCurrentPeriod ? `按当前节奏，本${period === "month" ? "月" : "年"}预计支出 ¥${centsToYuan(projectedExpense)}。` : `这是该${period === "month" ? "月" : "年"}实际日均支出。`}</p>
-        </article>
-        <article className={concentrationRatio > 65 ? "insight-card warn" : "insight-card neutral"}>
-          <span>前三支出集中度</span>
-          <strong>{concentrationRatio}%</strong>
-          <p>{concentrationRatio > 65 ? "支出集中在少数分类，适合优先做专项控制。" : "支出结构相对分散。"}</p>
-        </article>
-        <article className={recentExpenseAverage > dailyAverageExpense * periodDays ? "insight-card warn" : "insight-card neutral"}>
-          <span>{period === "month" ? "近三月平均消费" : "近三年平均消费"}</span>
-          <strong>¥{centsToYuan(recentExpenseAverage)}</strong>
-          <p>用长期均值对照当前支出，能更快发现异常月份和一次性大额消费。</p>
-        </article>
-        <article className={specialSummary.expenseCents > periodSummary.expenseCents ? "insight-card warn" : "insight-card neutral"}>
-          <span>专项支出提醒</span>
-          <strong>{specialTop ? specialTop.name : "暂无"}</strong>
-          <p>{specialTop ? `本期专项最高为 ¥${centsToYuan(specialTop.value)}，不纳入正常消费趋势。` : "本期没有贷款、保险、教育或大额未分类专项支出。"}</p>
-        </article>
+        {insightCards.map((card) => {
+          const expanded = expandedInsightId === card.id;
+          return (
+            <article
+              aria-expanded={expanded}
+              className={`insight-card ${card.tone} ${expanded ? "expanded" : ""}`.trim()}
+              key={card.id}
+              onClick={() => setExpandedInsightId(expanded ? null : card.id)}
+              onKeyDown={(event) => {
+                if (event.key === "Enter" || event.key === " ") {
+                  event.preventDefault();
+                  setExpandedInsightId(expanded ? null : card.id);
+                }
+              }}
+              role="button"
+              tabIndex={0}
+            >
+              <span>{card.title}</span>
+              <strong>{card.value}</strong>
+              <p>{card.summary}</p>
+              {expanded && (
+                <div className="insight-detail">
+                  <b>完整分析</b>
+                  <p>{card.detail}</p>
+                  <ul>
+                    {card.evidence.map((item) => <li key={item}>{item}</li>)}
+                  </ul>
+                </div>
+              )}
+              <em>{expanded ? "收起详情" : "查看详情"}</em>
+            </article>
+          );
+        })}
       </div>
 
       {specialCategoryData.length > 0 && (
