@@ -303,13 +303,20 @@ function transactionGroupTone(key: string, mode: LedgerGroupMode) {
   return ["weekday-sun", "weekday-mon", "weekday-tue", "weekday-wed", "weekday-thu", "weekday-fri", "weekday-sat"][weekday];
 }
 
-function categoryUsageCounts(transactions: Transaction[], kind: Category["kind"]) {
+function categoryUsageCounts(transactions: Transaction[], kind: Category["kind"], since?: Date) {
   const counts = new Map<string, number>();
   transactions.forEach((item) => {
     if (item.type !== kind || !item.categoryId) return;
+    if (since && new Date(item.occurredAt) < since) return;
     counts.set(item.categoryId, (counts.get(item.categoryId) ?? 0) + 1);
   });
   return counts;
+}
+
+function monthsAgo(months: number) {
+  const date = new Date();
+  date.setMonth(date.getMonth() - months);
+  return date;
 }
 
 function sortCategoriesByUsage(categories: Category[], allCategories: Category[], usageCounts: Map<string, number>) {
@@ -380,8 +387,24 @@ function quickEntryAccounts(accounts: Account[], type: TransactionType, editing?
   return accounts;
 }
 
+function mealTimeDefaultCategory(categories: Category[], allCategories: Category[]) {
+  const hour = Number(beijingDateTimeParts().hour);
+  const pathOf = (category: Category) => categoryPath(category, allCategories);
+  const exactPattern = hour >= 5 && hour < 10
+    ? /早餐|早饭/
+    : hour >= 10 && hour < 15
+      ? /午餐|午饭/
+      : hour >= 17 && hour < 22
+        ? /晚餐|晚饭/
+        : null;
+  if (!exactPattern) return undefined;
+  return categories.find((category) => exactPattern.test(pathOf(category)))
+    ?? categories.find((category) => /三餐|早午晚餐/.test(pathOf(category)))
+    ?? categories.find((category) => /餐饮|食品|吃饭|用餐/.test(pathOf(category)));
+}
+
 function isMealCategory(category: Category | undefined, categories: Category[]) {
-  return /早餐|午餐|晚餐|早饭|午饭|晚饭|早午晚餐/.test(categoryPath(category, categories));
+  return /早餐|午餐|晚餐|早饭|午饭|晚饭|早午晚餐|三餐|餐饮食品/.test(categoryPath(category, categories));
 }
 
 function isNonDailyExpenseCategory(category: Category | undefined, categories: Category[]) {
@@ -615,7 +638,7 @@ async function downloadXlsx(filename: string, rows: (string | number | null | un
 export function App() {
   const [token, setToken] = useState(() => localStorage.getItem("ledger-token"));
   const [userName, setUserName] = useState(() => localStorage.getItem("ledger-user") ?? "");
-  const [view, setView] = useState<View>("overview");
+  const [view, setView] = useState<View>("entry");
   const [message, setMessage] = useState("准备同步");
   const [busy, setBusy] = useState(false);
   const [accounts, setAccounts] = useState<Account[]>([]);
@@ -1089,13 +1112,25 @@ function EntryForm({ accounts, categories, transactions, onSave, onSaveCategory,
   const [saveFeedback, setSaveFeedback] = useState("");
 
   const categoryKind = type === "income" ? "income" : "expense";
-  const usageCounts = useMemo(() => categoryUsageCounts(transactions, categoryKind), [transactions, categoryKind]);
+  const recentUsageCounts = useMemo(() => categoryUsageCounts(transactions, categoryKind, monthsAgo(3)), [transactions, categoryKind]);
   const filteredCategories = useMemo(
-    () => sortCategoriesByUsage(selectableCategories(categories, categoryKind), categories, usageCounts),
-    [categories, categoryKind, usageCounts]
+    () => sortCategoriesByUsage(selectableCategories(categories, categoryKind), categories, recentUsageCounts),
+    [categories, categoryKind, recentUsageCounts]
   );
   const selectedCategory = categories.find((category) => category.id === categoryId);
-  const accountOptions = useMemo(() => quickEntryAccounts(accounts, type, editing), [accounts, type, editing]);
+  const recommendedCategory = useMemo(() => {
+    if (type === "transfer") return undefined;
+    return type === "expense"
+      ? mealTimeDefaultCategory(filteredCategories, categories) ?? filteredCategories[0]
+      : filteredCategories[0];
+  }, [categories, filteredCategories, type]);
+  const accountOptions = useMemo(() => {
+    const baseOptions = quickEntryAccounts(accounts, type, editing);
+    if (editing || type !== "expense" || !isMealCategory(selectedCategory, categories)) return baseOptions;
+    const mealAccount = mealDefaultAccount(accounts);
+    const options = [mealAccount, ...baseOptions].filter((account): account is Account => Boolean(account));
+    return options.filter((account, index, list) => list.findIndex((item) => item.id === account.id) === index);
+  }, [accounts, categories, editing, selectedCategory, type]);
   const typeOptions: TransactionType[] = editing ? ["expense", "income", "transfer"] : ["expense", "income"];
   const selectedAccount = accountOptions.find((account) => account.id === accountId) ?? accounts.find((account) => account.id === accountId);
   const selectedTargetAccount = accounts.find((account) => account.id === toAccountId);
@@ -1131,9 +1166,9 @@ function EntryForm({ accounts, categories, transactions, onSave, onSaveCategory,
   useEffect(() => {
     if ((!accountId || !accountOptions.some((account) => account.id === accountId)) && accountOptions[0]) setAccountId(accountOptions[0].id);
     if (type !== "transfer" && !filteredCategories.some((category) => category.id === categoryId)) {
-      setCategoryId(filteredCategories[0]?.id ?? "");
+      setCategoryId(recommendedCategory?.id ?? "");
     }
-  }, [accountOptions, filteredCategories, accountId, categoryId, type]);
+  }, [accountOptions, filteredCategories, accountId, categoryId, recommendedCategory, type]);
 
   useEffect(() => {
     if (editing || type !== "expense" || !isMealCategory(selectedCategory, categories)) return;
@@ -1199,12 +1234,12 @@ function EntryForm({ accounts, categories, transactions, onSave, onSaveCategory,
             </div>
           </div>
         )}
-        <label className="entry-amount-field full">金额<input value={amount} onChange={(event) => setAmount(event.target.value)} placeholder="0.00" inputMode="decimal" required /></label>
+        <label className="entry-amount-field full">金额<input value={amount} onChange={(event) => setAmount(event.target.value)} placeholder="0.00" inputMode="decimal" autoFocus={!editing} required /></label>
         <label>{type === "income" ? "收款账户" : type === "expense" ? "信用卡" : "付款账户"}<select value={accountId} onChange={(event) => setAccountId(event.target.value)}>{accountOptions.map((account) => <option key={account.id} value={account.id}>{account.name}</option>)}</select></label>
         {type === "transfer" ? (
           <label>转入账户<select value={toAccountId} onChange={(event) => setToAccountId(event.target.value)}>{accounts.filter((item) => item.id !== accountId).map((account) => <option key={account.id} value={account.id}>{account.name}</option>)}</select></label>
         ) : (
-          <CategoryPicker categories={categories} options={filteredCategories} usageCounts={usageCounts} kind={categoryKind} value={categoryId} onChange={setCategoryId} onCreate={onSaveCategory} />
+          <CategoryPicker categories={categories} options={filteredCategories} usageCounts={recentUsageCounts} kind={categoryKind} value={categoryId} onChange={setCategoryId} onCreate={onSaveCategory} />
         )}
         <div className="entry-actions full">
           <button className="primary">{editing ? "保存修改" : `保存这笔${typeLabels[type]}`}</button>
@@ -1246,6 +1281,14 @@ function CategoryPicker({ categories, options, usageCounts, kind, value, onChang
   const selectOptions = normalizedQuery && selectedCategory && !matches.some((category) => category.id === selectedCategory.id)
     ? [selectedCategory, ...matches]
     : matches;
+  const quickOptions = useMemo(() => {
+    if (normalizedQuery) return matches.slice(0, 12);
+    const topCategories = options.slice(0, 8);
+    if (selectedCategory && !topCategories.some((category) => category.id === selectedCategory.id)) {
+      return [selectedCategory, ...topCategories.slice(0, 7)];
+    }
+    return topCategories;
+  }, [matches, normalizedQuery, options, selectedCategory]);
   const hasExactMatch = options.some((category) => {
     const path = categoryPath(category, categories).toLowerCase();
     return path === normalizedQuery || category.name.toLowerCase() === normalizedQuery;
@@ -1312,12 +1355,7 @@ function CategoryPicker({ categories, options, usageCounts, kind, value, onChang
         })}
       </select>
       <div className="category-chip-list">
-        {!normalizedQuery && selectedCategory && (
-          <button type="button" className="category-chip active" onClick={() => chooseCategory(selectedCategory.id)}>
-            {categoryPath(selectedCategory, categories)}
-          </button>
-        )}
-        {normalizedQuery && matches.map((category) => (
+        {quickOptions.map((category) => (
           <button type="button" className={value === category.id ? "category-chip active" : "category-chip"} key={category.id} onClick={() => chooseCategory(category.id)}>
             {categoryPath(category, categories)}
           </button>
