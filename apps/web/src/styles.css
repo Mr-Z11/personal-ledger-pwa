@@ -1020,6 +1020,11 @@ input[type="month"],
   padding: 0 0.75rem 0.75rem;
 }
 
+.entry-more-grid label,
+.entry-more-grid input {
+  min-width: 0;
+}
+
 .entry-more-grid label:last-child {
   grid-column: 1 / -1;
 }
@@ -3387,6 +3392,17 @@ input[type="month"],
 
   .entry-more summary {
     min-height: 2.08rem;
+  }
+
+  .entry-more-grid {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 0.58rem;
+    padding: 0 0.62rem 0.62rem;
+  }
+
+  .entry-more-grid label,
+  .entry-more-grid label:last-child {
+    grid-column: 1;
   }
 
   .category-picker {
