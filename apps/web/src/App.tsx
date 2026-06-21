@@ -1376,7 +1376,7 @@ function EntryForm({ accounts, categories, transactions, onSave, onSaveCategory,
         <details className="entry-more full">
           <summary>时间、商户、备注</summary>
           <div className="entry-more-grid">
-            <label>时间<input value={occurredAt} onChange={(event) => {
+            <label className="entry-time-field">时间<input value={occurredAt} onChange={(event) => {
               setOccurredAt(event.target.value);
               setTimeTouched(true);
             }} type="datetime-local" /></label>

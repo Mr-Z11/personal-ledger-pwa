@@ -1025,6 +1025,20 @@ input[type="month"],
   min-width: 0;
 }
 
+.entry-time-field {
+  overflow: hidden;
+}
+
+.entry-time-field input[type="datetime-local"] {
+  display: block;
+  inline-size: 100%;
+  max-inline-size: 100%;
+  min-inline-size: 0;
+  box-sizing: border-box;
+  -webkit-appearance: none;
+  appearance: none;
+}
+
 .entry-more-grid label:last-child {
   grid-column: 1 / -1;
 }
