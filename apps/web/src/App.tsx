@@ -1234,6 +1234,13 @@ function EntryForm({ accounts, categories, transactions, onSave, onSaveCategory,
       return text;
     }
   }, [amount]);
+  const canSubmit = useMemo(() => {
+    try {
+      return yuanToCents(amount) > 0;
+    } catch {
+      return false;
+    }
+  }, [amount]);
   const entryContext = type === "transfer"
     ? `${selectedAccount?.name ?? "付款账户"} → ${selectedTargetAccount?.name ?? "转入账户"}`
     : `${selectedCategoryPath} · ${selectedAccount?.name ?? "选择账户"}`;
@@ -1366,12 +1373,6 @@ function EntryForm({ accounts, categories, transactions, onSave, onSaveCategory,
         ) : (
           <CategoryPicker categories={categories} options={filteredCategories} usageCounts={recentUsageCounts} kind={categoryKind} value={categoryId} onChange={setCategoryId} onCreate={onSaveCategory} />
         )}
-        {editing && (
-          <div className="entry-actions full">
-            <button className="primary">保存修改</button>
-            {onCancel && <button type="button" className="ghost" onClick={onCancel}><X size={16} />取消编辑</button>}
-          </div>
-        )}
         <details className="entry-more full">
           <summary>时间、商户、备注</summary>
           <div className="entry-more-grid">
@@ -1383,6 +1384,10 @@ function EntryForm({ accounts, categories, transactions, onSave, onSaveCategory,
             <label>备注<input value={note} onChange={(event) => setNote(event.target.value)} placeholder="补充说明" /></label>
           </div>
         </details>
+        <div className="entry-actions full">
+          <button className="primary" disabled={!canSubmit}>{editing ? "保存修改" : "保存记录"}</button>
+          {editing && onCancel && <button type="button" className="ghost" onClick={onCancel}><X size={16} />取消编辑</button>}
+        </div>
       </form>
     </section>
   );
