@@ -5,6 +5,7 @@ import {
   summarizeMonth,
   yuanToCents,
   type Account,
+  type AnalysisNote,
   type Budget,
   type Category,
   type Transaction,
@@ -435,6 +436,60 @@ function monthBudgetTotal(budgets: Budget[], month: string) {
   return monthBudgets.reduce((sum, budget) => sum + budget.amountCents, 0);
 }
 
+function offsetMonthKey(value: string, offset: number) {
+  const date = dateFromMonthKey(value);
+  date.setMonth(date.getMonth() + offset);
+  return monthKey(date);
+}
+
+function previousMonthKeys(value: string, count: number) {
+  return Array.from({ length: count }, (_, index) => offsetMonthKey(value, -(index + 1)));
+}
+
+function categoryAggregateKey(categoryId?: string | null) {
+  return categoryId ?? "uncategorized";
+}
+
+function categoryAggregateName(categoryId: string | null, categories: Category[]) {
+  if (!categoryId) return "未分类";
+  return categoryPath(categories.find((entry) => entry.id === categoryId), categories) || "未分类";
+}
+
+type CategoryExpenseAggregate = {
+  id: string;
+  categoryId: string | null;
+  name: string;
+  value: number;
+  transactions: Transaction[];
+};
+
+function aggregateCategoryExpenses(transactions: Transaction[], categories: Category[]) {
+  const totals = new Map<string, CategoryExpenseAggregate>();
+  transactions.forEach((item) => {
+    const categoryId = item.categoryId ?? null;
+    const id = categoryAggregateKey(categoryId);
+    const current = totals.get(id) ?? {
+      id,
+      categoryId,
+      name: categoryAggregateName(categoryId, categories),
+      value: 0,
+      transactions: []
+    };
+    current.value += item.amountCents;
+    current.transactions.push(item);
+    totals.set(id, current);
+  });
+  return totals;
+}
+
+function categoryBudgetCents(budgets: Budget[], month: string, categoryId: string | null) {
+  return budgets.find((budget) => budget.month === month && (budget.categoryId ?? null) === categoryId)?.amountCents ?? 0;
+}
+
+function analysisNoteFor(notes: AnalysisNote[], month: string, subjectType: AnalysisNote["subjectType"], subjectKey: string) {
+  return notes.find((note) => note.month === month && note.subjectType === subjectType && note.subjectKey === subjectKey);
+}
+
 function otherCategory(categories: Category[], kind: Category["kind"]) {
   return activeOnly(categories).find((category) => category.kind === kind && !category.parentId && category.name === "其他");
 }
@@ -645,6 +700,7 @@ export function App() {
   const [categories, setCategories] = useState<Category[]>([]);
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [budgets, setBudgets] = useState<Budget[]>([]);
+  const [analysisNotes, setAnalysisNotes] = useState<AnalysisNote[]>([]);
   const [outboxCount, setOutboxCount] = useState(0);
   const [lastSync, setLastSync] = useState<string | undefined>();
   const [editingTransaction, setEditingTransaction] = useState<Transaction | null>(null);
@@ -655,11 +711,12 @@ export function App() {
   const [exportFileType, setExportFileType] = useState<ExportFileType>("xlsx");
 
   const refreshLocal = useCallback(async () => {
-    const [nextAccounts, nextCategories, nextTransactions, nextBudgets, nextOutboxCount, nextLastSync] = await Promise.all([
+    const [nextAccounts, nextCategories, nextTransactions, nextBudgets, nextAnalysisNotes, nextOutboxCount, nextLastSync] = await Promise.all([
       db.accounts.toArray(),
       db.categories.toArray(),
       db.transactions.orderBy("occurredAt").reverse().toArray(),
       db.budgets.toArray(),
+      db.analysisNotes.toArray(),
       db.outbox.count(),
       db.meta.get("lastSyncAt")
     ]);
@@ -667,6 +724,7 @@ export function App() {
     setCategories(nextCategories);
     setTransactions(nextTransactions);
     setBudgets(nextBudgets);
+    setAnalysisNotes(nextAnalysisNotes);
     setOutboxCount(nextOutboxCount);
     setLastSync(nextLastSync?.value);
   }, []);
@@ -674,6 +732,8 @@ export function App() {
   const activeAccounts = useMemo(() => activeOnly(accounts), [accounts]);
   const activeCategories = useMemo(() => activeOnly(categories), [categories]);
   const activeTransactions = useMemo(() => activeOnly(transactions), [transactions]);
+  const activeBudgets = useMemo(() => activeOnly(budgets), [budgets]);
+  const activeAnalysisNotes = useMemo(() => activeOnly(analysisNotes), [analysisNotes]);
   const isLocalPreview = token?.startsWith("local-preview:") ?? false;
   const currentMonth = monthKey();
   const dailyMonthExpenses = useMemo(
@@ -686,7 +746,7 @@ export function App() {
     expenseCents: dailyMonthExpenseCents,
     netCents: -dailyMonthExpenseCents
   }), [dailyMonthExpenseCents]);
-  const currentBudgetCents = useMemo(() => monthBudgetTotal(activeOnly(budgets), currentMonth), [budgets, currentMonth]);
+  const currentBudgetCents = useMemo(() => monthBudgetTotal(activeBudgets, currentMonth), [activeBudgets, currentMonth]);
 
   async function hydrateFromServer(nextToken = token) {
     if (!nextToken) return;
@@ -722,7 +782,8 @@ export function App() {
         (pending.accounts?.length ?? 0) +
           (pending.categories?.length ?? 0) +
           (pending.transactions?.length ?? 0) +
-          (pending.budgets?.length ?? 0) >
+          (pending.budgets?.length ?? 0) +
+          (pending.analysisNotes?.length ?? 0) >
         0
       ) {
         const pushed = await api.push(token, pending);
@@ -779,7 +840,10 @@ export function App() {
     await refreshLocal();
   }
 
-  async function saveLocalAndQueue(kind: keyof Pick<typeof db, "accounts" | "categories" | "transactions" | "budgets">, item: Account | Category | Transaction | Budget) {
+  async function saveLocalAndQueue(
+    kind: keyof Pick<typeof db, "accounts" | "categories" | "transactions" | "budgets" | "analysisNotes">,
+    item: Account | Category | Transaction | Budget | AnalysisNote
+  ) {
     await db[kind].put(item as never);
     await enqueue({ [kind]: [item] });
     await refreshLocal();
@@ -893,14 +957,21 @@ export function App() {
           }} onSaveCategory={(item) => saveLocalAndQueue("categories", item)} />
         )}
         {view === "reports" && (
-          <Reports transactions={activeTransactions} accounts={activeAccounts} categories={activeCategories} />
+          <Reports
+            transactions={activeTransactions}
+            accounts={activeAccounts}
+            categories={activeCategories}
+            budgets={activeBudgets}
+            analysisNotes={activeAnalysisNotes}
+            onSaveAnalysisNote={(item) => saveLocalAndQueue("analysisNotes", item)}
+          />
         )}
         {view === "settings" && (
           <SettingsPanel
             accounts={activeAccounts}
             categories={activeCategories}
             transactions={activeTransactions}
-            budgets={activeOnly(budgets)}
+            budgets={activeBudgets}
             exportFormat={exportFormat}
             exportFileType={exportFileType}
             onExportFormatChange={setExportFormat}
@@ -1127,46 +1198,36 @@ function nextAmountValue(value: string, key: AmountPadKey) {
   return appendAmountDigits(current, key);
 }
 
-function AmountKeypad({ value, onChange, onCommit }: { value: string; onChange: (value: string) => void; onCommit: () => void }) {
-  const canCommit = useMemo(() => {
-    try {
-      return yuanToCents(value) > 0;
-    } catch {
-      return false;
-    }
-  }, [value]);
-  const keys: { key: AmountPadKey | "commit"; label: string; tone?: string }[] = [
+function AmountKeypad({ value, onChange }: { value: string; onChange: (value: string) => void }) {
+  const keys: { key: AmountPadKey; label: string; tone?: string; ariaLabel?: string }[] = [
     { key: "1", label: "1" },
     { key: "2", label: "2" },
     { key: "3", label: "3" },
-    { key: "backspace", label: "退格", tone: "muted" },
     { key: "4", label: "4" },
     { key: "5", label: "5" },
     { key: "6", label: "6" },
-    { key: "clear", label: "清空", tone: "muted" },
     { key: "7", label: "7" },
     { key: "8", label: "8" },
     { key: "9", label: "9" },
-    { key: "commit", label: "保存", tone: "save" },
     { key: ".", label: "." },
     { key: "0", label: "0" },
-    { key: "00", label: "00" }
+    { key: "backspace", label: "退格", tone: "muted", ariaLabel: "删除上一位" }
   ];
 
   return (
     <div className="amount-keypad full" aria-label="金额数字键盘">
+      <div className="amount-keypad-head">
+        <strong>输入金额</strong>
+        <button type="button" className="amount-keypad-clear" disabled={!value.trim()} onClick={() => onChange("")}>清空</button>
+      </div>
       <div className="amount-keypad-grid">
         {keys.map((item) => (
           <button
             key={item.key}
             type="button"
             className={item.tone ? `amount-key ${item.tone}` : "amount-key"}
-            disabled={item.key === "commit" && !canCommit}
+            aria-label={item.ariaLabel}
             onClick={() => {
-              if (item.key === "commit") {
-                onCommit();
-                return;
-              }
               onChange(nextAmountValue(value, item.key));
             }}
           >
@@ -1261,12 +1322,6 @@ function EntryForm({ accounts, categories, transactions, onSave, onSaveCategory,
     }
     input.focus();
   }, [editing]);
-  const commitEntry = useCallback(() => {
-    const form = amountInputRef.current?.form;
-    if (!form) return;
-    form.requestSubmit();
-  }, []);
-
   useEffect(() => {
     if (!editing) return;
     setType(editing.type);
@@ -1366,7 +1421,7 @@ function EntryForm({ accounts, categories, transactions, onSave, onSaveCategory,
           </div>
         )}
         <label className="entry-amount-field full"><span>金额</span><input ref={amountInputRef} value={amount} onChange={(event) => setAmount(event.target.value)} placeholder="0.00" inputMode="decimal" enterKeyHint="done" autoFocus={!editing} required /></label>
-        {!editing && <AmountKeypad value={amount} onChange={setAmount} onCommit={commitEntry} />}
+        {!editing && <AmountKeypad value={amount} onChange={setAmount} />}
         <label className="entry-account-field">{type === "income" ? "收款账户" : type === "expense" ? "信用卡" : "付款账户"}<select value={accountId} onChange={(event) => setAccountId(event.target.value)}>{accountOptions.map((account) => <option key={account.id} value={account.id}>{account.name}</option>)}</select></label>
         {type === "transfer" ? (
           <label>转入账户<select value={toAccountId} onChange={(event) => setToAccountId(event.target.value)}>{accounts.filter((item) => item.id !== accountId).map((account) => <option key={account.id} value={account.id}>{account.name}</option>)}</select></label>
@@ -2472,7 +2527,74 @@ function InteractiveDonut({ data, total, selectedIndex, onSelect, kind }: {
   );
 }
 
-function Reports({ transactions, accounts, categories }: { transactions: Transaction[]; accounts: Account[]; categories: Category[] }) {
+type AnalysisFinding = {
+  id: string;
+  tone: "warn" | "neutral" | "good";
+  title: string;
+  value: string;
+  summary: string;
+  detail: string;
+  evidence: string[];
+  transactions: Transaction[];
+  sortValue: number;
+};
+
+function AnalysisNoteEditor({ value, placeholder, onSave, compact = false }: {
+  value: string;
+  placeholder: string;
+  onSave: (value: string) => Promise<void>;
+  compact?: boolean;
+}) {
+  const [draft, setDraft] = useState(value);
+  const [saving, setSaving] = useState(false);
+  const [saved, setSaved] = useState(false);
+
+  useEffect(() => {
+    setDraft(value);
+    setSaved(false);
+  }, [value]);
+
+  const changed = draft.trim() !== value.trim();
+
+  return (
+    <div className={`analysis-note-editor ${compact ? "compact" : ""}`.trim()}>
+      <textarea
+        value={draft}
+        onChange={(event) => {
+          setDraft(event.target.value);
+          setSaved(false);
+        }}
+        placeholder={placeholder}
+        rows={compact ? 2 : 3}
+      />
+      <button
+        type="button"
+        className="ghost"
+        disabled={saving || (!changed && !draft.trim())}
+        onClick={async () => {
+          setSaving(true);
+          try {
+            await onSave(draft.trim());
+            setSaved(true);
+          } finally {
+            setSaving(false);
+          }
+        }}
+      >
+        {saving ? "保存中" : saved ? "已保存" : "保存笔记"}
+      </button>
+    </div>
+  );
+}
+
+function Reports({ transactions, accounts, categories, budgets, analysisNotes, onSaveAnalysisNote }: {
+  transactions: Transaction[];
+  accounts: Account[];
+  categories: Category[];
+  budgets: Budget[];
+  analysisNotes: AnalysisNote[];
+  onSaveAnalysisNote: (item: AnalysisNote) => Promise<void>;
+}) {
   const currentYear = String(new Date().getFullYear());
   const [period, setPeriod] = useState<ReportPeriod>("month");
   const [month, setMonth] = useState(monthKey());
@@ -2671,6 +2793,177 @@ function Reports({ transactions, accounts, categories }: { transactions: Transac
         : ["暂无专项支出"]
     }
   ];
+  const monthlyAnalysis = useMemo(() => {
+    const currentByCategory = aggregateCategoryExpenses(dailyReportTransactions, categories);
+    const previousByCategory = aggregateCategoryExpenses(dailyPreviousTransactions, categories);
+    const baselineKeys = previousMonthKeys(month, 3);
+    const baselineDailyTransactions = dailyExpenseTransactions(
+      transactions.filter((item) => baselineKeys.some((key) => item.occurredAt.startsWith(key))),
+      categories
+    );
+    const baselineByCategory = aggregateCategoryExpenses(baselineDailyTransactions, categories);
+    const budgetCents = monthBudgetTotal(budgets, month);
+    const totalExpenseCents = periodSummary.expenseCents + specialSummary.expenseCents;
+    const budgetUsage = budgetCents > 0 ? Math.round((periodSummary.expenseCents / budgetCents) * 100) : 0;
+    const findingItems: AnalysisFinding[] = [];
+
+    if (budgetCents > 0 && periodSummary.expenseCents > budgetCents) {
+      const overCents = periodSummary.expenseCents - budgetCents;
+      findingItems.push({
+        id: "over-budget:daily",
+        tone: "warn",
+        title: "日常消费超预算",
+        value: `超 ¥${centsToYuan(overCents)}`,
+        summary: `本月日常消费已使用预算 ${budgetUsage}%，需要优先收紧可变消费。`,
+        detail: "这是最直接的预算压力信号。建议先查看分类统计里金额最高和增长最快的分类，再判断是必要支出、季节性支出，还是消费习惯抬头。",
+        evidence: [`预算 ¥${centsToYuan(budgetCents)}`, `已花 ¥${centsToYuan(periodSummary.expenseCents)}`, `使用 ${budgetUsage}%`],
+        transactions: dailyReportTransactions,
+        sortValue: overCents
+      });
+    }
+
+    currentByCategory.forEach((current) => {
+      const previous = previousByCategory.get(current.id)?.value ?? 0;
+      const baselineAverage = Math.round((baselineByCategory.get(current.id)?.value ?? 0) / 3);
+      const categoryBudget = categoryBudgetCents(budgets, month, current.categoryId);
+      const monthlyDelta = current.value - previous;
+      const baselineDelta = current.value - baselineAverage;
+      const sortedTransactions = [...current.transactions].sort((left, right) => right.amountCents - left.amountCents);
+      const largest = sortedTransactions[0];
+      const priorSingles = baselineDailyTransactions.filter((item) => categoryAggregateKey(item.categoryId) === current.id);
+      const priorSingleAverage = priorSingles.length > 0
+        ? Math.round(priorSingles.reduce((sum, item) => sum + item.amountCents, 0) / priorSingles.length)
+        : 0;
+
+      if (categoryBudget > 0 && current.value > categoryBudget) {
+        const ratio = Math.round((current.value / categoryBudget) * 100);
+        findingItems.push({
+          id: `over-budget:${current.id}`,
+          tone: "warn",
+          title: "分类超预算",
+          value: current.name,
+          summary: `${current.name} 已使用预算 ${ratio}%，超出 ¥${centsToYuan(current.value - categoryBudget)}。`,
+          detail: "分类预算超标通常比总预算更容易定位问题。建议确认这类支出是价格上涨、频率增加，还是某几笔大额造成。",
+          evidence: [`分类预算 ¥${centsToYuan(categoryBudget)}`, `实际 ¥${centsToYuan(current.value)}`, `使用 ${ratio}%`],
+          transactions: sortedTransactions,
+          sortValue: current.value - categoryBudget
+        });
+      }
+
+      if (monthlyDelta > 10_000 && (previous === 0 ? current.value > 20_000 : current.value > previous * 1.3)) {
+        const change = previous === 0 ? 100 : percentDelta(current.value, previous);
+        findingItems.push({
+          id: `mom-increase:${current.id}`,
+          tone: "warn",
+          title: "环比异常上升",
+          value: current.name,
+          summary: `${current.name} 较上月增加 ¥${centsToYuan(monthlyDelta)}，环比 ${change}%。`,
+          detail: "这类变化最容易被日常流水淹没。建议检查是否由消费次数变多、单次金额变大，或某个场景重复发生导致。",
+          evidence: [`本月 ¥${centsToYuan(current.value)}`, `上月 ¥${centsToYuan(previous)}`, `增加 ¥${centsToYuan(monthlyDelta)}`],
+          transactions: sortedTransactions,
+          sortValue: monthlyDelta
+        });
+      }
+
+      if (monthlyDelta > 0 && baselineAverage > 0 && baselineDelta > 10_000 && current.value > baselineAverage * 1.4) {
+        findingItems.push({
+          id: `baseline-increase:${current.id}`,
+          tone: "warn",
+          title: "高于近三月均值",
+          value: current.name,
+          summary: `${current.name} 高于近三月均值 ¥${centsToYuan(baselineDelta)}。`,
+          detail: "近三月均值能过滤单月波动。如果某项持续高于均值，通常说明消费习惯或价格结构已经改变，需要单独复盘。",
+          evidence: [`本月 ¥${centsToYuan(current.value)}`, `近三月均值 ¥${centsToYuan(baselineAverage)}`, `高出 ¥${centsToYuan(baselineDelta)}`],
+          transactions: sortedTransactions,
+          sortValue: baselineDelta
+        });
+      }
+
+      if (largest && largest.amountCents > 20_000 && (priorSingleAverage === 0 || largest.amountCents > priorSingleAverage * 2)) {
+        findingItems.push({
+          id: `large-single:${largest.id}`,
+          tone: "neutral",
+          title: "低频大额单笔",
+          value: `¥${centsToYuan(largest.amountCents)}`,
+          summary: `${current.name} 出现一笔明显偏大的支出，建议确认是否为一次性必要支出。`,
+          detail: "单笔金额突然放大会抬高整月数据。如果它是一次性支出，记备注能避免以后误判消费习惯；如果不是，就值得设置限制或提醒。",
+          evidence: [`分类 ${current.name}`, `单笔 ¥${centsToYuan(largest.amountCents)}`, `历史单笔均值 ¥${centsToYuan(priorSingleAverage)}`],
+          transactions: [largest],
+          sortValue: largest.amountCents
+        });
+      }
+    });
+
+    if (specialSummary.expenseCents > 0) {
+      findingItems.push({
+        id: "special-expense:month",
+        tone: "neutral",
+        title: "专项支出独立观察",
+        value: `¥${centsToYuan(specialSummary.expenseCents)}`,
+        summary: "贷款、保险、教育、大额未分类等已从日常消费中拆出，避免扭曲日常趋势。",
+        detail: "专项支出不代表日常消费习惯，但会影响现金流压力。建议给专项支出写清原因、是否一次性、是否可预期，后续做年度统筹时会很有价值。",
+        evidence: [`专项支出 ¥${centsToYuan(specialSummary.expenseCents)}`, `全部支出 ¥${centsToYuan(totalExpenseCents)}`, `日常消费 ¥${centsToYuan(periodSummary.expenseCents)}`],
+        transactions: specialReportTransactions,
+        sortValue: specialSummary.expenseCents
+      });
+    }
+
+    const comparisonIds = new Set([...currentByCategory.keys(), ...previousByCategory.keys()]);
+    const comparisons = Array.from(comparisonIds).map((id) => {
+      const current = currentByCategory.get(id);
+      const previous = previousByCategory.get(id);
+      const categoryId = current?.categoryId ?? previous?.categoryId ?? null;
+      const currentValue = current?.value ?? 0;
+      const previousValue = previous?.value ?? 0;
+      return {
+        id,
+        name: current?.name ?? previous?.name ?? categoryAggregateName(categoryId, categories),
+        current: currentValue,
+        previous: previousValue,
+        delta: currentValue - previousValue
+      };
+    });
+    const topIncreases = comparisons.filter((item) => item.delta > 0).sort((left, right) => right.delta - left.delta).slice(0, 3);
+    const topDrops = comparisons.filter((item) => item.delta < 0).sort((left, right) => left.delta - right.delta).slice(0, 3);
+    const toneRank = { warn: 0, neutral: 1, good: 2 } satisfies Record<AnalysisFinding["tone"], number>;
+
+    return {
+      budgetCents,
+      budgetUsage,
+      totalExpenseCents,
+      topIncreases,
+      topDrops,
+      findings: findingItems
+        .sort((left, right) => toneRank[left.tone] - toneRank[right.tone] || right.sortValue - left.sortValue)
+        .slice(0, 8)
+    };
+  }, [
+    budgets,
+    categories,
+    dailyPreviousTransactions,
+    dailyReportTransactions,
+    month,
+    periodSummary.expenseCents,
+    specialReportTransactions,
+    specialSummary.expenseCents,
+    transactions
+  ]);
+  const monthAnalysisNote = analysisNoteFor(analysisNotes, month, "month", "summary");
+  const saveAnalysisNote = useCallback(async (subjectType: AnalysisNote["subjectType"], subjectKey: string, content: string) => {
+    const existing = analysisNoteFor(analysisNotes, month, subjectType, subjectKey);
+    const now = new Date().toISOString();
+    const note: AnalysisNote = {
+      ...(existing ?? entityStamp()),
+      month,
+      subjectType,
+      subjectKey,
+      content,
+      version: existing ? existing.version + 1 : 1,
+      updatedAt: now,
+      deletedAt: null
+    };
+    await onSaveAnalysisNote(note);
+  }, [analysisNotes, month, onSaveAnalysisNote]);
 
   useEffect(() => {
     if (selectedCategoryIndex !== null && selectedCategoryIndex > categoryData.length - 1) setSelectedCategoryIndex(null);
@@ -2753,6 +3046,96 @@ function Reports({ transactions, accounts, categories }: { transactions: Transac
           );
         })}
       </div>
+
+      {period === "month" && (
+        <section className="panel monthly-analysis-panel">
+          <div className="analysis-panel-head">
+            <div>
+              <h2>消费异常分析</h2>
+              <span>{monthLabel(month)} · 预算、环比、近三月均值、单笔大额</span>
+            </div>
+            <strong>{monthlyAnalysis.findings.length > 0 ? `${monthlyAnalysis.findings.length} 项提醒` : "暂无异常"}</strong>
+          </div>
+          <div className="analysis-summary-grid">
+            <div className={monthlyAnalysis.budgetCents > 0 && monthlyAnalysis.budgetUsage > 100 ? "analysis-summary-card warn" : "analysis-summary-card"}>
+              <span>日常预算</span>
+              <strong>{monthlyAnalysis.budgetCents > 0 ? `${monthlyAnalysis.budgetUsage}%` : "未设置"}</strong>
+              <em>{monthlyAnalysis.budgetCents > 0 ? `¥${centsToYuan(periodSummary.expenseCents)} / ¥${centsToYuan(monthlyAnalysis.budgetCents)}` : "可在设置中补充预算"}</em>
+            </div>
+            <div className="analysis-summary-card">
+              <span>全部支出</span>
+              <strong>¥{centsToYuan(monthlyAnalysis.totalExpenseCents)}</strong>
+              <em>日常 + 专项</em>
+            </div>
+            <div className="analysis-summary-card">
+              <span>预计日常</span>
+              <strong>¥{centsToYuan(projectedExpense)}</strong>
+              <em>按当前日均测算</em>
+            </div>
+          </div>
+          <div className="analysis-delta-grid">
+            <div>
+              <strong>增加最多</strong>
+              {monthlyAnalysis.topIncreases.length > 0 ? monthlyAnalysis.topIncreases.map((item) => (
+                <span key={item.id}>{item.name} +¥{centsToYuan(item.delta)}</span>
+              )) : <span>暂无明显增加</span>}
+            </div>
+            <div>
+              <strong>下降最多</strong>
+              {monthlyAnalysis.topDrops.length > 0 ? monthlyAnalysis.topDrops.map((item) => (
+                <span key={item.id}>{item.name} -¥{centsToYuan(Math.abs(item.delta))}</span>
+              )) : <span>暂无明显下降</span>}
+            </div>
+          </div>
+          <AnalysisNoteEditor
+            value={monthAnalysisNote?.content ?? ""}
+            placeholder="记录本月复盘：哪些是必要支出，哪些是可优化的消费习惯，哪些需要下月继续观察。"
+            onSave={(content) => saveAnalysisNote("month", "summary", content)}
+          />
+          {monthlyAnalysis.findings.length > 0 ? (
+            <div className="anomaly-list">
+              {monthlyAnalysis.findings.map((finding) => {
+                const note = analysisNoteFor(analysisNotes, month, "anomaly", finding.id);
+                return (
+                  <details className={`anomaly-card ${finding.tone}`} key={finding.id}>
+                    <summary>
+                      <div>
+                        <span>{finding.title}</span>
+                        <strong>{finding.value}</strong>
+                        <p>{finding.summary}</p>
+                      </div>
+                      <em>详情</em>
+                    </summary>
+                    <div className="anomaly-detail">
+                      <p>{finding.detail}</p>
+                      <ul>
+                        {finding.evidence.map((item) => <li key={item}>{item}</li>)}
+                      </ul>
+                      <AnalysisNoteEditor
+                        compact
+                        value={note?.content ?? ""}
+                        placeholder="给这条提醒做备注，例如是否一次性、是否可控、下月怎么处理。"
+                        onSave={(content) => saveAnalysisNote("anomaly", finding.id, content)}
+                      />
+                      {finding.transactions.length > 0 && (
+                        <TransactionRows
+                          transactions={finding.transactions.slice(0, 6)}
+                          accounts={accounts}
+                          categories={categories}
+                          onOpen={setDetailTransaction}
+                          compact
+                        />
+                      )}
+                    </div>
+                  </details>
+                );
+              })}
+            </div>
+          ) : (
+            <p className="empty">本月没有触发显著异常，建议仍保留一条人工复盘笔记，记录是否有即将发生的大额支出。</p>
+          )}
+        </section>
+      )}
 
       {specialCategoryData.length > 0 && (
         <details className="panel special-expense-panel">

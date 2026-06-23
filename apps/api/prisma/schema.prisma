@@ -28,6 +28,7 @@ model Ledger {
   categories    Category[]
   transactions  Transaction[]
   budgets       Budget[]
+  analysisNotes AnalysisNote[]
   auditLogs     AuditLog[]
 
   @@index([ownerId])
@@ -111,6 +112,23 @@ model Budget {
   category    Category? @relation(fields: [categoryId], references: [id])
 
   @@index([ledgerId, month])
+}
+
+model AnalysisNote {
+  id          String    @id @default(uuid())
+  ledgerId    String
+  month       String
+  subjectType String
+  subjectKey  String
+  content     String
+  version     Int       @default(1)
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  deletedAt   DateTime?
+  ledger      Ledger    @relation(fields: [ledgerId], references: [id], onDelete: Cascade)
+
+  @@index([ledgerId, month])
+  @@unique([ledgerId, month, subjectType, subjectKey])
 }
 
 model AuditLog {

@@ -8,7 +8,7 @@ import Fastify, { type FastifyInstance, type FastifyReply, type FastifyRequest }
 import { z } from "zod";
 import { config } from "./config.js";
 import { prisma } from "./prisma.js";
-import { serializeAccount, serializeBudget, serializeCategory, serializeSnapshot, serializeTransaction } from "./serializers.js";
+import { serializeAccount, serializeAnalysisNote, serializeBudget, serializeCategory, serializeSnapshot, serializeTransaction } from "./serializers.js";
 
 type ExportFormat = "ledger" | "portable" | "suishouji" | "qianji";
 
@@ -51,6 +51,13 @@ const budgetSchema = z.object({
   amountCents: z.number().int().positive()
 });
 
+const analysisNoteSchema = z.object({
+  month: z.string().regex(/^\d{4}-\d{2}$/),
+  subjectType: z.enum(["month", "anomaly"]),
+  subjectKey: z.string().min(1).max(160),
+  content: z.string().max(2000)
+});
+
 async function getLedgerForUser(userId: string) {
   const ledger = await prisma.ledger.findFirst({ where: { ownerId: userId }, orderBy: { createdAt: "asc" } });
   if (!ledger) throw Object.assign(new Error("账本不存在"), { statusCode: 404 });
@@ -66,14 +73,15 @@ async function touchLedger(ledgerId: string) {
 }
 
 async function loadSnapshot(ledgerId: string) {
-  const [ledger, accounts, categories, transactions, budgets] = await Promise.all([
+  const [ledger, accounts, categories, transactions, budgets, analysisNotes] = await Promise.all([
     prisma.ledger.findUniqueOrThrow({ where: { id: ledgerId }, select: { serverVersion: true } }),
     prisma.account.findMany({ where: { ledgerId }, orderBy: { createdAt: "asc" } }),
     prisma.category.findMany({ where: { ledgerId }, orderBy: { createdAt: "asc" } }),
     prisma.transaction.findMany({ where: { ledgerId }, orderBy: { occurredAt: "desc" } }),
-    prisma.budget.findMany({ where: { ledgerId }, orderBy: { month: "desc" } })
+    prisma.budget.findMany({ where: { ledgerId }, orderBy: { month: "desc" } }),
+    prisma.analysisNote.findMany({ where: { ledgerId }, orderBy: [{ month: "desc" }, { updatedAt: "desc" }] })
   ]);
-  return serializeSnapshot({ accounts, categories, transactions, budgets, serverVersion: ledger.serverVersion });
+  return serializeSnapshot({ accounts, categories, transactions, budgets, analysisNotes, serverVersion: ledger.serverVersion });
 }
 
 function csvEscape(value: string | number | null | undefined) {
@@ -308,6 +316,14 @@ export async function buildApp(): Promise<FastifyInstance> {
     return serializeBudget(budget);
   });
 
+  app.post("/analysis-notes", { preHandler: [app.authenticate] }, async (request) => {
+    const ledger = await getLedgerForUser(request.user.sub);
+    const input = analysisNoteSchema.parse(request.body);
+    const note = await prisma.analysisNote.create({ data: { ...input, ledgerId: ledger.id } });
+    await touchLedger(ledger.id);
+    return serializeAnalysisNote(note);
+  });
+
   app.get("/sync/pull", { preHandler: [app.authenticate] }, async (request) => {
     const ledger = await getLedgerForUser(request.user.sub);
     return loadSnapshot(ledger.id);
@@ -356,6 +372,14 @@ export async function buildApp(): Promise<FastifyInstance> {
     for (const item of payload.budgets ?? []) {
       const { id, updatedAt, deletedAt, version: _version, ...data } = item;
       await prisma.budget.upsert({
+        where: { id },
+        create: { id, ...data, ledgerId: ledger.id, deletedAt: deletedAt ? new Date(deletedAt) : null },
+        update: { ...data, ledgerId: ledger.id, deletedAt: deletedAt ? new Date(deletedAt) : null, version: { increment: 1 } }
+      });
+    }
+    for (const item of payload.analysisNotes ?? []) {
+      const { id, updatedAt, deletedAt, version: _version, ...data } = item;
+      await prisma.analysisNote.upsert({
         where: { id },
         create: { id, ...data, ledgerId: ledger.id, deletedAt: deletedAt ? new Date(deletedAt) : null },
         update: { ...data, ledgerId: ledger.id, deletedAt: deletedAt ? new Date(deletedAt) : null, version: { increment: 1 } }

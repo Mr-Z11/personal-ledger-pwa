@@ -1,4 +1,4 @@
-import type { Account, Budget, Category, LedgerSnapshot, Transaction } from "@ledger/shared";
+import type { Account, AnalysisNote, Budget, Category, LedgerSnapshot, Transaction } from "@ledger/shared";
 
 type DateLike = Date | string | null | undefined;
 
@@ -105,11 +105,34 @@ export function serializeBudget(budget: {
   };
 }
 
+export function serializeAnalysisNote(note: {
+  id: string;
+  month: string;
+  subjectType: string;
+  subjectKey: string;
+  content: string;
+  version: number;
+  updatedAt: Date;
+  deletedAt?: Date | null;
+}): AnalysisNote {
+  return {
+    id: note.id,
+    month: note.month,
+    subjectType: note.subjectType as AnalysisNote["subjectType"],
+    subjectKey: note.subjectKey,
+    content: note.content,
+    version: note.version,
+    updatedAt: note.updatedAt.toISOString(),
+    deletedAt: iso(note.deletedAt)
+  };
+}
+
 export function serializeSnapshot(snapshot: {
   accounts: Parameters<typeof serializeAccount>[0][];
   categories: Parameters<typeof serializeCategory>[0][];
   transactions: Parameters<typeof serializeTransaction>[0][];
   budgets: Parameters<typeof serializeBudget>[0][];
+  analysisNotes: Parameters<typeof serializeAnalysisNote>[0][];
   serverVersion: number;
 }): LedgerSnapshot {
   return {
@@ -117,6 +140,7 @@ export function serializeSnapshot(snapshot: {
     categories: snapshot.categories.map(serializeCategory),
     transactions: snapshot.transactions.map(serializeTransaction),
     budgets: snapshot.budgets.map(serializeBudget),
+    analysisNotes: snapshot.analysisNotes.map(serializeAnalysisNote),
     serverVersion: snapshot.serverVersion
   };
 }

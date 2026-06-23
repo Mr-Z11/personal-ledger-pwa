@@ -42,11 +42,21 @@ export interface Budget extends LedgerEntity {
   amountCents: number;
 }
 
+export type AnalysisNoteSubjectType = "month" | "anomaly";
+
+export interface AnalysisNote extends LedgerEntity {
+  month: string;
+  subjectType: AnalysisNoteSubjectType;
+  subjectKey: string;
+  content: string;
+}
+
 export interface LedgerSnapshot {
   accounts: Account[];
   categories: Category[];
   transactions: Transaction[];
   budgets: Budget[];
+  analysisNotes: AnalysisNote[];
   serverVersion: number;
 }
 
@@ -55,6 +65,7 @@ export interface SyncPayload {
   categories: Category[];
   transactions: Transaction[];
   budgets: Budget[];
+  analysisNotes: AnalysisNote[];
 }
 
 export const DEFAULT_CATEGORIES: Omit<Category, keyof LedgerEntity>[] = [
