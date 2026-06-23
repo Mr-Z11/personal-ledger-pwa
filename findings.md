@@ -6,6 +6,8 @@
 - Add note-taking for monthly analysis results and anomaly items.
 - Persist notes so they remain after refresh/reopen and sync to cloud server.
 - Update GitHub and cloud server.
+- Add stronger input confirmation to quick entry: visible press feedback, haptic feedback where the browser supports it, and animated amount preview.
+- Make report scrolling less confusing: users should always know whether each section is current-month data, selected-period data, special expense data, or historical trend data.
 
 ## Research Findings
 - Shared data types currently include accounts, categories, transactions, and budgets only.
@@ -23,6 +25,9 @@
 | Keep anomaly detection in web layer initially | Analysis derives from existing local data and does not need server computation. |
 | Remove save action from the number keypad | Keeps numeric input and commit action separate, reducing accidental saves. |
 | Require historical anomaly to also increase MoM | Avoids warning on categories that are below last month but above sparse 3-month average. |
+| Use progressive enhancement for vibration | Web vibration support varies by browser; unsupported devices should silently fall back to visual feedback. |
+| Add persistent report context near the top of report content | Users lose the selected period when scrolling through dense report modules. |
+| Use fixed context bar on mobile reports | Browser check showed sticky context did not stay in viewport in this layout. |
 
 ## Issues Encountered
 | Issue | Resolution |
@@ -30,6 +35,7 @@
 | Playwright's bundled Chromium was missing | Used the installed Chrome channel for screenshot checks. |
 | Seeded report test initially opened IndexedDB with a lower fixed version | Opened the existing DB without specifying a version. |
 | Seeded `买菜` example produced a misleading historical anomaly while MoM decreased | Added MoM-increase guard to historical anomaly logic. |
+| Report context anchor did not stick during mobile scroll check | Switched mobile report context to fixed positioning and reserved vertical space. |
 
 ## Resources
 - `/Users/frori/Vibecoding/personal-ledger-pwa/apps/web/src/App.tsx`
@@ -43,3 +49,5 @@
 - Mobile entry page: keypad now uses larger 3-column touch targets; save remains sticky at the bottom.
 - Mobile reports page with seeded data: anomaly panel shows budget status, total spending, projected daily spending, top increases/decreases, monthly note, and collapsed anomaly items.
 - Seeded data confirmed that decreasing categories no longer trigger historical increase warnings.
+- Mobile entry feedback check: amount preview updates in the hero and keypad header after tapping numeric keys.
+- Mobile report context check: fixed context bar remains visible after scrolling, and trend modules carry history-scope labels.

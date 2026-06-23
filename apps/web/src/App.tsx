@@ -1171,6 +1171,11 @@ function Metric({ title, value, icon: Icon, tone }: { title: string; value: numb
 
 type AmountPadKey = "0" | "1" | "2" | "3" | "4" | "5" | "6" | "7" | "8" | "9" | "00" | "." | "backspace" | "clear";
 
+function triggerHaptic(pattern: VibratePattern = 8) {
+  if (typeof navigator === "undefined" || typeof navigator.vibrate !== "function") return;
+  navigator.vibrate(pattern);
+}
+
 function appendAmountDigits(value: string, digits: string) {
   let next = value.trim();
   for (const digit of digits) {
@@ -1198,7 +1203,8 @@ function nextAmountValue(value: string, key: AmountPadKey) {
   return appendAmountDigits(current, key);
 }
 
-function AmountKeypad({ value, onChange }: { value: string; onChange: (value: string) => void }) {
+function AmountKeypad({ value, preview, onChange }: { value: string; preview: string; onChange: (value: string, key: AmountPadKey) => void }) {
+  const [confirmedKey, setConfirmedKey] = useState<AmountPadKey | null>(null);
   const keys: { key: AmountPadKey; label: string; tone?: string; ariaLabel?: string }[] = [
     { key: "1", label: "1" },
     { key: "2", label: "2" },
@@ -1214,21 +1220,31 @@ function AmountKeypad({ value, onChange }: { value: string; onChange: (value: st
     { key: "backspace", label: "退格", tone: "muted", ariaLabel: "删除上一位" }
   ];
 
+  function confirmInput(nextValue: string, key: AmountPadKey) {
+    setConfirmedKey(key);
+    window.setTimeout(() => setConfirmedKey((current) => current === key ? null : current), 150);
+    triggerHaptic(key === "backspace" || key === "clear" ? 12 : 8);
+    onChange(nextValue, key);
+  }
+
   return (
     <div className="amount-keypad full" aria-label="金额数字键盘">
       <div className="amount-keypad-head">
-        <strong>输入金额</strong>
-        <button type="button" className="amount-keypad-clear" disabled={!value.trim()} onClick={() => onChange("")}>清空</button>
+        <div>
+          <strong>输入金额</strong>
+          <span className="keypad-live-amount">¥{preview}</span>
+        </div>
+        <button type="button" className="amount-keypad-clear" disabled={!value.trim()} onClick={() => confirmInput("", "clear")}>清空</button>
       </div>
       <div className="amount-keypad-grid">
         {keys.map((item) => (
           <button
             key={item.key}
             type="button"
-            className={item.tone ? `amount-key ${item.tone}` : "amount-key"}
+            className={`${item.tone ? `amount-key ${item.tone}` : "amount-key"} ${confirmedKey === item.key ? "confirmed" : ""}`.trim()}
             aria-label={item.ariaLabel}
             onClick={() => {
-              onChange(nextAmountValue(value, item.key));
+              confirmInput(nextAmountValue(value, item.key), item.key);
             }}
           >
             {item.label}
@@ -1259,6 +1275,8 @@ function EntryForm({ accounts, categories, transactions, onSave, onSaveCategory,
   const [occurredAt, setOccurredAt] = useState(() => editing ? toBeijingDatetimeLocal(editing.occurredAt) : toBeijingDatetimeLocal());
   const [timeTouched, setTimeTouched] = useState(Boolean(editing));
   const [saveFeedback, setSaveFeedback] = useState("");
+  const [amountPulse, setAmountPulse] = useState(0);
+  const [savedFlash, setSavedFlash] = useState(false);
   const amountInputRef = useRef<HTMLInputElement>(null);
 
   const categoryKind = type === "income" ? "income" : "expense";
@@ -1306,6 +1324,12 @@ function EntryForm({ accounts, categories, transactions, onSave, onSaveCategory,
     ? `${selectedAccount?.name ?? "付款账户"} → ${selectedTargetAccount?.name ?? "转入账户"}`
     : `${selectedCategoryPath} · ${selectedAccount?.name ?? "选择账户"}`;
   const entryIntent = type === "income" ? "记录一笔收入" : type === "transfer" ? "记录账户流转" : "记录一笔消费";
+  const handleAmountChange = useCallback((nextValue: string) => {
+    setAmount((currentValue) => {
+      if (nextValue !== currentValue) setAmountPulse((value) => value + 1);
+      return nextValue;
+    });
+  }, []);
   const focusAmountInput = useCallback((force = false) => {
     if (editing) return;
     const input = amountInputRef.current;
@@ -1333,6 +1357,7 @@ function EntryForm({ accounts, categories, transactions, onSave, onSaveCategory,
     setNote(editing.note ?? "");
     setOccurredAt(toBeijingDatetimeLocal(editing.occurredAt));
     setTimeTouched(true);
+    setAmountPulse((value) => value + 1);
   }, [editing]);
 
   useEffect(() => {
@@ -1378,13 +1403,17 @@ function EntryForm({ accounts, categories, transactions, onSave, onSaveCategory,
       deletedAt: null
     };
     await onSave(item);
+    triggerHaptic([24, 40, 24]);
     if (!editing) {
       setAmount("");
+      setAmountPulse((value) => value + 1);
       setMerchant("");
       setNote("");
       setOccurredAt(toBeijingDatetimeLocal());
       setTimeTouched(false);
       setSaveFeedback(`${typeLabels[type]} ¥${centsToYuan(item.amountCents)} 已保存`);
+      setSavedFlash(true);
+      window.setTimeout(() => setSavedFlash(false), 720);
       window.setTimeout(() => focusAmountInput(true), 0);
       window.setTimeout(() => focusAmountInput(true), 180);
     }
@@ -1404,9 +1433,9 @@ function EntryForm({ accounts, categories, transactions, onSave, onSaveCategory,
             ))}
           </div>
         </div>
-        <div className="entry-amount-card">
+        <div className={`entry-amount-card ${savedFlash ? "saved" : ""}`.trim()}>
           <span>{type === "income" ? "本次收入" : type === "transfer" ? "流转金额" : "金额"}</span>
-          <strong>¥{amountPreview}</strong>
+          <strong className="entry-amount-value" key={amountPulse}>¥{amountPreview}</strong>
           <small>{entryContext}</small>
         </div>
       </div>
@@ -1420,8 +1449,8 @@ function EntryForm({ accounts, categories, transactions, onSave, onSaveCategory,
             </div>
           </div>
         )}
-        <label className="entry-amount-field full"><span>金额</span><input ref={amountInputRef} value={amount} onChange={(event) => setAmount(event.target.value)} placeholder="0.00" inputMode="decimal" enterKeyHint="done" autoFocus={!editing} required /></label>
-        {!editing && <AmountKeypad value={amount} onChange={setAmount} />}
+        <label className="entry-amount-field full"><span>金额</span><input ref={amountInputRef} value={amount} onChange={(event) => handleAmountChange(event.target.value)} placeholder="0.00" inputMode="decimal" enterKeyHint="done" autoFocus={!editing} required /></label>
+        {!editing && <AmountKeypad value={amount} preview={amountPreview} onChange={handleAmountChange} />}
         <label className="entry-account-field">{type === "income" ? "收款账户" : type === "expense" ? "信用卡" : "付款账户"}<select value={accountId} onChange={(event) => setAccountId(event.target.value)}>{accountOptions.map((account) => <option key={account.id} value={account.id}>{account.name}</option>)}</select></label>
         {type === "transfer" ? (
           <label>转入账户<select value={toAccountId} onChange={(event) => setToAccountId(event.target.value)}>{accounts.filter((item) => item.id !== accountId).map((account) => <option key={account.id} value={account.id}>{account.name}</option>)}</select></label>
@@ -2587,6 +2616,15 @@ function AnalysisNoteEditor({ value, placeholder, onSave, compact = false }: {
   );
 }
 
+function ReportScopePill({ label, detail }: { label: string; detail: string }) {
+  return (
+    <div className="report-scope-pill">
+      <span>{label}</span>
+      <em>{detail}</em>
+    </div>
+  );
+}
+
 function Reports({ transactions, accounts, categories, budgets, analysisNotes, onSaveAnalysisNote }: {
   transactions: Transaction[];
   accounts: Account[];
@@ -2608,6 +2646,11 @@ function Reports({ transactions, accounts, categories, budgets, analysisNotes, o
   const selectedYear = year.trim() || currentYear;
   const periodKey = period === "month" ? month : selectedYear;
   const periodLabel = period === "month" ? monthLabel(month) : yearLabel(selectedYear);
+  const primaryScopeLabel = period === "month" ? "所选月份" : "所选年份";
+  const primaryScopeDetail = period === "month" ? "本月数据" : "年度数据";
+  const stickyScopeHint = period === "month"
+    ? "除趋势模块外，下方模块均围绕这个月份"
+    : "年度汇总为主，趋势模块会单独标出范围";
   const previousKey = period === "month"
     ? (() => {
       const previousDate = dateFromMonthKey(month);
@@ -3005,12 +3048,22 @@ function Reports({ transactions, accounts, categories, budgets, analysisNotes, o
         </div>
       </div>
 
+      <div className="report-context-anchor" aria-label="当前报表数据范围">
+        <div>
+          <span>当前查看</span>
+          <strong>{periodLabel}</strong>
+        </div>
+        <em>{stickyScopeHint}</em>
+      </div>
+
+      <ReportScopePill label={primaryScopeLabel} detail={`${periodLabel} 汇总，不含历史趋势`} />
       <div className="report-metrics">
         <Metric title={period === "month" ? "日常月消费" : "日常年消费"} value={periodSummary.expenseCents} icon={ArrowUpRight} tone="warn" />
         <Metric title="专项支出" value={specialSummary.expenseCents} icon={Banknote} tone="blue" />
         <Metric title="预计日常消费" value={projectedExpense} icon={ArrowRightLeft} tone="neutral" />
       </div>
 
+      <ReportScopePill label="核心洞察" detail={`${periodLabel} 为主，近三期均值仅作历史参照`} />
       <div className="finance-insights">
         {insightCards.map((card) => {
           const expanded = expandedInsightId === card.id;
@@ -3052,7 +3105,7 @@ function Reports({ transactions, accounts, categories, budgets, analysisNotes, o
           <div className="analysis-panel-head">
             <div>
               <h2>消费异常分析</h2>
-              <span>{monthLabel(month)} · 预算、环比、近三月均值、单笔大额</span>
+              <span>{monthLabel(month)} · 本月异常，历史数据只作参照</span>
             </div>
             <strong>{monthlyAnalysis.findings.length > 0 ? `${monthlyAnalysis.findings.length} 项提醒` : "暂无异常"}</strong>
           </div>
@@ -3144,7 +3197,7 @@ function Reports({ transactions, accounts, categories, budgets, analysisNotes, o
               <span>专项支出</span>
               <strong>¥{centsToYuan(specialSummary.expenseCents)}</strong>
             </div>
-            <em>{specialCategoryData.length} 类 · 单独统计</em>
+            <em>{periodLabel} · {specialCategoryData.length} 类 · 单独统计</em>
           </summary>
           <div className="special-expense-grid">
             {specialCategoryData.map((entry) => (
@@ -3162,7 +3215,7 @@ function Reports({ transactions, accounts, categories, budgets, analysisNotes, o
         <div className="panel chart-panel category-analysis">
           <div className="chart-heading">
             <h2>分类统计</h2>
-            <span>日常消费，含历史导入数据</span>
+            <span>{periodLabel} · 日常消费明细</span>
           </div>
           <div className="donut-wrap">
             <InteractiveDonut data={categoryData} total={categoryTotal} selectedIndex={selectedCategoryIndex ?? -1} onSelect={setSelectedCategoryIndex} kind={categoryKind} />
@@ -3238,12 +3291,16 @@ function TrendFoldPanel({ title, rangeLabel, legendLabel, data, periodKind, sele
   const selectedTrendLabel = selectedTrend
     ? periodKind === "month" ? monthLabel(selectedTrend.period) : yearLabel(selectedTrend.period)
     : "暂无数据";
+  const trendScopeLabel = totalMode ? "历史支出趋势" : periodKind === "month" ? "历史消费趋势" : "多年消费趋势";
 
   return (
     <details className={`panel chart-panel trend-panel trend-fold-panel ${totalMode ? "total-trend-panel" : "daily-trend-panel"}`}>
       <summary className="trend-fold-summary">
         <div className="trend-fold-title">
-          <h2>{title}</h2>
+          <div className="trend-title-row">
+            <h2>{title}</h2>
+            <b>{trendScopeLabel}</b>
+          </div>
           <span>{rangeLabel}</span>
         </div>
         <div className="trend-fold-status">

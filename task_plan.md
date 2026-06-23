@@ -4,7 +4,7 @@
 Improve quick-entry keypad confidence and add professional monthly spending anomaly analysis with persistent analysis notes.
 
 ## Current Phase
-Phase 5
+Phase 6
 
 ## Phases
 
@@ -34,9 +34,17 @@ Phase 5
 
 ### Phase 5: Verification and Deployment
 - [x] Run build/test
-- [ ] Push GitHub
-- [ ] Deploy cloud server
-- [ ] Verify production health
+- [x] Push GitHub
+- [x] Deploy cloud server
+- [x] Verify production health
+- **Status:** complete
+
+### Phase 6: Entry Feedback and Report Context
+- [x] Add keypad haptic fallback and press confirmation
+- [x] Add amount preview motion and saved-state confirmation
+- [x] Add sticky report period context
+- [x] Label report modules by data scope
+- [ ] Verify, push, deploy
 - **Status:** in_progress
 
 ## Key Questions
@@ -57,7 +65,9 @@ Phase 5
 | Playwright bundled browser missing | Tried headless Chromium | Used installed Chrome channel for visual checks. |
 | IndexedDB version mismatch in test harness | Opened `ledger-box` with fixed version 2 | Opened existing DB without a fixed version for the seeded UI check. |
 | False historical anomaly for a category that decreased MoM | Seeded report data exposed conflict | Required historical anomaly to also increase versus previous month. |
+| Report context anchor did not stick in mobile browser check | Tried `position: sticky` with `align-self: start` | Used a mobile fixed context bar with report-page spacing. |
 
 ## Notes
 - Confirmed requirements: all keypad friction points exist; add professional anomaly analysis and persistent analysis notes.
 - Deploy to GitHub/cloud after implementation.
+- New confirmed requirements: add input confirmation feeling (press feedback, haptic where supported, amount preview) and reduce report confusion while scrolling by making month/data scope obvious.
