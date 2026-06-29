@@ -5,16 +5,36 @@
     <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
     <meta name="theme-color" content="#f6f1e7" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-title" content="记账" />
     <meta name="apple-mobile-web-app-status-bar-style" content="default" />
     <link rel="icon" href="/icon.svg" />
-    <link rel="apple-touch-icon" href="/icon.svg" />
+    <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png" />
+    <link rel="apple-touch-startup-image" href="/pwa/launch-750x1334.png" media="(device-width: 375px) and (device-height: 667px) and (-webkit-device-pixel-ratio: 2) and (orientation: portrait)" />
+    <link rel="apple-touch-startup-image" href="/pwa/launch-1242x2208.png" media="(device-width: 414px) and (device-height: 736px) and (-webkit-device-pixel-ratio: 3) and (orientation: portrait)" />
+    <link rel="apple-touch-startup-image" href="/pwa/launch-1125x2436.png" media="(device-width: 375px) and (device-height: 812px) and (-webkit-device-pixel-ratio: 3) and (orientation: portrait)" />
+    <link rel="apple-touch-startup-image" href="/pwa/launch-828x1792.png" media="(device-width: 414px) and (device-height: 896px) and (-webkit-device-pixel-ratio: 2) and (orientation: portrait)" />
+    <link rel="apple-touch-startup-image" href="/pwa/launch-1242x2688.png" media="(device-width: 414px) and (device-height: 896px) and (-webkit-device-pixel-ratio: 3) and (orientation: portrait)" />
+    <link rel="apple-touch-startup-image" href="/pwa/launch-1080x2340.png" media="(device-width: 360px) and (device-height: 780px) and (-webkit-device-pixel-ratio: 3) and (orientation: portrait)" />
+    <link rel="apple-touch-startup-image" href="/pwa/launch-1170x2532.png" media="(device-width: 390px) and (device-height: 844px) and (-webkit-device-pixel-ratio: 3) and (orientation: portrait)" />
+    <link rel="apple-touch-startup-image" href="/pwa/launch-1284x2778.png" media="(device-width: 428px) and (device-height: 926px) and (-webkit-device-pixel-ratio: 3) and (orientation: portrait)" />
+    <link rel="apple-touch-startup-image" href="/pwa/launch-1179x2556.png" media="(device-width: 393px) and (device-height: 852px) and (-webkit-device-pixel-ratio: 3) and (orientation: portrait)" />
+    <link rel="apple-touch-startup-image" href="/pwa/launch-1290x2796.png" media="(device-width: 430px) and (device-height: 932px) and (-webkit-device-pixel-ratio: 3) and (orientation: portrait)" />
+    <link rel="apple-touch-startup-image" href="/pwa/launch-1206x2622.png" media="(device-width: 402px) and (device-height: 874px) and (-webkit-device-pixel-ratio: 3) and (orientation: portrait)" />
+    <link rel="apple-touch-startup-image" href="/pwa/launch-1320x2868.png" media="(device-width: 440px) and (device-height: 956px) and (-webkit-device-pixel-ratio: 3) and (orientation: portrait)" />
     <title>Ledger Box</title>
     <style>
       :root {
         color: #243127;
         background: #f6f1e7;
         font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      }
+
+      html,
+      body,
+      #root {
+        min-height: 100%;
+        background-color: #f6f1e7;
       }
 
       * {
@@ -24,6 +44,7 @@
       body {
         margin: 0;
         min-height: 100vh;
+        min-height: 100svh;
         background:
           linear-gradient(135deg, rgba(49, 71, 58, 0.08) 0 24%, transparent 24% 100%),
           #f6f1e7;
@@ -31,6 +52,7 @@
 
       .boot-shell {
         min-height: 100vh;
+        min-height: 100svh;
         padding: calc(0.9rem + env(safe-area-inset-top)) 0.9rem calc(5.2rem + env(safe-area-inset-bottom));
         display: grid;
         grid-template-rows: auto 1fr auto;
@@ -163,8 +185,8 @@
       <div class="boot-shell">
         <header class="boot-top">
           <div>
-            <div class="boot-date">正在打开账本</div>
-            <h1 class="boot-title">总览</h1>
+            <div class="boot-date" role="status">正在打开账本</div>
+            <h1 class="boot-title">个人记账</h1>
           </div>
           <div class="boot-brand"><i>¥</i>消费账本</div>
         </header>
