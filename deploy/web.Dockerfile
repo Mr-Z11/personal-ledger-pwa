@@ -12,6 +12,7 @@ ARG VITE_API_BASE=/api
 ENV VITE_API_BASE=$VITE_API_BASE
 COPY packages/shared packages/shared
 COPY apps/web apps/web
+COPY scripts/verify-pwa-startup.mjs scripts/verify-pwa-startup.mjs
 RUN npm run build:shared && npm --workspace @ledger/web run build
 
 FROM nginx:1.29-alpine AS runtime
