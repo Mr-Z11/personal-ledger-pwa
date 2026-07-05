@@ -2141,10 +2141,6 @@ input[type="month"],
 }
 
 .report-context-anchor {
-  position: sticky;
-  top: 0.45rem;
-  z-index: 12;
-  align-self: start;
   min-height: 3.05rem;
   border: 1px solid rgba(31, 95, 116, 0.16);
   border-radius: 0.68rem;
@@ -3566,18 +3562,6 @@ input[type="month"],
 
   .report-toolbar input {
     width: 100%;
-  }
-
-  .report-context-anchor {
-    position: fixed;
-    top: calc(5.45rem + env(safe-area-inset-top));
-    left: max(0.85rem, env(safe-area-inset-left));
-    right: max(0.85rem, env(safe-area-inset-right));
-    z-index: 19;
-  }
-
-  .report-page {
-    padding-top: 3.75rem;
   }
 
   .wide {
