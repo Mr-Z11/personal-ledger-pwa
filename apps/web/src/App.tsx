@@ -1203,7 +1203,17 @@ function nextAmountValue(value: string, key: AmountPadKey) {
   return appendAmountDigits(current, key);
 }
 
-function AmountKeypad({ value, preview, onChange }: { value: string; preview: string; onChange: (value: string, key: AmountPadKey) => void }) {
+function isAmountEntryKey(key: AmountPadKey) {
+  return key === "." || /^\d+$/.test(key);
+}
+
+function AmountKeypad({ value, preview, title = "输入金额", replaceOnNextEntry = false, onChange }: {
+  value: string;
+  preview: string;
+  title?: string;
+  replaceOnNextEntry?: boolean;
+  onChange: (value: string, key: AmountPadKey) => void;
+}) {
   const [confirmedKey, setConfirmedKey] = useState<AmountPadKey | null>(null);
   const keys: { key: AmountPadKey; label: string; tone?: string; ariaLabel?: string }[] = [
     { key: "1", label: "1" },
@@ -1231,7 +1241,7 @@ function AmountKeypad({ value, preview, onChange }: { value: string; preview: st
     <div className="amount-keypad full" aria-label="金额数字键盘">
       <div className="amount-keypad-head">
         <div>
-          <strong>输入金额</strong>
+          <strong>{title}</strong>
           <span className="keypad-live-amount">¥{preview}</span>
         </div>
         <button type="button" className="amount-keypad-clear" disabled={!value.trim()} onClick={() => confirmInput("", "clear")}>清空</button>
@@ -1244,7 +1254,8 @@ function AmountKeypad({ value, preview, onChange }: { value: string; preview: st
             className={`${item.tone ? `amount-key ${item.tone}` : "amount-key"} ${confirmedKey === item.key ? "confirmed" : ""}`.trim()}
             aria-label={item.ariaLabel}
             onClick={() => {
-              confirmInput(nextAmountValue(value, item.key), item.key);
+              const baseValue = replaceOnNextEntry && isAmountEntryKey(item.key) ? "" : value;
+              confirmInput(nextAmountValue(baseValue, item.key), item.key);
             }}
           >
             {item.label}
@@ -1277,6 +1288,7 @@ function EntryForm({ accounts, categories, transactions, onSave, onSaveCategory,
   const [saveFeedback, setSaveFeedback] = useState("");
   const [amountPulse, setAmountPulse] = useState(0);
   const [savedFlash, setSavedFlash] = useState(false);
+  const [replaceAmountOnNextEntry, setReplaceAmountOnNextEntry] = useState(Boolean(editing));
   const amountInputRef = useRef<HTMLInputElement>(null);
 
   const categoryKind = type === "income" ? "income" : "expense";
@@ -1325,11 +1337,25 @@ function EntryForm({ accounts, categories, transactions, onSave, onSaveCategory,
     : `${selectedCategoryPath} · ${selectedAccount?.name ?? "选择账户"}`;
   const entryIntent = type === "income" ? "记录一笔收入" : type === "transfer" ? "记录账户流转" : "记录一笔消费";
   const handleAmountChange = useCallback((nextValue: string) => {
+    setReplaceAmountOnNextEntry(false);
     setAmount((currentValue) => {
       if (nextValue !== currentValue) setAmountPulse((value) => value + 1);
       return nextValue;
     });
   }, []);
+  const handleAmountKeypadChange = useCallback((nextValue: string, key: AmountPadKey) => {
+    if (isAmountEntryKey(key)) setReplaceAmountOnNextEntry(false);
+    handleAmountChange(nextValue);
+  }, [handleAmountChange]);
+  const prepareAmountOverwrite = useCallback(() => {
+    if (!editing) return;
+    setReplaceAmountOnNextEntry(true);
+    window.setTimeout(() => {
+      const input = amountInputRef.current;
+      if (!input || document.activeElement !== input) return;
+      input.select();
+    }, 0);
+  }, [editing]);
   const focusAmountInput = useCallback((force = false) => {
     if (editing) return;
     const input = amountInputRef.current;
@@ -1353,6 +1379,7 @@ function EntryForm({ accounts, categories, transactions, onSave, onSaveCategory,
     setToAccountId(editing.toAccountId ?? "");
     setCategoryId(editing.categoryId ?? "");
     setAmount(centsToYuan(editing.amountCents));
+    setReplaceAmountOnNextEntry(true);
     setMerchant(editing.merchant ?? "");
     setNote(editing.note ?? "");
     setOccurredAt(toBeijingDatetimeLocal(editing.occurredAt));
@@ -1449,8 +1476,8 @@ function EntryForm({ accounts, categories, transactions, onSave, onSaveCategory,
             </div>
           </div>
         )}
-        <label className="entry-amount-field full"><span>金额</span><input ref={amountInputRef} value={amount} onChange={(event) => handleAmountChange(event.target.value)} placeholder="0.00" inputMode="decimal" enterKeyHint="done" autoFocus={!editing} required /></label>
-        {!editing && <AmountKeypad value={amount} preview={amountPreview} onChange={handleAmountChange} />}
+        <label className="entry-amount-field full"><span>金额</span><input ref={amountInputRef} value={amount} onFocus={prepareAmountOverwrite} onClick={prepareAmountOverwrite} onChange={(event) => handleAmountChange(event.target.value)} placeholder="0.00" inputMode="decimal" enterKeyHint="done" autoFocus={!editing} required /></label>
+        <AmountKeypad value={amount} preview={amountPreview} title={editing ? "重输金额" : "输入金额"} replaceOnNextEntry={replaceAmountOnNextEntry} onChange={handleAmountKeypadChange} />
         <label className="entry-account-field">{type === "income" ? "收款账户" : type === "expense" ? "信用卡" : "付款账户"}<select value={accountId} onChange={(event) => setAccountId(event.target.value)}>{accountOptions.map((account) => <option key={account.id} value={account.id}>{account.name}</option>)}</select></label>
         {type === "transfer" ? (
           <label>转入账户<select value={toAccountId} onChange={(event) => setToAccountId(event.target.value)}>{accounts.filter((item) => item.id !== accountId).map((account) => <option key={account.id} value={account.id}>{account.name}</option>)}</select></label>
