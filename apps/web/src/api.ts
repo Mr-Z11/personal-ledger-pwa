@@ -74,5 +74,30 @@ export const api = {
   },
   exportUrl(format = "ledger") {
     return `${API_BASE}/export/csv?format=${encodeURIComponent(format)}`;
+  },
+  notificationVapidKey() {
+    return apiFetch<{ publicKey: string }>("/notifications/vapid-key");
+  },
+  notificationSettings(token: string) {
+    return apiFetch<NotificationSettings>("/notifications/settings", {}, token);
+  },
+  saveNotificationSettings(token: string, settings: NotificationSettings) {
+    return apiFetch<NotificationSettings>("/notifications/settings", { method: "PUT", body: JSON.stringify(settings) }, token);
+  },
+  subscribeNotifications(token: string, subscription: PushSubscriptionJSON) {
+    return apiFetch<{ id: string }>("/notifications/subscribe", { method: "POST", body: JSON.stringify(subscription) }, token);
+  },
+  unsubscribeNotifications(token: string, endpoint: string) {
+    return apiFetch<{ ok: boolean }>("/notifications/unsubscribe", { method: "POST", body: JSON.stringify({ endpoint }) }, token);
+  },
+  testNotifications(token: string) {
+    return apiFetch<{ delivered: boolean }>("/notifications/test", { method: "POST" }, token);
   }
 };
+
+export interface NotificationSettings {
+  salaryDay: number;
+  remindHour: number;
+  content: string;
+  enabled: boolean;
+}

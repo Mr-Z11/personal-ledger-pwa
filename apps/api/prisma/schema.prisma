@@ -131,6 +131,38 @@ model AnalysisNote {
   @@unique([ledgerId, month, subjectType, subjectKey])
 }
 
+model ReminderSetting {
+  id        String   @id @default(uuid())
+  userId    String   @unique
+  salaryDay Int      @default(10)
+  remindHour Int     @default(9)
+  content   String   @default("")
+  enabled   Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model PushSubscription {
+  id        String   @id @default(uuid())
+  userId    String
+  endpoint  String   @unique
+  p256dh    String
+  auth      String
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+}
+
+model ReminderLog {
+  id        String   @id @default(uuid())
+  userId    String
+  kind      String
+  month     String
+  sentAt    DateTime @default(now())
+
+  @@unique([userId, kind, month])
+}
+
 model AuditLog {
   id        String   @id @default(uuid())
   ledgerId  String

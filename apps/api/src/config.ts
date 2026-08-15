@@ -5,7 +5,10 @@ const schema = z.object({
   API_PORT: z.coerce.number().default(4000),
   DATABASE_URL: z.string().min(1),
   JWT_SECRET: z.string().min(24),
-  CORS_ORIGIN: z.string().default("http://localhost:5173")
+  CORS_ORIGIN: z.string().default("http://localhost:5173"),
+  VAPID_PUBLIC_KEY: z.string().optional(),
+  VAPID_PRIVATE_KEY: z.string().optional(),
+  VAPID_SUBJECT: z.string().default("mailto:ledger@example.com")
 });
 
 export const config = schema.parse(process.env);

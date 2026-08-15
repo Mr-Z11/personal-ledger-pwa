@@ -29,6 +29,7 @@ export default defineConfig({
       workbox: {
         skipWaiting: false,
         clientsClaim: false,
+        importScripts: ["/push-sw.js"],
         navigateFallback: "/index.html",
         globIgnores: ["**/xlsx-*.js", "**/papaparse*.js"],
         runtimeCaching: [

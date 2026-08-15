@@ -1836,6 +1836,59 @@ input[type="month"],
   padding: 0 1rem 1rem;
 }
 
+.reminder-panel {
+  max-width: 30rem;
+}
+
+.reminder-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  padding: 0.45rem 0.8rem;
+  border-radius: 999px;
+  font-size: 0.82rem;
+  font-weight: 700;
+  background: rgba(49, 71, 58, 0.07);
+  color: rgba(36, 49, 39, 0.66);
+}
+
+.reminder-status.on {
+  background: rgba(47, 122, 89, 0.14);
+  color: #2f7a59;
+}
+
+.reminder-row {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.7rem;
+}
+
+.reminder-panel textarea {
+  width: 100%;
+  min-height: 6.2rem;
+  border: 1px solid rgba(49, 71, 58, 0.16);
+  border-radius: 0.55rem;
+  padding: 0.55rem 0.8rem;
+  background: #fffdf7;
+  color: #243127;
+  font-size: 0.9rem;
+  line-height: 1.5;
+  resize: vertical;
+}
+
+.reminder-hint {
+  margin: 0;
+  font-size: 0.76rem;
+  line-height: 1.5;
+  color: rgba(36, 49, 39, 0.52);
+}
+
+.reminder-hint.warn {
+  color: #b3541e;
+  font-weight: 700;
+}
+
+
 .settings-section-body > .grid,
 .settings-section-body > .category-tree {
   margin-top: 0;

@@ -17,6 +17,8 @@ import {
   ArrowRightLeft,
   ArrowUpRight,
   Banknote,
+  Bell,
+  BellRing,
   Download,
   FolderPlus,
   Home,
@@ -979,6 +981,7 @@ export function App() {
         )}
         {view === "settings" && (
           <SettingsPanel
+            token={token}
             accounts={activeAccounts}
             categories={activeCategories}
             transactions={activeTransactions}
@@ -2168,6 +2171,7 @@ function TransactionActionSheet({ transaction, accounts, categories, onClose, on
 }
 
 function SettingsPanel({
+  token,
   accounts,
   categories,
   transactions,
@@ -2187,6 +2191,7 @@ function SettingsPanel({
   onSaveCategory,
   onDeleteCategories
 }: {
+  token: string | null;
   accounts: Account[];
   categories: Category[];
   transactions: Transaction[];
@@ -2248,6 +2253,9 @@ function SettingsPanel({
       <SettingsSection title="预算管理" description="设置日常支出预算，并查看执行情况。">
         <BudgetPanel budgets={budgets} categories={categories} transactions={transactions} onSave={onSaveBudget} onDelete={onDeleteBudget} />
       </SettingsSection>
+      <SettingsSection title="工资日提醒" description="到工资日自动推送资金分配提醒，内容可自定义。">
+        <SalaryReminderPanel token={token} />
+      </SettingsSection>
       <SettingsSection title="分类维护" description="按一级、二级分类折叠维护。">
         <CategoriesPanel categories={categories} onSave={onSaveCategory} onDelete={onDeleteCategories} />
       </SettingsSection>
@@ -2266,6 +2274,203 @@ function SettingsSection({ title, description, children, defaultOpen = false }: 
       </summary>
       <div className="settings-section-body">{children}</div>
     </details>
+  );
+}
+
+function urlBase64ToUint8Array(base64: string) {
+  const padding = "=".repeat((4 - (base64.length % 4)) % 4);
+  const raw = window.atob((base64 + padding).replaceAll("-", "+").replaceAll("_", "/"));
+  return Uint8Array.from([...raw].map((char) => char.charCodeAt(0)));
+}
+
+function SalaryReminderPanel({ token }: { token: string | null }) {
+  const [salaryDay, setSalaryDay] = useState(10);
+  const [remindHour, setRemindHour] = useState(9);
+  const [content, setContent] = useState("");
+  const [enabled, setEnabled] = useState(false);
+  const [permission, setPermission] = useState<NotificationPermission | "unsupported">(
+    typeof Notification === "undefined" ? "unsupported" : Notification.permission
+  );
+  const [subscribed, setSubscribed] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [busy, setBusy] = useState(false);
+
+  const pushSupported = typeof window !== "undefined" && "serviceWorker" in navigator && "PushManager" in window;
+
+  async function ensureSubscription(): Promise<PushSubscription> {
+    const registration = await navigator.serviceWorker.ready;
+    const existing = await registration.pushManager.getSubscription();
+    if (existing) return existing;
+    const { publicKey } = await api.notificationVapidKey();
+    if (!publicKey) throw new Error("服务器未开启推送服务");
+    const created = await registration.pushManager.subscribe({
+      userVisibleOnly: true,
+      applicationServerKey: urlBase64ToUint8Array(publicKey)
+    });
+    return created;
+  }
+
+  useEffect(() => {
+    let cancelled = false;
+    async function load() {
+      if (!token || !pushSupported) {
+        setLoading(false);
+        return;
+      }
+      try {
+        const [settings, registration] = await Promise.all([
+          api.notificationSettings(token),
+          navigator.serviceWorker.ready
+        ]);
+        if (cancelled) return;
+        setSalaryDay(settings.salaryDay);
+        setRemindHour(settings.remindHour);
+        setContent(settings.content);
+        setEnabled(settings.enabled);
+        const existing = await registration.pushManager.getSubscription();
+        if (cancelled) return;
+        setSubscribed(Boolean(existing));
+      } catch {
+        // 离线或服务器暂不可达时保持默认值
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    }
+    void load();
+    return () => {
+      cancelled = true;
+    };
+  }, [token, pushSupported]);
+
+  async function handleEnable() {
+    if (!token) return;
+    setBusy(true);
+    try {
+      if (typeof Notification !== "undefined" && Notification.permission !== "granted") {
+        const result = await Notification.requestPermission();
+        setPermission(result);
+        if (result !== "granted") throw new Error("未获得通知权限，请在系统设置中允许通知");
+      }
+      const subscription = await ensureSubscription();
+      await api.subscribeNotifications(token, subscription.toJSON());
+      await api.saveNotificationSettings(token, { salaryDay, remindHour, content, enabled: true });
+      setSubscribed(true);
+      setEnabled(true);
+      window.alert("工资日提醒已开启！");
+    } catch (error) {
+      window.alert(error instanceof Error ? error.message : "开启失败，请稍后重试");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function handleDisable() {
+    if (!token) return;
+    setBusy(true);
+    try {
+      const registration = await navigator.serviceWorker.ready;
+      const existing = await registration.pushManager.getSubscription();
+      if (existing) {
+        await api.unsubscribeNotifications(token, existing.endpoint).catch(() => undefined);
+        await existing.unsubscribe().catch(() => undefined);
+      }
+      await api.saveNotificationSettings(token, { salaryDay, remindHour, content, enabled: false });
+      setSubscribed(false);
+      setEnabled(false);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function handleSave() {
+    if (!token) return;
+    setBusy(true);
+    try {
+      await api.saveNotificationSettings(token, { salaryDay, remindHour, content, enabled });
+      window.alert("提醒设置已保存");
+    } catch (error) {
+      window.alert(error instanceof Error ? error.message : "保存失败");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function handleTest() {
+    if (!token) return;
+    setBusy(true);
+    try {
+      if (!subscribed) {
+        if (typeof Notification !== "undefined" && Notification.permission !== "granted") {
+          const result = await Notification.requestPermission();
+          setPermission(result);
+        }
+        const subscription = await ensureSubscription();
+        await api.subscribeNotifications(token, subscription.toJSON());
+        setSubscribed(true);
+      }
+      const result = await api.testNotifications(token);
+      if (!result.delivered) throw new Error("发送失败：服务器推送未配置或设备订阅失效");
+    } catch (error) {
+      window.alert(error instanceof Error ? error.message : "测试发送失败");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  if (!pushSupported) {
+    return (
+      <div className="reminder-panel">
+        <p className="reminder-hint">当前浏览器不支持消息推送。请在手机上将「记账」添加到主屏幕（iOS 16.4+ 或 Android 版 Chrome/Edge）后开启。</p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="reminder-panel form-stack">
+      <div className={`reminder-status ${enabled && subscribed ? "on" : ""}`}>
+        <BellRing size={16} />
+        <span>{loading ? "正在检查提醒状态…" : enabled && subscribed ? "已开启：将按工资日自动推送提醒" : "未开启"}</span>
+      </div>
+      <div className="reminder-row">
+        <label>工资日
+          <select value={salaryDay} onChange={(event) => setSalaryDay(Number(event.target.value))} disabled={!token}>
+            {Array.from({ length: 31 }, (_, index) => index + 1).map((day) => (
+              <option key={day} value={day}>{day} 日</option>
+            ))}
+          </select>
+        </label>
+        <label>提醒时间
+          <select value={remindHour} onChange={(event) => setRemindHour(Number(event.target.value))} disabled={!token}>
+            {Array.from({ length: 15 }, (_, index) => index + 7).map((hour) => (
+              <option key={hour} value={hour}>{String(hour).padStart(2, "0")}:00</option>
+            ))}
+          </select>
+        </label>
+      </div>
+      <label>提醒内容（可自定义资金分配方案）
+        <textarea
+          value={content}
+          onChange={(event) => setContent(event.target.value)}
+          rows={5}
+          maxLength={1000}
+          placeholder={"例如：\n工资到账啦，按方案分配：\n1. 固定储蓄 50%\n2. 日常开销 30%\n3. 投资理财 20%"}
+          disabled={!token}
+        />
+      </label>
+      <div className="data-actions">
+        {enabled && subscribed ? (
+          <button type="button" onClick={handleDisable} disabled={busy || loading}>关闭提醒</button>
+        ) : (
+          <button className="primary" type="button" onClick={handleEnable} disabled={busy || loading || !token}>
+            <Bell size={16} />开启提醒
+          </button>
+        )}
+        <button type="button" onClick={handleSave} disabled={busy || loading || !token}>保存设置</button>
+        <button type="button" onClick={handleTest} disabled={busy || loading || !token}>发送测试提醒</button>
+      </div>
+      {permission === "denied" && <p className="reminder-hint warn">通知权限已被拒绝：请在系统设置中找到「记账」应用，允许通知后重试。</p>}
+      <p className="reminder-hint">提示：手机上需将应用添加到主屏幕并以独立窗口使用，系统才会在后台推送通知。若设置当月无 31 日，将在当月最后一天提醒。</p>
+    </div>
   );
 }
 

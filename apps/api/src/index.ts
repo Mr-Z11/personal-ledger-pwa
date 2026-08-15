@@ -7,6 +7,12 @@ import bcrypt from "bcryptjs";
 import Fastify, { type FastifyInstance, type FastifyReply, type FastifyRequest } from "fastify";
 import { z } from "zod";
 import { config } from "./config.js";
+import {
+  DEFAULT_REMINDER_CONTENT,
+  getVapidPublicKey,
+  sendTestReminder,
+  startReminderScheduler
+} from "./notifications.js";
 import { prisma } from "./prisma.js";
 import { serializeAccount, serializeAnalysisNote, serializeBudget, serializeCategory, serializeSnapshot, serializeTransaction } from "./serializers.js";
 
@@ -56,6 +62,21 @@ const analysisNoteSchema = z.object({
   subjectType: z.enum(["month", "anomaly"]),
   subjectKey: z.string().min(1).max(160),
   content: z.string().max(2000)
+});
+
+const reminderSettingSchema = z.object({
+  salaryDay: z.number().int().min(1).max(31),
+  remindHour: z.number().int().min(0).max(23),
+  content: z.string().max(1000),
+  enabled: z.boolean()
+});
+
+const pushSubscriptionSchema = z.object({
+  endpoint: z.string().url().min(1),
+  keys: z.object({
+    p256dh: z.string().min(1),
+    auth: z.string().min(1)
+  })
 });
 
 async function getLedgerForUser(userId: string) {
@@ -405,6 +426,54 @@ export async function buildApp(): Promise<FastifyInstance> {
     ];
     return reply.header("content-type", "text/csv; charset=utf-8").send(`\ufeff${rows.join("\n")}`);
   });
+
+  app.get("/notifications/vapid-key", async () => {
+    return { publicKey: getVapidPublicKey() };
+  });
+
+  app.get("/notifications/settings", { preHandler: [app.authenticate] }, async (request) => {
+    const setting = await prisma.reminderSetting.findUnique({ where: { userId: request.user.sub } });
+    return {
+      salaryDay: setting?.salaryDay ?? 10,
+      remindHour: setting?.remindHour ?? 9,
+      content: setting?.content ?? DEFAULT_REMINDER_CONTENT,
+      enabled: setting?.enabled ?? false,
+      exists: Boolean(setting)
+    };
+  });
+
+  app.put("/notifications/settings", { preHandler: [app.authenticate] }, async (request) => {
+    const input = reminderSettingSchema.parse(request.body);
+    const setting = await prisma.reminderSetting.upsert({
+      where: { userId: request.user.sub },
+      create: { userId: request.user.sub, ...input },
+      update: input
+    });
+    return setting;
+  });
+
+  app.post("/notifications/subscribe", { preHandler: [app.authenticate] }, async (request) => {
+    const input = pushSubscriptionSchema.parse(request.body);
+    const subscription = await prisma.pushSubscription.upsert({
+      where: { endpoint: input.endpoint },
+      create: { userId: request.user.sub, endpoint: input.endpoint, p256dh: input.keys.p256dh, auth: input.keys.auth },
+      update: { userId: request.user.sub, p256dh: input.keys.p256dh, auth: input.keys.auth }
+    });
+    return { id: subscription.id };
+  });
+
+  app.post("/notifications/unsubscribe", { preHandler: [app.authenticate] }, async (request) => {
+    const { endpoint } = z.object({ endpoint: z.string().min(1) }).parse(request.body);
+    await prisma.pushSubscription.deleteMany({ where: { endpoint, userId: request.user.sub } });
+    return { ok: true };
+  });
+
+  app.post("/notifications/test", { preHandler: [app.authenticate] }, async (request) => {
+    const delivered = await sendTestReminder(request.user.sub);
+    return { delivered };
+  });
+
+  startReminderScheduler(app.log);
 
   return app;
 }
