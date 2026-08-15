@@ -2081,6 +2081,20 @@ input[type="month"],
 .budget-line {
   display: grid;
   gap: 0.4rem;
+  padding: 0.55rem 0.6rem;
+  border: 1px solid transparent;
+  border-radius: 0.6rem;
+}
+
+.budget-line.editing {
+  border-color: rgba(47, 125, 79, 0.28);
+  background: rgba(47, 125, 79, 0.1);
+}
+
+.budget-line-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.35rem;
 }
 
 .budget-line strong {

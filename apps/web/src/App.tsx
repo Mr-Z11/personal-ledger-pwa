@@ -989,7 +989,15 @@ export function App() {
               await saveLocalAndQueue("accounts", deleted);
               setToast("账户已删除");
             }}
-            onSaveBudget={(item) => saveLocalAndQueue("budgets", item)}
+            onSaveBudget={async (item) => {
+              await saveLocalAndQueue("budgets", item);
+              setToast("预算已保存");
+            }}
+            onDeleteBudget={async (item) => {
+              const deleted = { ...item, deletedAt: new Date().toISOString(), updatedAt: new Date().toISOString(), version: item.version + 1 };
+              await saveLocalAndQueue("budgets", deleted);
+              setToast("预算已删除");
+            }}
             onSaveCategory={(item) => saveLocalAndQueue("categories", item)}
             onDeleteCategories={(items) => saveManyLocalAndQueue("categories", items)}
           />
@@ -2144,6 +2152,7 @@ function SettingsPanel({
   onSaveAccount,
   onDeleteAccount,
   onSaveBudget,
+  onDeleteBudget,
   onSaveCategory,
   onDeleteCategories
 }: {
@@ -2162,6 +2171,7 @@ function SettingsPanel({
   onSaveAccount: (item: Account) => Promise<void>;
   onDeleteAccount: (item: Account) => Promise<void>;
   onSaveBudget: (item: Budget) => Promise<void>;
+  onDeleteBudget: (item: Budget) => Promise<void>;
   onSaveCategory: (item: Category) => Promise<void>;
   onDeleteCategories: (items: Category[]) => Promise<void>;
 }) {
@@ -2205,7 +2215,7 @@ function SettingsPanel({
         <AccountsPanel accounts={accounts} onSave={onSaveAccount} onDelete={onDeleteAccount} />
       </SettingsSection>
       <SettingsSection title="预算管理" description="设置日常支出预算，并查看执行情况。">
-        <BudgetPanel budgets={budgets} categories={categories} transactions={transactions} onSave={onSaveBudget} />
+        <BudgetPanel budgets={budgets} categories={categories} transactions={transactions} onSave={onSaveBudget} onDelete={onDeleteBudget} />
       </SettingsSection>
       <SettingsSection title="分类维护" description="按一级、二级分类折叠维护。">
         <CategoriesPanel categories={categories} onSave={onSaveCategory} onDelete={onDeleteCategories} />
@@ -2466,17 +2476,62 @@ function CategoriesPanel({ categories, onSave, onDelete }: { categories: Categor
   );
 }
 
-function BudgetPanel({ budgets, categories, transactions, onSave }: {
+function BudgetPanel({ budgets, categories, transactions, onSave, onDelete }: {
   budgets: Budget[];
   categories: Category[];
   transactions: Transaction[];
   onSave: (item: Budget) => Promise<void>;
+  onDelete: (item: Budget) => Promise<void>;
 }) {
   const [month, setMonth] = useState(monthKey());
   const [categoryId, setCategoryId] = useState("");
   const [amount, setAmount] = useState("");
+  const [editing, setEditing] = useState<Budget | null>(null);
   const expenseCategories = categories.filter((item) => item.kind === "expense");
   const monthExpenses = dailyExpenseTransactions(transactions.filter((item) => item.occurredAt.startsWith(month)), categories);
+
+  function editBudget(budget: Budget) {
+    setEditing(budget);
+    setMonth(budget.month);
+    setCategoryId(budget.categoryId ?? "");
+    setAmount(centsToYuan(budget.amountCents));
+  }
+
+  function resetForm() {
+    setEditing(null);
+    setCategoryId("");
+    setAmount("");
+  }
+
+  function budgetLabel(budget: Budget) {
+    return budget.categoryId ? categories.find((item) => item.id === budget.categoryId)?.name ?? "分类预算" : "日常支出";
+  }
+
+  async function deleteBudget(budget: Budget) {
+    const label = budgetLabel(budget);
+    if (!window.confirm(`删除“${label}”${budget.month} 的预算？`)) return;
+    if (editing?.id === budget.id) resetForm();
+    await onDelete(budget);
+  }
+
+  async function submit(event: React.FormEvent) {
+    event.preventDefault();
+    const resolvedCategoryId = categoryId || null;
+    const duplicate = budgets.find((item) => item.id !== editing?.id && item.month === month && (item.categoryId ?? null) === resolvedCategoryId);
+    const existing = editing ?? duplicate;
+    const base = existing ?? entityStamp();
+    await onSave({
+      ...base,
+      month,
+      categoryId: resolvedCategoryId,
+      amountCents: yuanToCents(amount),
+      version: existing ? existing.version + 1 : base.version,
+      updatedAt: new Date().toISOString(),
+      deletedAt: null
+    });
+    resetForm();
+  }
+
   return (
     <section className="grid two">
       <div className="panel">
@@ -2486,28 +2541,29 @@ function BudgetPanel({ budgets, categories, transactions, onSave }: {
             const spent = monthExpenses.filter((item) => !budget.categoryId || item.categoryId === budget.categoryId).reduce((sum, item) => sum + item.amountCents, 0);
             const ratio = Math.min(100, Math.round((spent / budget.amountCents) * 100));
             return (
-              <div className="budget-line" key={budget.id}>
-                <span>{budget.categoryId ? categories.find((item) => item.id === budget.categoryId)?.name : "日常支出"}</span>
+              <div className={editing?.id === budget.id ? "budget-line editing" : "budget-line"} key={budget.id}>
+                <span>{budgetLabel(budget)}</span>
                 <strong>¥{centsToYuan(spent)} / ¥{centsToYuan(budget.amountCents)}</strong>
                 <div className="bar"><i style={{ width: `${ratio}%` }} /></div>
+                <div className="budget-line-actions">
+                  <button className="text-action" onClick={() => editBudget(budget)} type="button"><Pencil size={15} />编辑</button>
+                  <button className="text-action danger" onClick={() => void deleteBudget(budget)} type="button"><Trash2 size={15} />删除</button>
+                </div>
               </div>
             );
           })}
         </div>
       </div>
-      <form className="panel form-stack" onSubmit={async (event) => {
-        event.preventDefault();
-        await onSave({ ...entityStamp(), month, categoryId: categoryId || null, amountCents: yuanToCents(amount) });
-        setAmount("");
-      }}>
-        <h2>新增预算</h2>
+      <form className="panel form-stack" onSubmit={submit}>
+        <h2>{editing ? "编辑预算" : "新增预算"}</h2>
         <MonthField value={month} onChange={setMonth} label="预算月份" />
         <select value={categoryId} onChange={(event) => setCategoryId(event.target.value)}>
           <option value="">日常支出</option>
           {expenseCategories.map((category) => <option key={category.id} value={category.id}>{category.name}</option>)}
         </select>
         <input value={amount} onChange={(event) => setAmount(event.target.value)} placeholder="预算金额" inputMode="decimal" required />
-        <button className="primary">保存预算</button>
+        <button className="primary">{editing ? "保存修改" : "保存预算"}</button>
+        {editing && <button type="button" className="ghost" onClick={resetForm}>取消编辑</button>}
       </form>
     </section>
   );
