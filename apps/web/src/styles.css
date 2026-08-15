@@ -61,7 +61,9 @@ button {
   display: flex;
   flex-direction: column;
   gap: 1rem;
-  background: rgba(36, 49, 39, 0.96);
+  background:
+    linear-gradient(180deg, rgba(36, 49, 39, 0.98), rgba(31, 45, 35, 0.96)),
+    #243127;
   color: #f6f1e7;
 }
 
@@ -131,8 +133,9 @@ nav button {
 }
 
 nav button.active {
-  background: rgba(246, 241, 231, 0.12);
+  background: rgba(246, 241, 231, 0.14);
   color: #fff7df;
+  box-shadow: inset 0.18rem 0 0 #d6b25e;
 }
 
 .sync-card {
@@ -181,13 +184,19 @@ main {
 .app-heading {
   min-height: 3.15rem;
   padding: 0.48rem 0.72rem;
-  border: 1px solid rgba(31, 95, 116, 0.14);
+  border: 1px solid rgba(31, 95, 116, 0.12);
   border-radius: 0.72rem;
   display: inline-flex;
   align-items: center;
   gap: 0.58rem;
-  background: rgba(255, 255, 255, 0.54);
-  box-shadow: 0 0.7rem 1.4rem rgba(31, 95, 116, 0.07);
+  background: rgba(255, 252, 245, 0.66);
+  box-shadow: 0 0.5rem 1.2rem rgba(31, 95, 116, 0.06);
+  transition: border-color 180ms ease, box-shadow 180ms ease;
+}
+
+.app-heading:hover {
+  border-color: rgba(31, 95, 116, 0.2);
+  box-shadow: 0 0.6rem 1.4rem rgba(31, 95, 116, 0.08);
 }
 
 .app-heading-mark {
@@ -279,8 +288,8 @@ h2 {
 
 .overview-hero {
   min-height: 11.4rem;
-  padding: 1.05rem;
-  border-radius: 0.9rem;
+  padding: 1.2rem;
+  border-radius: 1rem;
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
   align-items: center;
@@ -289,7 +298,7 @@ h2 {
     linear-gradient(135deg, rgba(36, 49, 39, 0.98), rgba(31, 95, 116, 0.92)),
     #31473a;
   color: #fff7df;
-  box-shadow: 0 1.4rem 3rem rgba(36, 49, 39, 0.2);
+  box-shadow: 0 1.2rem 3rem rgba(36, 49, 39, 0.22), inset 0 0.1rem 0 rgba(255, 255, 255, 0.08);
 }
 
 .overview-hero-main em {
@@ -355,13 +364,20 @@ h2 {
 
 .overview-quick-card {
   min-width: 0;
-  padding: 0.68rem 0.72rem;
-  border: 1px solid rgba(49, 71, 58, 0.11);
-  border-radius: 0.62rem;
+  padding: 0.72rem 0.76rem;
+  border: 1px solid rgba(49, 71, 58, 0.09);
+  border-radius: 0.68rem;
   display: grid;
-  gap: 0.18rem;
-  background: rgba(255, 250, 240, 0.86);
-  box-shadow: 0 0.7rem 1.5rem rgba(36, 49, 39, 0.06);
+  gap: 0.22rem;
+  background: rgba(255, 252, 245, 0.9);
+  box-shadow: 0 0.5rem 1.2rem rgba(36, 49, 39, 0.05);
+  transition: transform 180ms ease, box-shadow 180ms ease, border-color 180ms ease;
+}
+
+.overview-quick-card:hover {
+  transform: translateY(-0.08rem);
+  box-shadow: 0 0.7rem 1.6rem rgba(36, 49, 39, 0.08);
+  border-color: rgba(49, 71, 58, 0.16);
 }
 
 .overview-quick-card span,
@@ -392,6 +408,31 @@ h2 {
   font-weight: 800;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.trend-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.18rem;
+  min-width: 0;
+  overflow: hidden;
+  padding: 0.12rem 0.38rem;
+  border-radius: 999px;
+  font-size: 0.68rem;
+  font-style: normal;
+  font-weight: 900;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.trend-tag.trend-up {
+  background: rgba(212, 91, 63, 0.1);
+  color: #c84a32;
+}
+
+.trend-tag.trend-down {
+  background: rgba(47, 125, 79, 0.1);
+  color: #2a6e44;
 }
 
 .overview-insight {
@@ -467,10 +508,10 @@ h2 {
 .metric,
 .auth-panel,
 .floating-form {
-  background: rgba(255, 250, 240, 0.88);
-  border: 1px solid rgba(49, 71, 58, 0.12);
-  border-radius: 0.7rem;
-  box-shadow: 0 1.2rem 2.8rem rgba(36, 49, 39, 0.08);
+  background: rgba(255, 250, 240, 0.92);
+  border: 1px solid rgba(49, 71, 58, 0.1);
+  border-radius: 0.72rem;
+  box-shadow: 0 0.8rem 2rem rgba(36, 49, 39, 0.06), 0 0.2rem 0.5rem rgba(36, 49, 39, 0.04);
 }
 
 .panel {
@@ -556,6 +597,14 @@ select {
   background: #fffdf7;
   color: #243127;
   font-size: 16px;
+  transition: border-color 180ms ease, box-shadow 180ms ease, background 180ms ease;
+}
+
+input:focus,
+select:focus {
+  border-color: rgba(31, 95, 116, 0.4);
+  box-shadow: 0 0 0 3px rgba(31, 95, 116, 0.1);
+  background: #fffefb;
 }
 
 input[type="month"],
@@ -627,6 +676,16 @@ input[type="month"],
   background: #31473a;
   color: #fff7df;
   font-weight: 800;
+  transition: transform 120ms ease, box-shadow 180ms ease, background 180ms ease;
+}
+
+.primary:hover:not(:disabled) {
+  background: #3a5446;
+  box-shadow: 0 0.5rem 1.2rem rgba(36, 49, 39, 0.18);
+}
+
+.primary:active:not(:disabled) {
+  transform: translateY(1px);
 }
 
 .auth {
@@ -1453,6 +1512,37 @@ input[type="month"],
   display: grid;
   place-items: center;
   background: rgba(49, 71, 58, 0.08);
+  transition: background 180ms ease, color 180ms ease;
+}
+
+.row-icon.income {
+  background: rgba(47, 125, 79, 0.12);
+  color: #2a6e44;
+}
+
+.row-icon.expense {
+  background: rgba(212, 91, 63, 0.12);
+  color: #c84a32;
+}
+
+.row-icon.transfer {
+  background: rgba(31, 95, 116, 0.12);
+  color: #1f5f74;
+}
+
+.row-type-income {
+  border-left: 0.2rem solid rgba(47, 125, 79, 0.5);
+  padding-left: 0.36rem;
+}
+
+.row-type-expense {
+  border-left: 0.2rem solid rgba(212, 91, 63, 0.5);
+  padding-left: 0.36rem;
+}
+
+.row-type-transfer {
+  border-left: 0.2rem solid rgba(31, 95, 116, 0.5);
+  padding-left: 0.36rem;
 }
 
 .row-main {
@@ -1475,6 +1565,19 @@ input[type="month"],
   font-size: 0.92rem;
   line-height: 1.1;
   white-space: nowrap;
+  font-weight: 700;
+}
+
+.row-type-income .row-side b {
+  color: #2a6e44;
+}
+
+.row-type-expense .row-side b {
+  color: #243127;
+}
+
+.row-type-transfer .row-side b {
+  color: #1f5f74;
 }
 
 .row-actions {
@@ -3283,6 +3386,17 @@ input[type="month"],
   background: #d6b25e;
   color: #243127;
   box-shadow: 0 1rem 2rem rgba(36, 49, 39, 0.24);
+  transition: transform 180ms ease, box-shadow 180ms ease, background 180ms ease;
+}
+
+.floating:hover {
+  transform: translateY(-0.12rem) scale(1.03);
+  box-shadow: 0 1.2rem 2.4rem rgba(36, 49, 39, 0.28);
+  background: #e0bd66;
+}
+
+.floating:active {
+  transform: translateY(0) scale(0.97);
 }
 
 .entry-fab {
@@ -3962,6 +4076,12 @@ input[type="month"],
     grid-template-columns: minmax(0, 1fr);
     gap: 0.42rem;
     padding: 0.34rem 0.4rem;
+  }
+
+  .row-type-income,
+  .row-type-expense,
+  .row-type-transfer {
+    padding-left: 0.26rem;
   }
 
   .row.selectable {

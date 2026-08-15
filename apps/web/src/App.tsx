@@ -28,6 +28,8 @@ import {
   RefreshCw,
   Search,
   Settings2,
+  TrendingDown,
+  TrendingUp,
   Trash2,
   Undo2,
   Upload,
@@ -499,6 +501,15 @@ function viewTitle(view: View) {
   return navItems.find((item) => item.id === view)?.label ?? "总览";
 }
 
+const viewHeadingMap: Record<View, { strong: string; span: string; icon: typeof Home }> = {
+  overview: { strong: "本月概览", span: "预算、消费、趋势一览", icon: Home },
+  entry: { strong: "快速记账", span: "日常消费、收入、转账", icon: Plus },
+  transactions: { strong: "流水明细", span: "搜索、筛选、批量管理", icon: ListFilter },
+  reports: { strong: "消费分析", span: "趋势、预算、支出结构", icon: PieChartIcon },
+  settings: { strong: "账户设置", span: "账户、分类、预算、数据", icon: Settings2 },
+  trash: { strong: "回收站", span: "已删除流水可恢复", icon: Undo2 }
+};
+
 function accountLimitText(account: Account) {
   const value = Math.abs(account.openingBalanceCents ?? 0);
   return value > 0 ? `¥${centsToYuan(value)}` : "未设置";
@@ -917,10 +928,10 @@ export function App() {
             <h1>{viewTitle(view)}</h1>
           </div>
           <div className="app-heading">
-            <div className="app-heading-mark"><PieChartIcon size={18} /></div>
+            <div className="app-heading-mark">{(() => { const HeadingIcon = viewHeadingMap[view]?.icon ?? Home; return <HeadingIcon size={18} />; })()}</div>
             <div>
-              <strong>消费分析</strong>
-              <span>趋势、预算、支出结构</span>
+              <strong>{viewHeadingMap[view]?.strong ?? "总览"}</strong>
+              <span>{viewHeadingMap[view]?.span ?? ""}</span>
             </div>
           </div>
         </header>
@@ -1079,6 +1090,13 @@ function Overview({ summary, budgetCents, accounts, categories, transactions }: 
   transactions: Transaction[];
 }) {
   const monthTransactions = transactions.filter((item) => item.occurredAt.startsWith(monthKey()));
+  const prevMonthKey = offsetMonthKey(monthKey(), -1);
+  const prevMonthTransactions = transactions.filter((item) => item.occurredAt.startsWith(prevMonthKey));
+  const prevMonthDailyExpenses = dailyExpenseTransactions(prevMonthTransactions, categories);
+  const prevMonthExpenseCents = prevMonthDailyExpenses.reduce((sum, item) => sum + item.amountCents, 0);
+  const prevMonthTotalExpenses = prevMonthTransactions.filter((item) => item.type === "expense").reduce((sum, item) => sum + item.amountCents, 0);
+  const prevMonthElapsedDays = new Date(new Date().getFullYear(), new Date().getMonth(), 0).getDate();
+  const prevMonthDailyAverage = prevMonthExpenseCents > 0 ? Math.round(prevMonthExpenseCents / prevMonthElapsedDays) : 0;
   const monthExpenseTransactionsAll = monthTransactions.filter((item) => item.type === "expense");
   const monthExpenseTransactions = dailyExpenseTransactions(monthTransactions, categories);
   const specialMonthExpenses = specialExpenseTransactions(monthTransactions, categories);
@@ -1086,6 +1104,9 @@ function Overview({ summary, budgetCents, accounts, categories, transactions }: 
   const dailyAverage = Math.round(summary.expenseCents / elapsedDays);
   const totalExpenseCents = monthExpenseTransactionsAll.reduce((sum, item) => sum + item.amountCents, 0);
   const specialExpenseCents = specialMonthExpenses.reduce((sum, item) => sum + item.amountCents, 0);
+  const expenseDelta = percentDelta(summary.expenseCents, prevMonthExpenseCents);
+  const totalExpenseDelta = percentDelta(totalExpenseCents, prevMonthTotalExpenses);
+  const dailyAvgDelta = percentDelta(dailyAverage, prevMonthDailyAverage);
   const dailyExpenseRatio = totalExpenseCents > 0 ? Math.round((summary.expenseCents / totalExpenseCents) * 100) : 0;
   const specialExpenseRatio = totalExpenseCents > 0 ? Math.round((specialExpenseCents / totalExpenseCents) * 100) : 0;
   const largestExpense = monthExpenseTransactions.reduce((max, item) => Math.max(max, item.amountCents), 0);
@@ -1098,11 +1119,21 @@ function Overview({ summary, budgetCents, accounts, categories, transactions }: 
   const topCategory = topCategoryEntry ? categories.find((category) => category.id === topCategoryEntry[0]) : undefined;
   const budgetUsage = budgetCents > 0 ? Math.min(100, Math.round((summary.expenseCents / budgetCents) * 100)) : 0;
   const recentTransactions = transactions.slice(0, 4);
+  const trendTag = (delta: number) => {
+    if (delta === 0) return null;
+    const isUp = delta > 0;
+    const Icon = isUp ? TrendingUp : TrendingDown;
+    return (
+      <em className={`trend-tag ${isUp ? "trend-up" : "trend-down"}`}>
+        <Icon size={11} strokeWidth={2.5} /> {isUp ? "+" : ""}{Math.abs(delta)}% 环比
+      </em>
+    );
+  };
   return (
     <section className="overview-dashboard">
       <div className="overview-hero">
         <div className="overview-hero-main">
-          <em>{monthLabel(monthKey())}</em>
+          <em>{monthLabel(monthKey())}{expenseDelta !== 0 && (expenseDelta > 0 ? ` · 环比+${expenseDelta}%` : ` · 环比${expenseDelta}%`)}</em>
           <span>本月日常消费</span>
           <strong>¥{centsToYuan(summary.expenseCents)}</strong>
           <p>{budgetCents > 0 ? `日常预算 ¥${centsToYuan(budgetCents)}，剩余 ¥${centsToYuan(Math.max(0, budgetCents - summary.expenseCents))}` : "本月还没有设置日常预算"}</p>
@@ -1119,12 +1150,12 @@ function Overview({ summary, budgetCents, accounts, categories, transactions }: 
         <article className="overview-quick-card">
           <span>本月总支出</span>
           <strong>¥{centsToYuan(totalExpenseCents)}</strong>
-          <em>日常 + 专项</em>
+          {trendTag(totalExpenseDelta) ?? <em>日常 + 专项</em>}
         </article>
         <article className="overview-quick-card">
           <span>日均消费</span>
           <strong>¥{centsToYuan(dailyAverage)}</strong>
-          <em>按已过天数估算</em>
+          {trendTag(dailyAvgDelta) ?? <em>按已过天数估算</em>}
         </article>
         <article className="overview-quick-card">
           <span>最大单笔</span>
@@ -1973,7 +2004,7 @@ function TransactionRows({ transactions, accounts, categories, onDelete, onEdit,
         const title = item.merchant || category?.name || typeLabels[item.type];
         const meta = `${new Date(item.occurredAt).toLocaleDateString()} · ${account?.name ?? ""}${category ? ` · ${category.name}` : ""}`;
         const interactive = Boolean(onOpen || onLongAction);
-        const rowClassName = `${onToggleSelected ? "row selectable" : "row"} ${interactive ? "interactive" : ""}`.trim();
+        const rowClassName = `${onToggleSelected ? "row selectable" : "row"} ${interactive ? "interactive" : ""} row-type-${item.type}`.trim();
         const rowBody = (
           <>
             <div className={`row-icon ${item.type}`}>{item.type === "transfer" ? <ArrowRightLeft size={15} /> : item.type === "income" ? <ArrowDownLeft size={15} /> : <ArrowUpRight size={15} />}</div>
