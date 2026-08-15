@@ -3399,7 +3399,7 @@ function TrendFoldPanel({ title, rangeLabel, legendLabel, data, periodKind, sele
         <div className="trend-selected" key={selectedTrend?.period ?? "empty"}>
           <span>{selectedTrendLabel}</span>
           <strong>¥{centsToYuan(selectedTrend?.expense ?? 0)}</strong>
-          <em>点击下方{periodKind === "month" ? "月份" : "年份"}查看金额</em>
+          <em>点击{periodKind === "month" ? "月份" : "年份"}柱子，金额就在柱子旁显示</em>
         </div>
         <div className={`trend-bars trend-bar-list ${periodKind === "month" ? "monthly-trend" : "yearly-trend"}`}>
           {data.map((item, index) => {
@@ -3419,15 +3419,26 @@ function TrendFoldPanel({ title, rangeLabel, legendLabel, data, periodKind, sele
                 type="button"
               >
                 <span className="trend-y-label">{label}</span>
-                <span className="trend-track">
-                  <i
-                    className="trend-fill trend-bar"
-                    title={`${legendLabel} ¥${centsToYuan(item.expense)}`}
-                    style={{
-                      "--trend-color": rowColor,
-                      width: `${fillWidth}%`
-                    } as CSSProperties}
-                  />
+                <span className="trend-track-wrap">
+                  <span className="trend-track">
+                    <i
+                      className="trend-fill trend-bar"
+                      title={`${legendLabel} ¥${centsToYuan(item.expense)}`}
+                      style={{
+                        "--trend-color": rowColor,
+                        width: `${fillWidth}%`
+                      } as CSSProperties}
+                    />
+                  </span>
+                  {isActive && (
+                    <span className="trend-bubble" key={item.period} style={
+                      (fillWidth > 72
+                        ? { left: `${fillWidth}%`, translate: "calc(-100% - 0.32rem) -50%" }
+                        : { left: `calc(${Math.max(fillWidth, 3)}% + 0.45rem)` }) as CSSProperties
+                    }>
+                      ¥{centsToYuan(item.expense)}
+                    </span>
+                  )}
                 </span>
               </button>
             );
