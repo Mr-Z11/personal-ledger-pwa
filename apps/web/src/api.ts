@@ -18,7 +18,7 @@ export async function apiFetch<T>(path: string, options: RequestInit = {}, token
       ...options,
       signal: controller.signal,
       headers: {
-        "content-type": "application/json",
+        ...(options.body ? { "content-type": "application/json" } : {}),
         ...(token ? { authorization: `Bearer ${token}` } : {}),
         ...options.headers
       }
