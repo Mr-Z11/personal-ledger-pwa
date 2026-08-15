@@ -19,6 +19,8 @@ import {
   Banknote,
   Bell,
   BellRing,
+  Cloud,
+  CloudOff,
   Download,
   FolderPlus,
   Home,
@@ -39,6 +41,7 @@ import {
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import { api } from "./api";
+import { getApiBase, setApiBase, getDefaultApiBase } from "./api";
 import { clearOutbox, db, enqueue, readOutboxPayload, resetLocalData, saveSnapshot } from "./db";
 
 type View = "overview" | "entry" | "transactions" | "reports" | "settings" | "trash";
@@ -2247,6 +2250,9 @@ function SettingsPanel({
           </div>
         </div>
       </SettingsSection>
+      <SettingsSection title="数据同步" description="切换云端/本地同步地址，服务器到期后用本地电脑保存数据。" defaultOpen>
+        <SyncSettingsPanel />
+      </SettingsSection>
       <SettingsSection title="账户管理" description="维护储蓄卡、消费卡和额度。">
         <AccountsPanel accounts={accounts} onSave={onSaveAccount} onDelete={onDeleteAccount} />
       </SettingsSection>
@@ -2281,6 +2287,96 @@ function urlBase64ToUint8Array(base64: string) {
   const padding = "=".repeat((4 - (base64.length % 4)) % 4);
   const raw = window.atob((base64 + padding).replaceAll("-", "+").replaceAll("_", "/"));
   return Uint8Array.from([...raw].map((char) => char.charCodeAt(0)));
+}
+
+function SyncSettingsPanel() {
+  const defaultBase = getDefaultApiBase();
+  const [customUrl, setCustomUrl] = useState("");
+  const [activeUrl, setActiveUrl] = useState(getApiBase());
+  const [testing, setTesting] = useState(false);
+  const [testResult, setTestResult] = useState<{ ok: boolean; message: string } | null>(null);
+  const [savedMsg, setSavedMsg] = useState("");
+
+  useEffect(() => {
+    const stored = getApiBase();
+    setCustomUrl(stored === defaultBase ? "" : stored);
+    setActiveUrl(stored);
+  }, [defaultBase]);
+
+  const isCustom = activeUrl !== defaultBase;
+
+  async function handleTest() {
+    const url = customUrl.trim();
+    if (!url) {
+      setTestResult({ ok: false, message: "请输入地址" });
+      return;
+    }
+    setTesting(true);
+    setTestResult(null);
+    const result = await api.testConnection(url.replace(/\/api$/, "") + "/api");
+    setTestResult(result);
+    setTesting(false);
+  }
+
+  function handleSave() {
+    const url = customUrl.trim();
+    setApiBase(url || null);
+    const newBase = getApiBase();
+    setActiveUrl(newBase);
+    setTestResult(null);
+    setSavedMsg(url ? "同步地址已切换，刷新后生效" : "已恢复默认云端地址，刷新后生效");
+    setTimeout(() => window.location.reload(), 1000);
+  }
+
+  function handleReset() {
+    setApiBase(null);
+    setActiveUrl(defaultBase);
+    setCustomUrl("");
+    setTestResult(null);
+    setSavedMsg("已恢复默认云端地址，刷新后生效");
+    setTimeout(() => window.location.reload(), 1000);
+  }
+
+  return (
+    <div className="form-stack sync-panel">
+      <div className="sync-status-bar">
+        {isCustom ? <Cloud size={18} /> : <CloudOff size={18} />}
+        <div>
+          <strong>{isCustom ? "本地同步" : "云端同步"}</strong>
+          <code>{activeUrl}</code>
+        </div>
+      </div>
+      <p className="sync-hint">
+        {isCustom
+          ? "当前使用本地电脑作为数据同步服务器。电脑需保持运行，手机和电脑需在同一网络（或通过 Tailscale 互联）。"
+          : "当前使用云端服务器同步。服务器到期后可切换为本地地址，数据将暂存手机并自动同步到电脑。"}
+      </p>
+      <label>本地同步地址
+        <input
+          value={customUrl}
+          onChange={(event) => setCustomUrl(event.target.value)}
+          placeholder="https://100.x.x.x/api"
+          inputMode="url"
+        />
+      </label>
+      <div className="sync-actions">
+        <button type="button" className="ghost" onClick={handleTest} disabled={testing}>
+          {testing ? <RefreshCw size={16} className="spin" /> : <RefreshCw size={16} />}
+          测试连接
+        </button>
+        <button type="button" className="primary" onClick={handleSave}>保存并应用</button>
+        {isCustom && <button type="button" className="ghost" onClick={handleReset}>恢复云端</button>}
+      </div>
+      {testResult && (
+        <em className={`sync-test-result ${testResult.ok ? "ok" : "fail"}`}>
+          {testResult.ok ? "✓ " : "✗ "}{testResult.message}
+        </em>
+      )}
+      {savedMsg && (
+        <em className="sync-test-result ok">{savedMsg}</em>
+      )}
+    </div>
+  );
 }
 
 function SalaryReminderPanel({ token }: { token: string | null }) {

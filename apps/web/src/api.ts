@@ -1,7 +1,32 @@
 import type { Account, Budget, Category, LedgerSnapshot, SyncPayload, Transaction } from "@ledger/shared";
 
-const API_BASE = import.meta.env.VITE_API_BASE ?? "/api";
+const STORAGE_KEY = "ledger_api_base";
+const DEFAULT_API_BASE = import.meta.env.VITE_API_BASE ?? "/api";
 const REQUEST_TIMEOUT_MS = 10_000;
+
+export function getApiBase(): string {
+  try {
+    return localStorage.getItem(STORAGE_KEY) || DEFAULT_API_BASE;
+  } catch {
+    return DEFAULT_API_BASE;
+  }
+}
+
+export function setApiBase(url: string | null): void {
+  try {
+    if (url && url.trim()) {
+      localStorage.setItem(STORAGE_KEY, url.trim());
+    } else {
+      localStorage.removeItem(STORAGE_KEY);
+    }
+  } catch {
+    /* ignore */
+  }
+}
+
+export function getDefaultApiBase(): string {
+  return DEFAULT_API_BASE;
+}
 
 export interface AuthResult {
   token: string;
@@ -14,7 +39,7 @@ export async function apiFetch<T>(path: string, options: RequestInit = {}, token
   const timeout = window.setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
   let response: Response;
   try {
-    response = await fetch(`${API_BASE}${path}`, {
+    response = await fetch(`${getApiBase()}${path}`, {
       ...options,
       signal: controller.signal,
       headers: {
@@ -73,7 +98,7 @@ export const api = {
     return apiFetch<LedgerSnapshot>("/sync/pull", {}, token);
   },
   exportUrl(format = "ledger") {
-    return `${API_BASE}/export/csv?format=${encodeURIComponent(format)}`;
+    return `${getApiBase()}/export/csv?format=${encodeURIComponent(format)}`;
   },
   notificationVapidKey() {
     return apiFetch<{ publicKey: string }>("/notifications/vapid-key");
@@ -92,6 +117,22 @@ export const api = {
   },
   testNotifications(token: string) {
     return apiFetch<{ delivered: boolean }>("/notifications/test", { method: "POST" }, token);
+  },
+
+  async testConnection(url: string): Promise<{ ok: boolean; message: string }> {
+    try {
+      const response = await fetch(`${url}/health`, {
+        signal: AbortSignal.timeout(8000),
+        headers: { ...(url.startsWith("http:") ? {} : {}) }
+      });
+      if (response.ok) {
+        const data = await response.json().catch(() => ({}));
+        return { ok: true, message: data.ok ? "连接成功" : response.statusText };
+      }
+      return { ok: false, message: `HTTP ${response.status}` };
+    } catch (error) {
+      return { ok: false, message: error instanceof Error ? error.message : "连接失败" };
+    }
   }
 };
 
