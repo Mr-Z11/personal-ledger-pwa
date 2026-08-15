@@ -33,7 +33,7 @@ ssh aliyun-server 'grep JWT_SECRET /root/personal-ledger-pwa/.env'
 ```
 
 ### 3. 恢复历史数据（可选）
-如果你已经从服务器导出了备份（`~/ledger-backup/`），先导入到本地数据库：
+如果你已经从服务器导出了备份（`backups/` 目录），先导入到本地数据库：
 ```bash
 # 启动本地数据库
 docker compose -f docker-compose.local.yml --env-file .env.local up -d postgres-local
@@ -41,9 +41,8 @@ docker compose -f docker-compose.local.yml --env-file .env.local up -d postgres-
 # 等待数据库就绪
 sleep 10
 
-# 导入备份
-docker exec -i personal-ledger-pwa-postgres-local-1 \
-  psql -U ledger -d ledger < ~/ledger-backup/ledger-full-20260815-200331.sql
+# 导入备份（使用 data-sync 工具，自动选最新备份）
+bash scripts/data-sync.sh restore-to-local
 ```
 
 ### 4. 启动本地同步服务
@@ -97,9 +96,10 @@ Tailscale 自动连接，手机检测到本地 API 后自动同步。
 手机自动降级为离线模式，数据暂存在 IndexedDB，不丢失。
 
 ### 以后续费新服务器
-1. 在新服务器上部署应用（参照 `~/ledger-backup/恢复说明.md`）
+1. 在新服务器上部署应用（参照 `backups/恢复说明.md`）
 2. 手机在设置页切回云端地址（清空输入框 → 保存并应用）
 3. 手机暂存数据自动同步到新服务器
+4. 或用 `bash scripts/data-sync.sh sync-local-to-cloud` 推送本地数据到新服务器
 
 ## 停止本地服务
 ```bash
@@ -109,5 +109,6 @@ docker compose -f docker-compose.local.yml --env-file .env.local down
 
 ## 数据安全提示
 - `data/local-postgres/` 是本地数据库的数据目录，不要删除
-- 定期备份：`docker exec personal-ledger-pwa-postgres-local-1 pg_dump -U ledger -d ledger > ~/ledger-backup/local-$(date +%Y%m%d).sql`
-- 电脑硬盘损坏会丢失数据，建议把 `~/ledger-backup/` 目录复制到云盘做异地备份
+- 定期备份：`bash scripts/data-sync.sh backup-cloud`
+- 完整指南见 `docs/data-storage-guide.md`
+- 电脑硬盘损坏会丢失数据，建议把 `backups/` 目录复制到云盘做异地备份
