@@ -57,6 +57,7 @@ jobs:
           push: true
           build-args: |
             VITE_API_BASE=/api
+            VITE_FALLBACK_API_BASES=https://localhost:8443/api,https://FrorideMacBook-Air.local:8443/api
           tags: |
             ghcr.io/mr-z11/personal-ledger-pwa-web:main
             ghcr.io/mr-z11/personal-ledger-pwa-web:sha-${{ github.sha }}

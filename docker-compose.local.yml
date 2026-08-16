@@ -21,6 +21,9 @@ services:
 
   api-local:
     image: ${API_IMAGE:-ghcr.io/mr-z11/personal-ledger-pwa-api:main}
+    # GHCR prebuilt images are linux/amd64 only (built for the x86 cloud server);
+    # run emulated on Apple Silicon via colima's qemu binfmt.
+    platform: linux/amd64
     restart: unless-stopped
     environment:
       NODE_ENV: production
@@ -41,5 +44,6 @@ services:
       - ./deploy/Caddyfile.local:/etc/caddy/Caddyfile:ro
       - ./data/local-caddy:/data
       - ./data/local-caddy-config:/config
+      - ./apps/web/dist:/srv/web:ro
     depends_on:
       - api-local

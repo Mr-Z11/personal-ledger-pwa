@@ -18,7 +18,7 @@ set -euo pipefail
 PROJECT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 BACKUP_DIR="$PROJECT_DIR/backups"
 TMP_DIR="/tmp"
-SSH_ALIAS="aliyun-server"
+SSH_ALIAS="${SSH_ALIAS:-aliyun-server}"
 PG_USER="ledger"
 PG_DB="ledger"
 
@@ -133,6 +133,23 @@ cmd_backup_cloud() {
   echo "    Also:  $(basename "$file").gz"
 }
 
+cmd_backup_local() {
+  echo "=== Local PostgreSQL → Backup File ==="
+  if ! container_running "$LOCAL_PG"; then
+    echo "ERROR: Local PostgreSQL ($LOCAL_PG) is not running."
+    echo "       Start it first: bash scripts/start-local-sync.sh"
+    exit 1
+  fi
+  local file="$BACKUP_DIR/ledger-local-$(ts).sql"
+  echo "Dumping local database..."
+  dump_local_to_file "$file"
+  local size; size=$(du -h "$file" | cut -f1)
+  gzip -kf "$file"
+  local records; records=$(count_records_local)
+  echo "OK  Saved: $(basename "$file") ($size, $records records)"
+  echo "    Also:  $(basename "$file").gz"
+}
+
 cmd_restore_to_local() {
   local file="${1:-}"
   if [ -z "$file" ]; then
@@ -155,7 +172,13 @@ cmd_restore_to_local() {
     exit 1
   fi
   echo "Restoring from: $(basename "$file") ($(du -h "$file" | cut -f1))"
-  cat "$file" | docker exec -i "$LOCAL_PG" psql -U "$PG_USER" -d "$PG_DB" 2>&1 | tail -5
+  # Drop existing schema first: plain backup dumps contain no DROP statements,
+  # so restoring over an already-initialized (or previously restored) DB
+  # would fail with duplicate-table/constraint errors.
+  echo "Resetting local schema (public)..."
+  docker exec -i "$LOCAL_PG" psql -U "$PG_USER" -d "$PG_DB" \
+    -c "DROP SCHEMA public CASCADE; CREATE SCHEMA public;" 2>&1 | grep -E "^(ERROR|FATAL)" || true
+  cat "$file" | docker exec -i "$LOCAL_PG" psql -U "$PG_USER" -d "$PG_DB" 2>&1 | grep -E "^(ERROR|FATAL)" || true
   echo "OK  Local records: $(count_records_local)"
   echo "    Last transaction: $(last_tx_local)"
 }
@@ -303,6 +326,7 @@ cmd_status() {
 case "${1:-status}" in
   status)              cmd_status ;;
   backup-cloud)       cmd_backup_cloud ;;
+  backup-local)       cmd_backup_local ;;
   restore-to-local)   cmd_restore_to_local "${2:-}" ;;
   sync-cloud-to-local)  cmd_sync_cloud_to_local ;;
   sync-local-to-cloud)  cmd_sync_local_to_cloud ;;
@@ -313,6 +337,7 @@ Usage: bash scripts/data-sync.sh <command>
 Commands:
   status                 Show both sides' status (record counts, last tx dates)
   backup-cloud           Dump cloud DB → ./backups/ SQL file (+ gzip)
+  backup-local           Dump local PostgreSQL → ./backups/ SQL file (+ gzip)
   restore-to-local [f]   Restore a backup file to local PostgreSQL
                          (auto-picks latest if no file given)
   sync-cloud-to-local    Live sync cloud → local PostgreSQL (overwrites local)

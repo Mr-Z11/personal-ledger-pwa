@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.personal-ledger.colima</string>
+
+    <!-- Starts the colima Docker VM at login so the local ledger stack
+         (postgres + api + caddy, restart: unless-stopped) comes back up. -->
+    <key>ProgramArguments</key>
+    <array>
+        <string>/bin/bash</string>
+        <string>-c</string>
+        <string>export PATH="$HOME/opt/lima/bin:$HOME/bin:$PATH"; colima start &gt;&gt; "$HOME/Vibecoding/personal-ledger-pwa/backups/colima-autostart.log" 2&gt;&amp;1; exit 0</string>
+    </array>
+
+    <key>RunAtLoad</key>
+    <true/>
+
+    <key>KeepAlive</key>
+    <false/>
+
+    <key>EnvironmentVariables</key>
+    <dict>
+        <key>PATH</key>
+        <string>/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin:/opt/homebrew/bin:/Users/frori/bin:/Users/frori/opt/lima/bin</string>
+        <key>HOME</key>
+        <string>/Users/frori</string>
+    </dict>
+</dict>
+</plist>

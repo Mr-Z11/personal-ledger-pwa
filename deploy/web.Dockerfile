@@ -10,6 +10,8 @@ FROM deps AS build
 WORKDIR /app
 ARG VITE_API_BASE=/api
 ENV VITE_API_BASE=$VITE_API_BASE
+ARG VITE_FALLBACK_API_BASES=
+ENV VITE_FALLBACK_API_BASES=$VITE_FALLBACK_API_BASES
 COPY packages/shared packages/shared
 COPY apps/web apps/web
 COPY scripts/verify-pwa-startup.mjs scripts/verify-pwa-startup.mjs

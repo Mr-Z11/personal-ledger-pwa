@@ -11,26 +11,12 @@
         <string>/Users/frori/Vibecoding/personal-ledger-pwa/scripts/auto-backup.sh</string>
     </array>
 
-    <!-- Run at 00:00, 06:00, 12:00, 18:00 every day -->
+    <!-- Run once a day at 03:00 -->
     <key>StartCalendarInterval</key>
-    <array>
-        <dict>
-            <key>Hour</key>
-            <integer>0</integer>
-        </dict>
-        <dict>
-            <key>Hour</key>
-            <integer>6</integer>
-        </dict>
-        <dict>
-            <key>Hour</key>
-            <integer>12</integer>
-        </dict>
-        <dict>
-            <key>Hour</key>
-            <integer>18</integer>
-        </dict>
-    </array>
+    <dict>
+        <key>Hour</key>
+        <integer>3</integer>
+    </dict>
 
     <!-- Also run when the agent is first loaded (catches up on missed runs) -->
     <key>RunAtLoad</key>
@@ -50,7 +36,7 @@
     <key>EnvironmentVariables</key>
     <dict>
         <key>PATH</key>
-        <string>/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin:/opt/homebrew/bin</string>
+        <string>/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin:/opt/homebrew/bin:/Users/frori/bin</string>
         <key>HOME</key>
         <string>/Users/frori</string>
     </dict>

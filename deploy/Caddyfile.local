@@ -1,17 +1,21 @@
-{
-  # Listen on all interfaces, HTTPS with Caddy's internal self-signed cert.
-  # Phone accesses https://<computer-ip>:8443/api — accept the cert warning once.
-  # For trusted certs without warnings, use Tailscale: see docs/local-sync-guide.md
-  :443 {
-    tls internal
+# Listen on all interfaces, HTTPS with Caddy's internal self-signed cert.
+# Phone accesses https://<computer-ip>:8443/api — accept the cert warning once.
+# For trusted certs without warnings, use Tailscale: see docs/local-sync-guide.md
+:443 {
+  # Catch-all site has no hostname, so certificates must be issued on demand
+  # (one per SNI: localhost, LAN IP, etc.), signed by Caddy's internal CA.
+  tls internal {
+    on_demand
+  }
 
-    handle /api/* {
-      uri strip_prefix /api
-      reverse_proxy api-local:4000
-    }
+  handle /api/* {
+    uri strip_prefix /api
+    reverse_proxy api-local:4000
+  }
 
-    handle {
-      reverse_proxy api-local:4000
-    }
+  handle {
+    root * /srv/web
+    try_files {path} /index.html
+    file_server
   }
 }
