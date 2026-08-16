@@ -208,7 +208,7 @@ function parseExportFormat(value: unknown): ExportFormat {
 export async function buildApp(): Promise<FastifyInstance> {
   const app = Fastify({ logger: config.NODE_ENV !== "test" });
 
-  await app.register(cors, { origin: config.CORS_ORIGIN === "*" ? true : config.CORS_ORIGIN, credentials: true });
+  await app.register(cors, { origin: config.CORS_ORIGIN === "*" ? true : config.CORS_ORIGIN, credentials: true, methods: ["GET", "HEAD", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"] });
   await app.register(rateLimit, { max: 120, timeWindow: "1 minute" });
   await app.register(jwt, { secret: config.JWT_SECRET });
 
