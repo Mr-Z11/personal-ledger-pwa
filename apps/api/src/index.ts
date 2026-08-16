@@ -134,13 +134,13 @@ function exportRow(format: ExportFormat, item: {
   account: { name: string };
   toAccount?: { name: string } | null;
   category?: { name: string; parentId?: string | null } | null;
-  amountCents: number;
+  amountCents: number | bigint;
   merchant?: string | null;
   note?: string | null;
   tags: string[];
 }) {
   const category = categoryParts(item.category);
-  const signedAmount = item.type === "expense" ? `-${centsToYuan(item.amountCents)}` : centsToYuan(item.amountCents);
+  const signedAmount = item.type === "expense" ? `-${centsToYuan(Number(item.amountCents))}` : centsToYuan(Number(item.amountCents));
   if (format === "portable") {
     return [
       datePart(item.occurredAt),
@@ -165,7 +165,7 @@ function exportRow(format: ExportFormat, item: {
       category.secondary || item.category?.name || "其他",
       item.account.name,
       item.toAccount?.name,
-      centsToYuan(item.amountCents),
+      centsToYuan(Number(item.amountCents)),
       item.merchant,
       item.note
     ];
@@ -176,7 +176,7 @@ function exportRow(format: ExportFormat, item: {
       typeLabel(item.type),
       item.category?.name ?? "其他",
       item.account.name,
-      centsToYuan(item.amountCents),
+      centsToYuan(Number(item.amountCents)),
       item.merchant,
       item.note
     ];
@@ -187,7 +187,7 @@ function exportRow(format: ExportFormat, item: {
     item.account.name,
     item.toAccount?.name,
     item.category?.name,
-    centsToYuan(item.amountCents),
+    centsToYuan(Number(item.amountCents)),
     item.merchant,
     item.note,
     item.tags.join("|")

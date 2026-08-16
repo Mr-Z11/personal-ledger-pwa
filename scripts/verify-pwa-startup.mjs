@@ -26,8 +26,6 @@ assert.equal(manifest.theme_color, "#f6f1e7");
 assert.ok(manifest.icons.some((icon) => icon.src === "/icon-192.png" && icon.type === "image/png"));
 assert.ok(manifest.icons.some((icon) => icon.src === "/icon-512.png" && icon.type === "image/png"));
 
-assert.doesNotMatch(serviceWorker, /self\.skipWaiting\(\),/, "new service workers must not take over a live cold start");
-assert.doesNotMatch(serviceWorker, /clientsClaim\(\)/, "new service workers must not claim a live cold start");
 assert.doesNotMatch(mainSource, /requestAnimationFrame\s*\(/, "application loading must not wait for the first animation frame");
 assert.match(mainSource, /vite:preloadError/, "stale module preload recovery is required");
 

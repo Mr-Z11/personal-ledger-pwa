@@ -39,7 +39,7 @@ model Account {
   ledgerId            String
   name                String
   type                String
-  openingBalanceCents Int           @default(0)
+  openingBalanceCents BigInt          @default(0)
   color               String
   version             Int           @default(1)
   createdAt           DateTime      @default(now())
@@ -79,7 +79,7 @@ model Transaction {
   accountId   String
   toAccountId String?
   categoryId  String?
-  amountCents Int
+  amountCents BigInt
   occurredAt  DateTime
   note        String?
   merchant    String?
@@ -103,7 +103,7 @@ model Budget {
   ledgerId    String
   categoryId  String?
   month       String
-  amountCents Int
+  amountCents BigInt
   version     Int       @default(1)
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt

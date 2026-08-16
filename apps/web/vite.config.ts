@@ -6,7 +6,7 @@ export default defineConfig({
   plugins: [
     react(),
     VitePWA({
-      registerType: "prompt",
+      registerType: "autoUpdate",
       injectRegister: "script-defer",
       includeAssets: ["icon.svg", "mask-icon.svg", "apple-touch-icon.png", "icon-192.png", "icon-512.png", "pwa/*.png"],
       manifest: {
@@ -27,8 +27,8 @@ export default defineConfig({
         ]
       },
       workbox: {
-        skipWaiting: false,
-        clientsClaim: false,
+        skipWaiting: true,
+        clientsClaim: true,
         importScripts: ["/push-sw.js"],
         navigateFallback: "/index.html",
         globIgnores: ["**/xlsx-*.js", "**/papaparse*.js"],

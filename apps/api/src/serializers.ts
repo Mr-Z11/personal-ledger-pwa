@@ -11,7 +11,7 @@ export function serializeAccount(account: {
   id: string;
   name: string;
   type: string;
-  openingBalanceCents: number;
+  openingBalanceCents: number | bigint;
   color: string;
   version: number;
   updatedAt: Date;
@@ -21,7 +21,7 @@ export function serializeAccount(account: {
     id: account.id,
     name: account.name,
     type: account.type as Account["type"],
-    openingBalanceCents: account.openingBalanceCents,
+    openingBalanceCents: Number(account.openingBalanceCents),
     color: account.color,
     version: account.version,
     updatedAt: account.updatedAt.toISOString(),
@@ -59,7 +59,7 @@ export function serializeTransaction(transaction: {
   accountId: string;
   toAccountId?: string | null;
   categoryId?: string | null;
-  amountCents: number;
+  amountCents: number | bigint;
   occurredAt: Date;
   note?: string | null;
   merchant?: string | null;
@@ -74,7 +74,7 @@ export function serializeTransaction(transaction: {
     accountId: transaction.accountId,
     toAccountId: transaction.toAccountId,
     categoryId: transaction.categoryId,
-    amountCents: transaction.amountCents,
+    amountCents: Number(transaction.amountCents),
     occurredAt: transaction.occurredAt.toISOString(),
     note: transaction.note,
     merchant: transaction.merchant,
@@ -89,7 +89,7 @@ export function serializeBudget(budget: {
   id: string;
   categoryId?: string | null;
   month: string;
-  amountCents: number;
+  amountCents: number | bigint;
   version: number;
   updatedAt: Date;
   deletedAt?: Date | null;
@@ -98,7 +98,7 @@ export function serializeBudget(budget: {
     id: budget.id,
     categoryId: budget.categoryId,
     month: budget.month,
-    amountCents: budget.amountCents,
+    amountCents: Number(budget.amountCents),
     version: budget.version,
     updatedAt: budget.updatedAt.toISOString(),
     deletedAt: iso(budget.deletedAt)
