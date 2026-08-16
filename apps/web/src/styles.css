@@ -3671,16 +3671,15 @@ input[type="month"],
   .mobile-sync-text {
     flex: 1;
     min-width: 0;
-    overflow: hidden;
-    text-overflow: ellipsis;
+    overflow-x: auto;
     white-space: nowrap;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
     font-weight: 600;
   }
 
-  .mobile-sync-bar small {
-    color: rgba(246, 241, 231, 0.5);
-    font-size: 0.66rem;
-    white-space: nowrap;
+  .mobile-sync-text::-webkit-scrollbar {
+    display: none;
   }
 
   .mobile-sync-btn {

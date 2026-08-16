@@ -927,16 +927,17 @@ export function App() {
       </aside>
 
       <main>
+        {(!isLocalPreview && (outboxCount > 0 || !navigator.onLine)) && (
         <div className="mobile-sync-bar">
-          <span className={`mobile-sync-dot ${isLocalPreview ? "local" : navigator.onLine ? "online" : "offline"}`} />
+          <span className={`mobile-sync-dot ${navigator.onLine ? "online" : "offline"}`} />
           <span className="mobile-sync-text">
-            {userName || "未登录"} · {isLocalPreview ? "本地预览" : navigator.onLine ? "在线" : "离线"} · 待同步 {isLocalPreview ? 0 : outboxCount}
+            {userName || "未登录"} · {navigator.onLine ? "在线" : "离线"} · 待同步 {outboxCount} · 最后同步 {lastSync ? `${new Date(lastSync).toLocaleDateString()} ${new Date(lastSync).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}` : "从未"}
           </span>
-          {lastSync && <small>{new Date(lastSync).toLocaleDateString()} {new Date(lastSync).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</small>}
           <button className="mobile-sync-btn" onClick={syncNow} disabled={busy} title="立即同步">
             <RefreshCw size={16} className={busy ? "spin" : ""} />
           </button>
         </div>
+        )}
         <header className="topbar">
           <div className="page-heading">
             <span className="eyebrow">{currentMonth}</span>
