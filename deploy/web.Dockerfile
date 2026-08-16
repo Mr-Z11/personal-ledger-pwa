@@ -4,7 +4,7 @@ COPY package.json package-lock.json* ./
 COPY apps/web/package.json apps/web/package.json
 COPY packages/shared/package.json packages/shared/package.json
 COPY .npmrc .npmrc
-RUN npm install --legacy-peer-deps && npm install --no-save --legacy-peer-deps @rollup/rollup-linux-x64-gnu
+RUN npm install --legacy-peer-deps && ([ "$(uname -m)" = "x86_64" ] && npm install --no-save --legacy-peer-deps @rollup/rollup-linux-x64-gnu || true)
 
 FROM deps AS build
 WORKDIR /app
