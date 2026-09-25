@@ -90,6 +90,7 @@ export function serializeBudget(budget: {
   categoryId?: string | null;
   month: string;
   amountCents: number | bigint;
+  scope?: string | null;
   version: number;
   updatedAt: Date;
   deletedAt?: Date | null;
@@ -99,6 +100,7 @@ export function serializeBudget(budget: {
     categoryId: budget.categoryId,
     month: budget.month,
     amountCents: Number(budget.amountCents),
+    scope: budget.scope === "total" ? "total" : "daily",
     version: budget.version,
     updatedAt: budget.updatedAt.toISOString(),
     deletedAt: iso(budget.deletedAt)

@@ -54,7 +54,8 @@ const transactionSchema = z.object({
 const budgetSchema = z.object({
   categoryId: z.string().uuid().nullable().optional(),
   month: z.string().regex(/^\d{4}-\d{2}$/),
-  amountCents: z.number().int().positive()
+  amountCents: z.number().int().positive(),
+  scope: z.enum(["daily", "total"]).optional()
 });
 
 const analysisNoteSchema = z.object({

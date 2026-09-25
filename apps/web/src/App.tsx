@@ -43,6 +43,49 @@ import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, 
 import { api } from "./api";
 import { getApiBase, setApiBase, getDefaultApiBase } from "./api";
 import { clearOutbox, db, enqueue, readOutboxPayload, resetLocalData, saveSnapshot } from "./db";
+import {
+  aggregateCategoryExpenses,
+  beijingDatetimeLocalToTimestamp,
+  beijingDateTimeParts,
+  budgetScope,
+  categoryAggregateKey,
+  categoryAggregateName,
+  categoryBudgetCents,
+  categoryPath,
+  dailyExpenseTransactions,
+  dateFromMonthKey,
+  dateKey,
+  dateLabel,
+  dayOfYear,
+  daysInMonth,
+  daysInYear,
+  monthBudgetTotal,
+  monthLabel,
+  monthTotalBudgetCents,
+  offsetMonthKey,
+  percentDelta,
+  previousMonthKeys,
+  shortMonthLabel,
+  specialExpenseTransactions,
+  toBeijingDatetimeLocal,
+  toBeijingTransactionTimestamp,
+  yearLabel
+} from "./utils";
+import {
+  BigExpensePanel,
+  BudgetReservoir,
+  DailyPaceChart,
+  LocalSalaryReminderPanel,
+  SalaryBanner,
+  TrendFocusCards,
+  dismissSalaryBannerForToday,
+  loadSalarySettings,
+  maybeNotifyPayday,
+  salaryBannerDismissedKey,
+  salaryBannerState,
+  saveSalarySettings,
+  type SalarySettings
+} from "./widgets";
 
 type View = "overview" | "entry" | "transactions" | "reports" | "settings" | "trash";
 type LedgerGroupMode = "day" | "month" | "year";
@@ -107,98 +150,12 @@ const TREND_PALETTE = [
   "#ad7f24"
 ];
 
-const BEIJING_TIME_ZONE = "Asia/Shanghai";
-const beijingDateTimeFormatter = new Intl.DateTimeFormat("en-CA", {
-  timeZone: BEIJING_TIME_ZONE,
-  year: "numeric",
-  month: "2-digit",
-  day: "2-digit",
-  hour: "2-digit",
-  minute: "2-digit",
-  second: "2-digit",
-  hourCycle: "h23"
-});
-
-function beijingDateTimeParts(value: string | Date = new Date()) {
-  const date = typeof value === "string" ? new Date(value) : value;
-  const safeDate = Number.isNaN(date.getTime()) ? new Date() : date;
-  const parts = Object.fromEntries(
-    beijingDateTimeFormatter
-      .formatToParts(safeDate)
-      .filter((part) => part.type !== "literal")
-      .map((part) => [part.type, part.value])
-  );
-  return {
-    year: parts.year,
-    month: parts.month,
-    day: parts.day,
-    hour: parts.hour,
-    minute: parts.minute,
-    second: parts.second
-  };
-}
-
-function toBeijingDatetimeLocal(value: string | Date = new Date()) {
-  const parts = beijingDateTimeParts(value);
-  return `${parts.year}-${parts.month}-${parts.day}T${parts.hour}:${parts.minute}`;
-}
-
-function toBeijingTransactionTimestamp(value: string | Date = new Date()) {
-  const parts = beijingDateTimeParts(value);
-  return `${parts.year}-${parts.month}-${parts.day}T${parts.hour}:${parts.minute}:${parts.second}.000+08:00`;
-}
-
-function beijingDatetimeLocalToTimestamp(value: string) {
-  const match = value.match(/^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})$/);
-  if (!match) return toBeijingTransactionTimestamp(value);
-  const [, year, month, day, hour, minute] = match;
-  return `${year}-${month}-${day}T${hour}:${minute}:00.000+08:00`;
-}
-
 function reportColor(index: number) {
   return REPORT_PALETTE[index % REPORT_PALETTE.length];
 }
 
 function trendColor(index: number) {
   return TREND_PALETTE[index % TREND_PALETTE.length];
-}
-
-function dateFromMonthKey(value: string) {
-  const [year, month] = value.split("-").map(Number);
-  return new Date(year, (month || 1) - 1, 1);
-}
-
-function percentDelta(current: number, previous: number) {
-  if (previous === 0) return current > 0 ? 100 : 0;
-  return Math.round(((current - previous) / previous) * 100);
-}
-
-function daysInMonth(value: string) {
-  const date = dateFromMonthKey(value);
-  return new Date(date.getFullYear(), date.getMonth() + 1, 0).getDate();
-}
-
-function dateKey(value: string) {
-  const parts = beijingDateTimeParts(value);
-  return `${parts.year}-${parts.month}-${parts.day}`;
-}
-
-function dateLabel(value: string) {
-  return new Date(`${value}T00:00:00`).toLocaleDateString("zh-CN", {
-    month: "long",
-    day: "numeric",
-    weekday: "short"
-  });
-}
-
-function monthLabel(value: string) {
-  const [year, month] = value.split("-");
-  return `${year}年${Number(month)}月`;
-}
-
-function shortMonthLabel(value: string) {
-  const [year, month] = value.split("-");
-  return `${year.slice(-2)}/${month.padStart(2, "0")}`;
 }
 
 function MonthField({ value, onChange, label, className = "" }: {
@@ -219,20 +176,6 @@ function MonthField({ value, onChange, label, className = "" }: {
       />
     </label>
   );
-}
-
-function yearLabel(value: string) {
-  return `${value}年`;
-}
-
-function dayOfYear(date: Date) {
-  const start = new Date(date.getFullYear(), 0, 1);
-  return Math.floor((date.getTime() - start.getTime()) / 86_400_000) + 1;
-}
-
-function daysInYear(value: string) {
-  const year = Number(value);
-  return new Date(year, 1, 29).getMonth() === 1 ? 366 : 365;
 }
 
 function polarToCartesian(cx: number, cy: number, radius: number, angle: number) {
@@ -262,13 +205,6 @@ function describeDonutSegment(cx: number, cy: number, outerRadius: number, inner
 
 function entityStamp() {
   return { id: crypto.randomUUID(), version: 1, updatedAt: new Date().toISOString(), deletedAt: null };
-}
-
-function categoryPath(category: Category | undefined, categories: Category[]) {
-  if (!category) return "";
-  const parent = category.parentId ? categories.find((item) => item.id === category.parentId) : undefined;
-  if (parent) return `${parent.name} > ${category.name}`;
-  return category.name === "其他" ? category.name : `其他 > ${category.name}`;
 }
 
 function selectableCategories(categories: Category[], kind: Category["kind"]) {
@@ -415,84 +351,6 @@ function isMealCategory(category: Category | undefined, categories: Category[]) 
   return /早餐|午餐|晚餐|早饭|午饭|晚饭|早午晚餐|三餐|餐饮食品/.test(categoryPath(category, categories));
 }
 
-function isNonDailyExpenseCategory(category: Category | undefined, categories: Category[]) {
-  const path = categoryPath(category, categories);
-  return /专项支出|非日常支出|未分类大额|贷款本金|本金还款|贷款利息|利息支出|保险|教育培训|课外培训|培训进修|教育|购车|养车|私家车保养/.test(path);
-}
-
-function dailyExpenseTransactions(transactions: Transaction[], categories: Category[]) {
-  return transactions.filter((item) => {
-    if (item.type !== "expense") return false;
-    const category = categories.find((entry) => entry.id === item.categoryId);
-    return !isNonDailyExpenseCategory(category, categories);
-  });
-}
-
-function specialExpenseTransactions(transactions: Transaction[], categories: Category[]) {
-  return transactions.filter((item) => {
-    if (item.type !== "expense") return false;
-    const category = categories.find((entry) => entry.id === item.categoryId);
-    return isNonDailyExpenseCategory(category, categories);
-  });
-}
-
-function monthBudgetTotal(budgets: Budget[], month: string) {
-  const monthBudgets = budgets.filter((budget) => budget.month === month);
-  const overall = monthBudgets.find((budget) => !budget.categoryId);
-  if (overall) return overall.amountCents;
-  return monthBudgets.reduce((sum, budget) => sum + budget.amountCents, 0);
-}
-
-function offsetMonthKey(value: string, offset: number) {
-  const date = dateFromMonthKey(value);
-  date.setMonth(date.getMonth() + offset);
-  return monthKey(date);
-}
-
-function previousMonthKeys(value: string, count: number) {
-  return Array.from({ length: count }, (_, index) => offsetMonthKey(value, -(index + 1)));
-}
-
-function categoryAggregateKey(categoryId?: string | null) {
-  return categoryId ?? "uncategorized";
-}
-
-function categoryAggregateName(categoryId: string | null, categories: Category[]) {
-  if (!categoryId) return "未分类";
-  return categoryPath(categories.find((entry) => entry.id === categoryId), categories) || "未分类";
-}
-
-type CategoryExpenseAggregate = {
-  id: string;
-  categoryId: string | null;
-  name: string;
-  value: number;
-  transactions: Transaction[];
-};
-
-function aggregateCategoryExpenses(transactions: Transaction[], categories: Category[]) {
-  const totals = new Map<string, CategoryExpenseAggregate>();
-  transactions.forEach((item) => {
-    const categoryId = item.categoryId ?? null;
-    const id = categoryAggregateKey(categoryId);
-    const current = totals.get(id) ?? {
-      id,
-      categoryId,
-      name: categoryAggregateName(categoryId, categories),
-      value: 0,
-      transactions: []
-    };
-    current.value += item.amountCents;
-    current.transactions.push(item);
-    totals.set(id, current);
-  });
-  return totals;
-}
-
-function categoryBudgetCents(budgets: Budget[], month: string, categoryId: string | null) {
-  return budgets.find((budget) => budget.month === month && (budget.categoryId ?? null) === categoryId)?.amountCents ?? 0;
-}
-
 function analysisNoteFor(notes: AnalysisNote[], month: string, subjectType: AnalysisNote["subjectType"], subjectKey: string) {
   return notes.find((note) => note.month === month && note.subjectType === subjectType && note.subjectKey === subjectKey);
 }
@@ -507,7 +365,7 @@ function viewTitle(view: View) {
 }
 
 const viewHeadingMap: Record<View, { strong: string; span: string; icon: typeof Home }> = {
-  overview: { strong: "本月概览", span: "预算、消费、趋势一览", icon: Home },
+  overview: { strong: "本月概览", span: "额度水位、消费趋势一览", icon: Home },
   entry: { strong: "快速记账", span: "日常消费、收入、转账", icon: Plus },
   transactions: { strong: "流水明细", span: "搜索、筛选、批量管理", icon: ListFilter },
   reports: { strong: "消费分析", span: "趋势、预算、支出结构", icon: PieChartIcon },
@@ -709,7 +567,7 @@ async function downloadXlsx(filename: string, rows: (string | number | null | un
 export function App() {
   const [token, setToken] = useState(() => localStorage.getItem("ledger-token"));
   const [userName, setUserName] = useState(() => localStorage.getItem("ledger-user") ?? "");
-  const [view, setView] = useState<View>("entry");
+  const [view, setView] = useState<View>("overview");
   const [message, setMessage] = useState("准备同步");
   const [busy, setBusy] = useState(false);
   const [accounts, setAccounts] = useState<Account[]>([]);
@@ -725,6 +583,8 @@ export function App() {
   const [toast, setToast] = useState<string | null>(null);
   const [exportFormat, setExportFormat] = useState<ExportFormat>("ledger");
   const [exportFileType, setExportFileType] = useState<ExportFileType>("xlsx");
+  const [salarySettings, setSalarySettings] = useState<SalarySettings>(() => loadSalarySettings());
+  const [salaryDismissed, setSalaryDismissed] = useState<string | null>(() => salaryBannerDismissedKey());
 
   const refreshLocal = useCallback(async () => {
     const [nextAccounts, nextCategories, nextTransactions, nextBudgets, nextAnalysisNotes, nextOutboxCount, nextLastSync] = await Promise.all([
@@ -763,6 +623,12 @@ export function App() {
     netCents: -dailyMonthExpenseCents
   }), [dailyMonthExpenseCents]);
   const currentBudgetCents = useMemo(() => monthBudgetTotal(activeBudgets, currentMonth), [activeBudgets, currentMonth]);
+  const currentTotalBudgetCents = useMemo(() => monthTotalBudgetCents(activeBudgets, currentMonth), [activeBudgets, currentMonth]);
+  const salaryBanner = useMemo(() => salaryBannerState(salarySettings, salaryDismissed), [salarySettings, salaryDismissed]);
+
+  useEffect(() => {
+    maybeNotifyPayday(salarySettings);
+  }, [salarySettings]);
 
   async function hydrateFromServer(nextToken = token) {
     if (!nextToken) return;
@@ -952,8 +818,18 @@ export function App() {
           </div>
         </header>
 
+        {salaryBanner && (
+          <SalaryBanner
+            state={salaryBanner}
+            onDismiss={() => {
+              dismissSalaryBannerForToday();
+              setSalaryDismissed(dateKey(new Date().toISOString()));
+            }}
+          />
+        )}
+
         {view === "overview" && (
-          <Overview summary={dailySummary} budgetCents={currentBudgetCents} accounts={activeAccounts} categories={activeCategories} transactions={activeTransactions} />
+          <Overview summary={dailySummary} budgetCents={currentBudgetCents} totalBudgetCents={currentTotalBudgetCents} accounts={activeAccounts} categories={activeCategories} transactions={activeTransactions} />
         )}
         {view === "entry" && (
           <EntryForm
@@ -995,7 +871,6 @@ export function App() {
         )}
         {view === "settings" && (
           <SettingsPanel
-            token={token}
             accounts={activeAccounts}
             categories={activeCategories}
             transactions={activeTransactions}
@@ -1025,6 +900,13 @@ export function App() {
               const deleted = { ...item, deletedAt: new Date().toISOString(), updatedAt: new Date().toISOString(), version: item.version + 1 };
               await saveLocalAndQueue("budgets", deleted);
               setToast("预算已删除");
+            }}
+            salarySettings={salarySettings}
+            onSalarySettingsChange={(next) => {
+              setSalarySettings(next);
+              saveSalarySettings(next);
+              setSalaryDismissed(salaryBannerDismissedKey());
+              setToast("工资日提醒设置已保存");
             }}
             onSaveCategory={(item) => saveLocalAndQueue("categories", item)}
             onDeleteCategories={(items) => saveManyLocalAndQueue("categories", items)}
@@ -1099,9 +981,10 @@ function AuthScreen({ onAuth }: { onAuth: (result: Awaited<ReturnType<typeof api
   );
 }
 
-function Overview({ summary, budgetCents, accounts, categories, transactions }: {
+function Overview({ summary, budgetCents, totalBudgetCents, accounts, categories, transactions }: {
   summary: { incomeCents: number; expenseCents: number; netCents: number };
   budgetCents: number;
+  totalBudgetCents: number;
   accounts: Account[];
   categories: Category[];
   transactions: Transaction[];
@@ -1121,7 +1004,6 @@ function Overview({ summary, budgetCents, accounts, categories, transactions }: 
   const dailyAverage = Math.round(summary.expenseCents / elapsedDays);
   const totalExpenseCents = monthExpenseTransactionsAll.reduce((sum, item) => sum + item.amountCents, 0);
   const specialExpenseCents = specialMonthExpenses.reduce((sum, item) => sum + item.amountCents, 0);
-  const expenseDelta = percentDelta(summary.expenseCents, prevMonthExpenseCents);
   const totalExpenseDelta = percentDelta(totalExpenseCents, prevMonthTotalExpenses);
   const dailyAvgDelta = percentDelta(dailyAverage, prevMonthDailyAverage);
   const dailyExpenseRatio = totalExpenseCents > 0 ? Math.round((summary.expenseCents / totalExpenseCents) * 100) : 0;
@@ -1134,7 +1016,6 @@ function Overview({ summary, budgetCents, accounts, categories, transactions }: 
   }, new Map<string, number>());
   const topCategoryEntry = Array.from(expenseByCategory.entries()).sort((left, right) => right[1] - left[1])[0];
   const topCategory = topCategoryEntry ? categories.find((category) => category.id === topCategoryEntry[0]) : undefined;
-  const budgetUsage = budgetCents > 0 ? Math.min(100, Math.round((summary.expenseCents / budgetCents) * 100)) : 0;
   const recentTransactions = transactions.slice(0, 4);
   const trendTag = (delta: number) => {
     if (delta === 0) return null;
@@ -1148,19 +1029,21 @@ function Overview({ summary, budgetCents, accounts, categories, transactions }: 
   };
   return (
     <section className="overview-dashboard">
-      <div className="overview-hero">
-        <div className="overview-hero-main">
-          <em>{monthLabel(monthKey())}{expenseDelta !== 0 && (expenseDelta > 0 ? ` · 环比+${expenseDelta}%` : ` · 环比${expenseDelta}%`)}</em>
-          <span>本月日常消费</span>
-          <strong>¥{centsToYuan(summary.expenseCents)}</strong>
-          <p>{budgetCents > 0 ? `日常预算 ¥${centsToYuan(budgetCents)}，剩余 ¥${centsToYuan(Math.max(0, budgetCents - summary.expenseCents))}` : "本月还没有设置日常预算"}</p>
-        </div>
-        <div className="overview-ring" style={{ "--progress": `${budgetUsage}%` } as CSSProperties}>
-          <div>
-            <strong>{budgetCents > 0 ? `${budgetUsage}%` : "--"}</strong>
-            <span>{budgetCents > 0 ? "预算占用" : "未设预算"}</span>
-          </div>
-        </div>
+      <div className="reservoir-grid">
+        <BudgetReservoir
+          title="日常消费额度"
+          note="不含贷款/保险/教育等专项"
+          spentCents={summary.expenseCents}
+          budgetCents={budgetCents}
+          accent="#1f5f74"
+        />
+        <BudgetReservoir
+          title="总开支额度"
+          note="包含日常消费 + 专项支出"
+          spentCents={totalExpenseCents}
+          budgetCents={totalBudgetCents}
+          accent="#31473a"
+        />
       </div>
 
       <div className="overview-quick-grid">
@@ -2185,7 +2068,6 @@ function TransactionActionSheet({ transaction, accounts, categories, onClose, on
 }
 
 function SettingsPanel({
-  token,
   accounts,
   categories,
   transactions,
@@ -2203,9 +2085,10 @@ function SettingsPanel({
   onSaveBudget,
   onDeleteBudget,
   onSaveCategory,
-  onDeleteCategories
+  onDeleteCategories,
+  salarySettings,
+  onSalarySettingsChange
 }: {
-  token: string | null;
   accounts: Account[];
   categories: Category[];
   transactions: Transaction[];
@@ -2224,6 +2107,8 @@ function SettingsPanel({
   onDeleteBudget: (item: Budget) => Promise<void>;
   onSaveCategory: (item: Category) => Promise<void>;
   onDeleteCategories: (items: Category[]) => Promise<void>;
+  salarySettings: SalarySettings;
+  onSalarySettingsChange: (settings: SalarySettings) => void;
 }) {
   return (
     <section className="settings-stack">
@@ -2267,11 +2152,11 @@ function SettingsPanel({
       <SettingsSection title="账户管理" description="维护储蓄卡、消费卡和额度。">
         <AccountsPanel accounts={accounts} onSave={onSaveAccount} onDelete={onDeleteAccount} />
       </SettingsSection>
-      <SettingsSection title="预算管理" description="设置日常支出预算，并查看执行情况。">
+      <SettingsSection title="预算管理" description="日常消费与总开支两层预算，总开支包含日常消费。">
         <BudgetPanel budgets={budgets} categories={categories} transactions={transactions} onSave={onSaveBudget} onDelete={onDeleteBudget} />
       </SettingsSection>
-      <SettingsSection title="工资日提醒" description="到工资日自动推送资金分配提醒，内容可自定义。">
-        <SalaryReminderPanel token={token} />
+      <SettingsSection title="工资日提醒" description="纯本地提醒，随时可改，离线、无服务器也能正常运作。">
+        <LocalSalaryReminderPanel value={salarySettings} onChange={onSalarySettingsChange} />
       </SettingsSection>
       <SettingsSection title="分类维护" description="按一级、二级分类折叠维护。">
         <CategoriesPanel categories={categories} onSave={onSaveCategory} onDelete={onDeleteCategories} />
@@ -2292,12 +2177,6 @@ function SettingsSection({ title, description, children, defaultOpen = false }: 
       <div className="settings-section-body">{children}</div>
     </details>
   );
-}
-
-function urlBase64ToUint8Array(base64: string) {
-  const padding = "=".repeat((4 - (base64.length % 4)) % 4);
-  const raw = window.atob((base64 + padding).replaceAll("-", "+").replaceAll("_", "/"));
-  return Uint8Array.from([...raw].map((char) => char.charCodeAt(0)));
 }
 
 function SyncSettingsPanel() {
@@ -2386,197 +2265,6 @@ function SyncSettingsPanel() {
       {savedMsg && (
         <em className="sync-test-result ok">{savedMsg}</em>
       )}
-    </div>
-  );
-}
-
-function SalaryReminderPanel({ token }: { token: string | null }) {
-  const [salaryDay, setSalaryDay] = useState(10);
-  const [remindHour, setRemindHour] = useState(9);
-  const [content, setContent] = useState("");
-  const [enabled, setEnabled] = useState(false);
-  const [permission, setPermission] = useState<NotificationPermission | "unsupported">(
-    typeof Notification === "undefined" ? "unsupported" : Notification.permission
-  );
-  const [subscribed, setSubscribed] = useState(false);
-  const [loading, setLoading] = useState(true);
-  const [busy, setBusy] = useState(false);
-
-  const pushSupported = typeof window !== "undefined" && "serviceWorker" in navigator && "PushManager" in window;
-
-  async function ensureSubscription(): Promise<PushSubscription> {
-    const registration = await navigator.serviceWorker.ready;
-    const existing = await registration.pushManager.getSubscription();
-    if (existing) return existing;
-    const { publicKey } = await api.notificationVapidKey();
-    if (!publicKey) throw new Error("服务器未开启推送服务");
-    const created = await registration.pushManager.subscribe({
-      userVisibleOnly: true,
-      applicationServerKey: urlBase64ToUint8Array(publicKey)
-    });
-    return created;
-  }
-
-  useEffect(() => {
-    let cancelled = false;
-    async function load() {
-      if (!token || !pushSupported) {
-        setLoading(false);
-        return;
-      }
-      try {
-        const [settings, registration] = await Promise.all([
-          api.notificationSettings(token),
-          navigator.serviceWorker.ready
-        ]);
-        if (cancelled) return;
-        setSalaryDay(settings.salaryDay);
-        setRemindHour(settings.remindHour);
-        setContent(settings.content);
-        setEnabled(settings.enabled);
-        const existing = await registration.pushManager.getSubscription();
-        if (cancelled) return;
-        setSubscribed(Boolean(existing));
-      } catch {
-        // 离线或服务器暂不可达时保持默认值
-      } finally {
-        if (!cancelled) setLoading(false);
-      }
-    }
-    void load();
-    return () => {
-      cancelled = true;
-    };
-  }, [token, pushSupported]);
-
-  async function handleEnable() {
-    if (!token) return;
-    setBusy(true);
-    try {
-      if (typeof Notification !== "undefined" && Notification.permission !== "granted") {
-        const result = await Notification.requestPermission();
-        setPermission(result);
-        if (result !== "granted") throw new Error("未获得通知权限，请在系统设置中允许通知");
-      }
-      const subscription = await ensureSubscription();
-      await api.subscribeNotifications(token, subscription.toJSON());
-      await api.saveNotificationSettings(token, { salaryDay, remindHour, content, enabled: true });
-      setSubscribed(true);
-      setEnabled(true);
-      window.alert("工资日提醒已开启！");
-    } catch (error) {
-      window.alert(error instanceof Error ? error.message : "开启失败，请稍后重试");
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  async function handleDisable() {
-    if (!token) return;
-    setBusy(true);
-    try {
-      const registration = await navigator.serviceWorker.ready;
-      const existing = await registration.pushManager.getSubscription();
-      if (existing) {
-        await api.unsubscribeNotifications(token, existing.endpoint).catch(() => undefined);
-        await existing.unsubscribe().catch(() => undefined);
-      }
-      await api.saveNotificationSettings(token, { salaryDay, remindHour, content, enabled: false });
-      setSubscribed(false);
-      setEnabled(false);
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  async function handleSave() {
-    if (!token) return;
-    setBusy(true);
-    try {
-      await api.saveNotificationSettings(token, { salaryDay, remindHour, content, enabled });
-      window.alert("提醒设置已保存");
-    } catch (error) {
-      window.alert(error instanceof Error ? error.message : "保存失败");
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  async function handleTest() {
-    if (!token) return;
-    setBusy(true);
-    try {
-      if (!subscribed) {
-        if (typeof Notification !== "undefined" && Notification.permission !== "granted") {
-          const result = await Notification.requestPermission();
-          setPermission(result);
-        }
-        const subscription = await ensureSubscription();
-        await api.subscribeNotifications(token, subscription.toJSON());
-        setSubscribed(true);
-      }
-      const result = await api.testNotifications(token);
-      if (!result.delivered) throw new Error("发送失败：服务器推送未配置或设备订阅失效");
-    } catch (error) {
-      window.alert(error instanceof Error ? error.message : "测试发送失败");
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  if (!pushSupported) {
-    return (
-      <div className="reminder-panel">
-        <p className="reminder-hint">当前浏览器不支持消息推送。请在手机上将「记账」添加到主屏幕（iOS 16.4+ 或 Android 版 Chrome/Edge）后开启。</p>
-      </div>
-    );
-  }
-
-  return (
-    <div className="reminder-panel form-stack">
-      <div className={`reminder-status ${enabled && subscribed ? "on" : ""}`}>
-        <BellRing size={16} />
-        <span>{loading ? "正在检查提醒状态…" : enabled && subscribed ? "已开启：将按工资日自动推送提醒" : "未开启"}</span>
-      </div>
-      <div className="reminder-row">
-        <label>工资日
-          <select value={salaryDay} onChange={(event) => setSalaryDay(Number(event.target.value))} disabled={!token}>
-            {Array.from({ length: 31 }, (_, index) => index + 1).map((day) => (
-              <option key={day} value={day}>{day} 日</option>
-            ))}
-          </select>
-        </label>
-        <label>提醒时间
-          <select value={remindHour} onChange={(event) => setRemindHour(Number(event.target.value))} disabled={!token}>
-            {Array.from({ length: 15 }, (_, index) => index + 7).map((hour) => (
-              <option key={hour} value={hour}>{String(hour).padStart(2, "0")}:00</option>
-            ))}
-          </select>
-        </label>
-      </div>
-      <label>提醒内容（可自定义资金分配方案）
-        <textarea
-          value={content}
-          onChange={(event) => setContent(event.target.value)}
-          rows={5}
-          maxLength={1000}
-          placeholder={"例如：\n工资到账啦，按方案分配：\n1. 固定储蓄 50%\n2. 日常开销 30%\n3. 投资理财 20%"}
-          disabled={!token}
-        />
-      </label>
-      <div className="data-actions">
-        {enabled && subscribed ? (
-          <button type="button" onClick={handleDisable} disabled={busy || loading}>关闭提醒</button>
-        ) : (
-          <button className="primary" type="button" onClick={handleEnable} disabled={busy || loading || !token}>
-            <Bell size={16} />开启提醒
-          </button>
-        )}
-        <button type="button" onClick={handleSave} disabled={busy || loading || !token}>保存设置</button>
-        <button type="button" onClick={handleTest} disabled={busy || loading || !token}>发送测试提醒</button>
-      </div>
-      {permission === "denied" && <p className="reminder-hint warn">通知权限已被拒绝：请在系统设置中找到「记账」应用，允许通知后重试。</p>}
-      <p className="reminder-hint">提示：手机上需将应用添加到主屏幕并以独立窗口使用，系统才会在后台推送通知。若设置当月无 31 日，将在当月最后一天提醒。</p>
     </div>
   );
 }
@@ -2827,46 +2515,74 @@ function BudgetPanel({ budgets, categories, transactions, onSave, onDelete }: {
   onDelete: (item: Budget) => Promise<void>;
 }) {
   const [month, setMonth] = useState(monthKey());
+  const [budgetKind, setBudgetKind] = useState<"daily" | "total" | "category">("daily");
   const [categoryId, setCategoryId] = useState("");
   const [amount, setAmount] = useState("");
   const [editing, setEditing] = useState<Budget | null>(null);
   const expenseCategories = categories.filter((item) => item.kind === "expense");
-  const monthExpenses = dailyExpenseTransactions(transactions.filter((item) => item.occurredAt.startsWith(month)), categories);
+  const monthTransactions = transactions.filter((item) => item.occurredAt.startsWith(month));
+  const monthExpensesAll = monthTransactions.filter((item) => item.type === "expense");
+  const monthDailyExpenses = dailyExpenseTransactions(monthTransactions, categories);
+  const monthDailySpent = monthDailyExpenses.reduce((sum, item) => sum + item.amountCents, 0);
+  const monthTotalSpent = monthExpensesAll.reduce((sum, item) => sum + item.amountCents, 0);
+  const monthSpecialSpent = monthTotalSpent - monthDailySpent;
+
+  const monthBudgets = budgets.filter((budget) => budget.month === month);
+  const dailyOverallBudget = monthBudgets.find((budget) => !budget.categoryId && budgetScope(budget) === "daily");
+  const totalBudget = monthBudgets.find((budget) => !budget.categoryId && budgetScope(budget) === "total");
+  const categoryBudgets = monthBudgets.filter((budget) => budget.categoryId);
 
   function editBudget(budget: Budget) {
     setEditing(budget);
     setMonth(budget.month);
+    setBudgetKind(budget.categoryId ? "category" : budgetScope(budget) === "total" ? "total" : "daily");
     setCategoryId(budget.categoryId ?? "");
     setAmount(centsToYuan(budget.amountCents));
   }
 
   function resetForm() {
     setEditing(null);
+    setBudgetKind("daily");
     setCategoryId("");
     setAmount("");
   }
 
   function budgetLabel(budget: Budget) {
-    return budget.categoryId ? categories.find((item) => item.id === budget.categoryId)?.name ?? "分类预算" : "日常支出";
+    if (budget.categoryId) return categories.find((item) => item.id === budget.categoryId)?.name ?? "分类预算";
+    return budgetScope(budget) === "total" ? "总开支" : "日常消费";
+  }
+
+  function spentFor(budget: Budget) {
+    if (budget.categoryId) {
+      return monthExpensesAll.filter((item) => item.categoryId === budget.categoryId).reduce((sum, item) => sum + item.amountCents, 0);
+    }
+    return budgetScope(budget) === "total" ? monthTotalSpent : monthDailySpent;
   }
 
   async function deleteBudget(budget: Budget) {
     const label = budgetLabel(budget);
-    if (!window.confirm(`删除“${label}”${budget.month} 的预算？`)) return;
+    if (!window.confirm(`删除"${label}"${budget.month} 的预算？`)) return;
     if (editing?.id === budget.id) resetForm();
     await onDelete(budget);
   }
 
   async function submit(event: React.FormEvent) {
     event.preventDefault();
-    const resolvedCategoryId = categoryId || null;
-    const duplicate = budgets.find((item) => item.id !== editing?.id && item.month === month && (item.categoryId ?? null) === resolvedCategoryId);
+    const resolvedCategoryId = budgetKind === "category" ? categoryId || null : null;
+    const resolvedScope = budgetKind === "total" ? "total" as const : "daily" as const;
+    const duplicate = budgets.find((item) =>
+      item.id !== editing?.id &&
+      item.month === month &&
+      (item.categoryId ?? null) === resolvedCategoryId &&
+      (!resolvedCategoryId ? budgetScope(item) === resolvedScope : true)
+    );
     const existing = editing ?? duplicate;
     const base = existing ?? entityStamp();
     await onSave({
       ...base,
       month,
       categoryId: resolvedCategoryId,
+      scope: resolvedScope,
       amountCents: yuanToCents(amount),
       version: existing ? existing.version + 1 : base.version,
       updatedAt: new Date().toISOString(),
@@ -2875,35 +2591,58 @@ function BudgetPanel({ budgets, categories, transactions, onSave, onDelete }: {
     resetForm();
   }
 
+  function renderBudgetLine(budget: Budget) {
+    const spent = spentFor(budget);
+    const ratio = Math.min(100, Math.round((spent / budget.amountCents) * 100));
+    const over = spent > budget.amountCents;
+    return (
+      <div className={editing?.id === budget.id ? "budget-line editing" : "budget-line"} key={budget.id}>
+        <span>{budgetLabel(budget)}</span>
+        <strong>¥{centsToYuan(spent)} / ¥{centsToYuan(budget.amountCents)}</strong>
+        <div className={over ? "bar over" : "bar"}><i style={{ width: `${ratio}%` }} /></div>
+        <div className="budget-line-actions">
+          <button className="text-action" onClick={() => editBudget(budget)} type="button"><Pencil size={15} />编辑</button>
+          <button className="text-action danger" onClick={() => void deleteBudget(budget)} type="button"><Trash2 size={15} />删除</button>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <section className="grid two">
-      <div className="panel">
-        <h2>预算执行</h2>
-        <div className="budget-list">
-          {budgets.filter((budget) => budget.month === month).map((budget) => {
-            const spent = monthExpenses.filter((item) => !budget.categoryId || item.categoryId === budget.categoryId).reduce((sum, item) => sum + item.amountCents, 0);
-            const ratio = Math.min(100, Math.round((spent / budget.amountCents) * 100));
-            return (
-              <div className={editing?.id === budget.id ? "budget-line editing" : "budget-line"} key={budget.id}>
-                <span>{budgetLabel(budget)}</span>
-                <strong>¥{centsToYuan(spent)} / ¥{centsToYuan(budget.amountCents)}</strong>
-                <div className="bar"><i style={{ width: `${ratio}%` }} /></div>
-                <div className="budget-line-actions">
-                  <button className="text-action" onClick={() => editBudget(budget)} type="button"><Pencil size={15} />编辑</button>
-                  <button className="text-action danger" onClick={() => void deleteBudget(budget)} type="button"><Trash2 size={15} />删除</button>
-                </div>
-              </div>
-            );
-          })}
+      <div className="budget-columns">
+        <div className="panel">
+          <h2>日常消费预算</h2>
+          <p className="budget-scope-hint">不含贷款、保险、教育等专项支出</p>
+          <div className="budget-list">
+            {dailyOverallBudget ? renderBudgetLine(dailyOverallBudget) : <p className="empty">尚未设置日常消费总预算</p>}
+            {categoryBudgets.map(renderBudgetLine)}
+          </div>
+        </div>
+        <div className="panel">
+          <h2>总开支预算</h2>
+          <p className="budget-scope-hint">包含日常消费 ¥{centsToYuan(monthDailySpent)} + 专项支出 ¥{centsToYuan(monthSpecialSpent)}</p>
+          <div className="budget-list">
+            {totalBudget ? renderBudgetLine(totalBudget) : <p className="empty">尚未设置总开支预算</p>}
+          </div>
         </div>
       </div>
       <form className="panel form-stack" onSubmit={submit}>
         <h2>{editing ? "编辑预算" : "新增预算"}</h2>
         <MonthField value={month} onChange={setMonth} label="预算月份" />
-        <select value={categoryId} onChange={(event) => setCategoryId(event.target.value)}>
-          <option value="">日常支出</option>
-          {expenseCategories.map((category) => <option key={category.id} value={category.id}>{category.name}</option>)}
-        </select>
+        <label>预算类型
+          <select value={budgetKind} onChange={(event) => setBudgetKind(event.target.value as "daily" | "total" | "category")}>
+            <option value="daily">日常消费总预算</option>
+            <option value="total">总开支预算（含日常消费）</option>
+            <option value="category">分类预算（归入日常消费）</option>
+          </select>
+        </label>
+        {budgetKind === "category" && (
+          <select value={categoryId} onChange={(event) => setCategoryId(event.target.value)} required>
+            <option value="" disabled>选择分类</option>
+            {expenseCategories.map((category) => <option key={category.id} value={category.id}>{category.name}</option>)}
+          </select>
+        )}
         <input value={amount} onChange={(event) => setAmount(event.target.value)} placeholder="预算金额" inputMode="decimal" required />
         <button className="primary">{editing ? "保存修改" : "保存预算"}</button>
         {editing && <button type="button" className="ghost" onClick={resetForm}>取消编辑</button>}
@@ -3489,8 +3228,36 @@ function Reports({ transactions, accounts, categories, budgets, analysisNotes, o
         <Metric title="预计日常消费" value={projectedExpense} icon={ArrowRightLeft} tone="neutral" />
       </div>
 
-      <ReportScopePill label="核心洞察" detail={`${periodLabel} 为主，近三期均值仅作历史参照`} />
-      <div className="finance-insights">
+      {period === "month" && (
+        <>
+          <section className="panel pace-panel">
+            <div className="chart-heading">
+              <h2>本月消费节奏</h2>
+              <span>{monthLabel(month)} · 每日累计 vs 预算平均线</span>
+            </div>
+            <TrendFocusCards month={month} transactions={transactions} categories={categories} budgetCents={monthlyAnalysis.budgetCents} />
+            <DailyPaceChart month={month} transactions={transactions} categories={categories} budgetCents={monthlyAnalysis.budgetCents} />
+          </section>
+
+          <section className="panel">
+            <div className="chart-heading">
+              <h2>大额开销</h2>
+              <span>{monthLabel(month)} · 清单 + 规律识别（纯统计规则，无 AI）</span>
+            </div>
+            <BigExpensePanel month={month} transactions={transactions} categories={categories} accounts={accounts} />
+          </section>
+        </>
+      )}
+
+      <details className="panel insights-fold">
+        <summary className="insights-fold-summary">
+          <div>
+            <h2>核心洞察</h2>
+            <span>{periodLabel} · 6 项深度解读，点击展开</span>
+          </div>
+          <em>展开</em>
+        </summary>
+        <div className="finance-insights">
         {insightCards.map((card) => {
           const expanded = expandedInsightId === card.id;
           return (
@@ -3524,7 +3291,8 @@ function Reports({ transactions, accounts, categories, budgets, analysisNotes, o
             </article>
           );
         })}
-      </div>
+        </div>
+      </details>
 
       {period === "month" && (
         <section className="panel monthly-analysis-panel">

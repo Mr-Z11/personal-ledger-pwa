@@ -4543,3 +4543,658 @@ input[type="month"],
     height: 0.78rem;
   }
 }
+
+/* ------------------------------------------------------------------ */
+/* 蓄水池预算可视化                                                    */
+/* ------------------------------------------------------------------ */
+
+.reservoir-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1rem;
+}
+
+.reservoir-card {
+  background: #fffdf7;
+  border: 1px solid #e5dcc8;
+  border-radius: 1.1rem;
+  padding: 0.9rem 1rem 0.7rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+.reservoir-card.over {
+  border-color: #e3b7ad;
+  background: #fff8f4;
+}
+
+.reservoir-head {
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+}
+
+.reservoir-head strong {
+  font-size: 1rem;
+  color: #243127;
+}
+
+.reservoir-head span {
+  font-size: 0.72rem;
+  color: #8a7154;
+}
+
+.reservoir-tank {
+  position: relative;
+  display: flex;
+  justify-content: center;
+}
+
+.reservoir-tank svg {
+  width: min(100%, 12.5rem);
+  height: auto;
+  display: block;
+}
+
+.reservoir-backdrop {
+  fill: #f3ecdc;
+}
+
+.reservoir-outline {
+  fill: none;
+  stroke: #31473a;
+  stroke-width: 2.5;
+}
+
+.reservoir-tank .empty-outline {
+  fill: none;
+  stroke: #c9bda2;
+  stroke-width: 2;
+  stroke-dasharray: 6 5;
+}
+
+.reservoir-water {
+  transition: transform 0.9s cubic-bezier(0.22, 0.9, 0.32, 1);
+}
+
+.reservoir-wave-a {
+  animation: reservoir-wave-a 5s linear infinite;
+}
+
+.reservoir-wave-b {
+  animation: reservoir-wave-b 7.5s linear infinite;
+}
+
+@keyframes reservoir-wave-a {
+  from { transform: translateX(0); }
+  to { transform: translateX(100px); }
+}
+
+@keyframes reservoir-wave-b {
+  from { transform: translateX(0); }
+  to { transform: translateX(80px); }
+}
+
+.reservoir-center {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.14rem;
+  text-align: center;
+  pointer-events: none;
+  padding: 0 1.4rem;
+}
+
+.reservoir-center strong {
+  font-size: 1.9rem;
+  color: #243127;
+  text-shadow: 0 1px 0 rgba(255, 253, 247, 0.65);
+}
+
+.reservoir-center span {
+  font-size: 0.72rem;
+  color: #3c4a40;
+  text-shadow: 0 1px 0 rgba(255, 253, 247, 0.65);
+}
+
+.reservoir-center em {
+  font-style: normal;
+  font-size: 0.7rem;
+  color: #8a7154;
+}
+
+.reservoir-over-badge {
+  background: #c0392b;
+  color: #fff;
+  border-radius: 999px;
+  padding: 0.08rem 0.5rem;
+  font-size: 0.7rem;
+  text-shadow: none;
+}
+
+.reservoir-foot {
+  font-size: 0.74rem;
+  color: #5c6b60;
+  text-align: center;
+  padding: 0.3rem 0.2rem 0.1rem;
+  border-top: 1px dashed #e5dcc8;
+}
+
+/* ------------------------------------------------------------------ */
+/* 工资日横幅                                                          */
+/* ------------------------------------------------------------------ */
+
+.salary-banner {
+  display: flex;
+  align-items: center;
+  gap: 0.7rem;
+  background: linear-gradient(120deg, #f3e2b8, #e8cf92);
+  border: 1px solid #d8ba76;
+  border-radius: 0.9rem;
+  padding: 0.6rem 0.8rem;
+  margin-bottom: 0.9rem;
+  color: #4d3c14;
+}
+
+.salary-banner.payday {
+  background: linear-gradient(120deg, #f6d789, #ecc264);
+  border-color: #c9a34a;
+}
+
+.salary-banner > svg {
+  flex: none;
+}
+
+.salary-banner-body {
+  display: flex;
+  flex-direction: column;
+  gap: 0.05rem;
+  min-width: 0;
+  flex: 1;
+}
+
+.salary-banner-body strong {
+  font-size: 0.92rem;
+}
+
+.salary-banner-body span {
+  font-size: 0.76rem;
+  white-space: pre-line;
+}
+
+.salary-banner .icon-button {
+  color: #4d3c14;
+}
+
+.reminder-toggle {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  font-size: 0.8rem;
+  color: #4d5748;
+}
+
+/* ------------------------------------------------------------------ */
+/* 消费节奏图                                                          */
+/* ------------------------------------------------------------------ */
+
+.pace-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 0.8rem;
+}
+
+.pace-chart-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+.pace-status {
+  font-size: 0.84rem;
+  color: #3c4a40;
+  background: #f3f7f2;
+  border: 1px solid #d9e4d5;
+  border-radius: 0.7rem;
+  padding: 0.5rem 0.75rem;
+}
+
+.pace-status.over {
+  background: #fdf1ec;
+  border-color: #ecc9bd;
+  color: #7a2f1d;
+}
+
+.pace-status b {
+  font-weight: 700;
+}
+
+.pace-chart {
+  width: 100%;
+  height: auto;
+  display: block;
+}
+
+.pace-grid {
+  stroke: #e7dfcd;
+  stroke-width: 1;
+}
+
+.pace-axis-label {
+  fill: #8a7154;
+  font-size: 11px;
+}
+
+.pace-budget-line {
+  stroke: #b98a2f;
+  stroke-width: 1.8;
+  stroke-dasharray: 7 5;
+}
+
+.pace-prev-line {
+  fill: none;
+  stroke: #b6ad9c;
+  stroke-width: 1.5;
+  opacity: 0.8;
+}
+
+.pace-actual-line {
+  fill: none;
+  stroke: #1f5f74;
+  stroke-width: 2.4;
+  stroke-linejoin: round;
+  stroke-linecap: round;
+}
+
+.pace-area {
+  fill: rgba(31, 95, 116, 0.12);
+}
+
+.pace-projection-line {
+  stroke: #1f5f74;
+  stroke-width: 1.6;
+  stroke-dasharray: 2 5;
+  opacity: 0.55;
+}
+
+.pace-today-line {
+  stroke: #8a7154;
+  stroke-width: 1;
+  stroke-dasharray: 3 4;
+  opacity: 0.6;
+}
+
+.pace-today-dot {
+  fill: #2f7d4f;
+  stroke: #fffdf7;
+  stroke-width: 1.5;
+}
+
+.pace-today-dot.over {
+  fill: #c0392b;
+}
+
+.pace-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.9rem;
+  font-size: 0.72rem;
+  color: #5c6b60;
+}
+
+.pace-legend span {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.32rem;
+}
+
+.pace-swatch {
+  width: 0.85rem;
+  height: 0.22rem;
+  border-radius: 999px;
+  display: inline-block;
+}
+
+.pace-swatch.actual { background: #1f5f74; }
+.pace-swatch.prev { background: #b6ad9c; }
+.pace-swatch.budget { background: #b98a2f; }
+.pace-swatch.projection { background: repeating-linear-gradient(90deg, #1f5f74 0 2px, transparent 2px 5px); }
+
+/* ------------------------------------------------------------------ */
+/* 趋势焦点卡                                                          */
+/* ------------------------------------------------------------------ */
+
+.trend-focus-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 0.7rem;
+}
+
+.trend-focus-card {
+  background: #f8f4e9;
+  border: 1px solid #e5dcc8;
+  border-left: 3px solid #b6ad9c;
+  border-radius: 0.8rem;
+  padding: 0.6rem 0.7rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+}
+
+.trend-focus-card span {
+  font-size: 0.72rem;
+  color: #8a7154;
+}
+
+.trend-focus-card strong {
+  font-size: 1.2rem;
+  color: #243127;
+}
+
+.trend-focus-card em {
+  font-style: normal;
+  font-size: 0.7rem;
+  color: #5c6b60;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  flex-wrap: wrap;
+}
+
+.trend-focus-card.up {
+  border-left-color: #c0392b;
+  background: #fdf3ef;
+}
+
+.trend-focus-card.up strong { color: #a5301f; }
+
+.trend-focus-card.down {
+  border-left-color: #2f7d4f;
+  background: #f0f7f1;
+}
+
+.trend-focus-card.down strong { color: #22603b; }
+
+/* ------------------------------------------------------------------ */
+/* 大额开销分析                                                        */
+/* ------------------------------------------------------------------ */
+
+.big-expense-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 0.8rem;
+}
+
+.big-expense-summary {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 0.6rem;
+}
+
+.big-expense-summary > div {
+  background: #f8f4e9;
+  border: 1px solid #e5dcc8;
+  border-radius: 0.7rem;
+  padding: 0.5rem 0.65rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+}
+
+.big-expense-summary span {
+  font-size: 0.7rem;
+  color: #8a7154;
+}
+
+.big-expense-summary strong {
+  font-size: 1.02rem;
+  color: #243127;
+}
+
+.big-expense-toolbar {
+  display: flex;
+  align-items: flex-end;
+  gap: 0.8rem;
+  flex-wrap: wrap;
+}
+
+.big-expense-toolbar label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  font-size: 0.74rem;
+  color: #5c6b60;
+}
+
+.big-expense-toolbar input {
+  width: 7.5rem;
+}
+
+.big-expense-threshold-hint {
+  font-size: 0.72rem;
+  color: #8a7154;
+  padding-bottom: 0.35rem;
+}
+
+.big-expense-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+}
+
+.big-expense-row {
+  display: grid;
+  grid-template-columns: 3rem minmax(0, 1fr) minmax(7.5rem, auto);
+  gap: 0.7rem;
+  align-items: center;
+  background: #fffdf7;
+  border: 1px solid #ece3cf;
+  border-radius: 0.75rem;
+  padding: 0.55rem 0.75rem;
+}
+
+.big-expense-date {
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: #8a7154;
+}
+
+.big-expense-main {
+  display: flex;
+  flex-direction: column;
+  gap: 0.12rem;
+  min-width: 0;
+}
+
+.big-expense-main strong {
+  font-size: 0.88rem;
+  color: #243127;
+}
+
+.big-expense-main span {
+  font-size: 0.72rem;
+  color: #8a7154;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.big-badge {
+  font-style: normal;
+  font-size: 0.66rem;
+  border-radius: 999px;
+  padding: 0.08rem 0.5rem;
+  align-self: flex-start;
+}
+
+.big-badge.recurring {
+  background: #f3e2b8;
+  color: #6b5416;
+  border: 1px solid #ddc07c;
+}
+
+.big-badge.new {
+  background: #e2ecf1;
+  color: #1f5f74;
+  border: 1px solid #bcd3dd;
+}
+
+.big-expense-amount {
+  display: flex;
+  flex-direction: column;
+  gap: 0.18rem;
+  align-items: flex-end;
+}
+
+.big-expense-amount strong {
+  font-size: 0.95rem;
+  color: #a5301f;
+}
+
+.big-expense-amount em {
+  font-style: normal;
+  font-size: 0.66rem;
+  color: #8a7154;
+}
+
+.big-expense-amount .bar {
+  width: 6.5rem;
+}
+
+.big-expense-insight {
+  font-size: 0.76rem;
+  color: #5c6b60;
+  background: #f3f7f2;
+  border: 1px solid #d9e4d5;
+  border-radius: 0.7rem;
+  padding: 0.55rem 0.75rem;
+  margin: 0;
+}
+
+/* ------------------------------------------------------------------ */
+/* 核心洞察折叠 / 预算管理                                             */
+/* ------------------------------------------------------------------ */
+
+.insights-fold {
+  padding: 0;
+}
+
+.insights-fold-summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.8rem;
+  cursor: pointer;
+  padding: 0.9rem 1.1rem;
+  list-style: none;
+}
+
+.insights-fold-summary::-webkit-details-marker {
+  display: none;
+}
+
+.insights-fold-summary h2 {
+  margin: 0;
+  font-size: 1rem;
+}
+
+.insights-fold-summary span {
+  font-size: 0.74rem;
+  color: #8a7154;
+}
+
+.insights-fold-summary em {
+  font-style: normal;
+  font-size: 0.74rem;
+  color: #1f5f74;
+  border: 1px solid #bcd3dd;
+  border-radius: 999px;
+  padding: 0.15rem 0.7rem;
+}
+
+.insights-fold[open] .insights-fold-summary em {
+  background: #1f5f74;
+  color: #fff;
+}
+
+.insights-fold .finance-insights {
+  padding: 0 1.1rem 1.1rem;
+}
+
+.budget-columns {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  min-width: 0;
+}
+
+.budget-scope-hint {
+  font-size: 0.72rem;
+  color: #8a7154;
+  margin: 0.1rem 0 0.5rem;
+}
+
+.bar.over i {
+  background: #c0392b;
+}
+
+@media (max-width: 940px) {
+  .reservoir-grid {
+    grid-template-columns: 1fr 1fr;
+    gap: 0.6rem;
+  }
+
+  .reservoir-card {
+    padding: 0.6rem 0.55rem 0.45rem;
+  }
+
+  .reservoir-center strong {
+    font-size: 1.4rem;
+  }
+
+  .reservoir-center span {
+    font-size: 0.62rem;
+  }
+
+  .reservoir-foot {
+    font-size: 0.66rem;
+  }
+
+  .trend-focus-grid {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .big-expense-summary {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .big-expense-row {
+    grid-template-columns: 2.4rem minmax(0, 1fr);
+  }
+
+  .big-expense-amount {
+    grid-column: 1 / -1;
+    flex-direction: row;
+    align-items: center;
+    justify-content: space-between;
+  }
+
+  .big-expense-amount .bar {
+    flex: 1;
+    margin: 0 0.5rem;
+  }
+
+  .salary-banner {
+    border-radius: 0.7rem;
+  }
+}
+
+@media (max-width: 480px) {
+  .reservoir-grid {
+    grid-template-columns: 1fr;
+  }
+}

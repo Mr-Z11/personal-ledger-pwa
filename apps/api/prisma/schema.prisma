@@ -104,6 +104,7 @@ model Budget {
   categoryId  String?
   month       String
   amountCents BigInt
+  scope       String    @default("daily")
   version     Int       @default(1)
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt

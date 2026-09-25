@@ -36,10 +36,14 @@ export interface Transaction extends LedgerEntity {
   tags: string[];
 }
 
+export type BudgetScope = "daily" | "total";
+
 export interface Budget extends LedgerEntity {
   categoryId?: string | null;
   month: string;
   amountCents: number;
+  /** 仅对无分类预算有效：daily=日常消费预算（默认，兼容旧数据），total=总开支预算（包含日常消费） */
+  scope?: BudgetScope;
 }
 
 export type AnalysisNoteSubjectType = "month" | "anomaly";
