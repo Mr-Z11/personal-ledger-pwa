@@ -79,3 +79,14 @@ Before finishing a code change:
 
 See `docs/codex-handoff.md` for the longer handoff.
 
+## Handoff Files Sync Rule
+
+每次会话结束更新交接文件时，以下 4 个文件必须**一起同步**，不得只更新其中部分：
+
+- `task_plan.md` — 阶段计划、进度、错误表（技能管理）
+- `findings.md` — 研究发现、技术结论（技能管理）
+- `progress.md` — 会话日志（技能管理）
+- `HANDOFF.md` — 跨会话完整移交文档（项目自有）
+
+同步要点：新 commit 记入 `task_plan.md` Phase 与 `HANDOFF.md` 第 2 节；服务器 HEAD 更新到 `HANDOFF.md` 第 3 节；新发现的技术坑记入 `findings.md` 与 `HANDOFF.md` 第 4 节；"不要重复做的事" 新增到 `HANDOFF.md` 第 9 节。
+

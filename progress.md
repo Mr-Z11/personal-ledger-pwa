@@ -1,5 +1,89 @@
 # Progress Log
 
+## Session: 2026-09-25 — 云端失效后的本地栈修复 + 手机数据同步打通
+
+### 数据存储链路诊断 (10:06-10:20)
+- **Status:** complete
+- 确认三层存储：IndexedDB 唯一活跃 / 本地 PG 冻结 8-31 / 云端已失效
+- 云端 47.74.3.104：80/443 全关、SSH host key 变更、最后备份 8-29
+- 架构定性：local-first，服务器只是同步目标；云端全挂不影响记账/查看
+- 绘制数据存储现状图（show_widget）
+
+### 本地 Mac 栈修复 (10:18-10:25)
+- **Status:** complete
+- 根因 1：colima VM 丢 qemu binfmt → API crash-loop 11428 次（`exec format error`）
+  - 修复：`docker run --rm --privileged tonistiigi/binfmt --install amd64`
+- 根因 2：本地 8-16 旧镜像 schema=Int vs 数据库 bigint → `--accept-data-loss` 数据降级风险
+  - 升级前备份 `backups/pre-image-upgrade-20260925-101948.sql.gz`
+  - 修复：`docker pull --platform linux/amd64` 拉新镜像（BigInt），重建容器，日志 `already in sync` 零数据变更
+- 改进 `start-local-sync.sh`：启动前自动注册 binfmt + 自动拉匹配镜像（`bash -n` 通过）
+- 验证：localhost / 192.168.3.21 / mDNS 三路径 `/api/health` 均 `{"ok":true}`；`/api/bootstrap` 200（3416 笔 / 18 账户 / 187 分类）
+
+### 手机同步链路打通 (10:35-11:15)
+- **Status:** complete
+- fetchevent 报错诊断：SW NetworkFirst 拦截 `/api` + iOS WKWebView 不信 IP 类证书
+- 关键发现：**mDNS fallback 已自动生效**（`/bootstrap` 200 via froridemacbook-air.local，证明 JWT_SECRET 一致）；workbox 只路由 GET，POST/OPTIONS 直接走网络
+- "URL is not valid"：手动输入字符串非法 → 改用「清空地址 + 自动 fallback」
+- 验证 `/sync/push` 端点（空 payload 200，serverVersion 121→122）
+- **用户确认同步成功**：3469 条（+53），最新 2026-09-24，近一个月零备份数据全部落库
+
+### 数据导出存档 (11:19)
+- **Status:** complete
+- psql COPY 导出 → Python(openpyxl 3.1.5) 生成 xlsx
+- `Desktop/记账数据-截至2026-09-25.xlsx`（3321 条有效流水，账单+说明两表，类型着色/冻结首行/自动筛选）
+- Files: `scripts/start-local-sync.sh`（改进，未提交）, `/tmp/make_ledger_xlsx.py`
+
+### 交接文件同步 (11:24)
+- **Status:** complete
+- 同步更新 task_plan.md(Phase 13) / findings.md / progress.md / HANDOFF.md
+- Files: `task_plan.md`, `findings.md`, `progress.md`, `HANDOFF.md`
+
+## Session: 2026-08-16 — 本地备份体系 + 数据同步全链路修复
+
+### 备份频率调整 (09:35)
+- **Status:** complete
+- 删除 WorkBuddy 自动化（原每 6h），改为 macOS launchd 每 24h（03:00）
+- `deploy/com.personal-ledger.data-backup.plist` 更新并重载
+- 备份完全脱离 WorkBuddy，由 launchd 管理
+
+### 本地全栈接管 (09:40-09:50)
+- **Status:** complete
+- 免 sudo 安装 colima + Docker CLI（~/bin, ~/opt/lima）
+- 本地栈启动：postgres-local + api-local + caddy-local
+- 修复 Caddyfile.local 语法 bug + tls internal on_demand
+- auto-backup.sh 重写：云端在线→SSH 备份；离线→本地 PG 备份；Docker 没跑→自动 colima start
+- 新增 colima.plist（登录自启）
+- Files: docker-compose.local.yml, deploy/Caddyfile.local, scripts/auto-backup.sh, scripts/data-sync.sh, deploy/com.personal-ledger.colima.plist
+
+### 前端 API 自动故障转移 (10:00-10:25)
+- **Status:** complete (2 commits: 1e8be1c, 314899d)
+- api.ts apiFetch：云不可达→自动切本地端点（localhost:8443 + mDNS）
+- CORS 修复：显式声明 PUT/DELETE/PATCH/OPTIONS
+- VITE_FALLBACK_API_BASES 编入 bundle
+- Files: apps/web/src/api.ts, apps/api/src/index.ts, deploy/web.Dockerfile, .github/workflows/ci.yml
+
+### 手机端同步状态栏 (10:53)
+- **Status:** complete (commit: 5a4f61a)
+- 根因：.sync-card 在 @media(max-width:940px) 下 display:none
+- 修复：新增 .mobile-sync-bar 在手机端顶部显示
+- Files: apps/web/src/App.tsx, apps/web/src/styles.css
+
+### 同步状态栏改进 (11:09)
+- **Status:** complete (commit: 909ac42)
+- 文字区域改为 overflow-x 横向滚动
+- 自动隐藏：待同步=0 且在线时关闭
+- Files: apps/web/src/App.tsx, apps/web/src/styles.css
+
+### amountCents 溢出修复 + PWA 自动更新 (11:42)
+- **Status:** complete (commit: ffa0a54)
+- **根因**：sync/push 500 错误，amountCents=9999999900 超过 PostgreSQL integer 上限
+- Prisma schema Int→BigInt（amountCents + openingBalanceCents），prisma db push 自动迁移
+- serializers.ts 加 Number() 转换 bigint→number
+- PWA registerType: prompt→autoUpdate, skipWaiting:true, clientsClaim:true
+- verify-pwa-startup.mjs 同步更新
+- Files: apps/api/prisma/schema.prisma, apps/api/src/serializers.ts, apps/api/src/index.ts, apps/web/vite.config.ts, scripts/verify-pwa-startup.mjs
+- **结果**：用户确认手机端 265 条数据全部成功同步到云端
+
 ## Session: 2026-08-15 — 功能迭代 + 双重存储
 
 ### 预算 Bug 修复 (dd3d237)

@@ -4,7 +4,7 @@
 Eliminate the 2–10 second blank screen during iPhone home-screen PWA cold starts by rendering an immediate static shell, showing local data first, and keeping cloud synchronization off the critical rendering path; verify, push main, and deploy production.
 
 ## Current Phase
-Phase 8
+Phase 13
 
 ## Phases
 
@@ -84,6 +84,26 @@ Phase 8
 - [x] WorkBuddy 自动化: 每 6 小时 backup-cloud
 - **Status:** complete (全部已部署, 服务器 HEAD: 71752ca)
 
+### Phase 12: 本地备份体系 + 数据同步修复 (2026-08-16)
+- [x] 备份频率改为 24h，脱离 WorkBuddy 改用 macOS launchd
+- [x] 本地全栈接管（colima + Docker + PG + API + Caddy）
+- [x] 前端 API 自动故障转移（云→本地无缝切换）
+- [x] CORS 修复（PUT/DELETE/PATCH 跨域）
+- [x] 手机端同步状态栏（CSS display:none 修复 + 滚动 + 自动隐藏）
+- [x] amountCents Int→BigInt 溢出修复（同步 500 根因）
+- [x] PWA 自动更新机制修复（prompt→autoUpdate）
+- **Status:** complete (6 commits, 全部已部署, 服务器 HEAD: ffa0a54)
+
+### Phase 13: 云端失效后的本地栈修复 + 手机数据同步打通 (2026-09-25)
+- [x] 诊断三层数据存储现状（IndexedDB 唯一活跃 / 本地 PG 冻结 8-31 / **云端 47.74.3.104 已失效**：80/443 全关、SSH host key 变更、最后备份 8-29）
+- [x] 修复本地 API crash-loop（RestartCount 11428）：根因是 colima VM 丢失 qemu binfmt，注册 `tonistiigi/binfmt --install amd64` 解决
+- [x] 排除旧镜像 `--accept-data-loss` 数据降级风险：本地 8-16 旧镜像 schema 是 Int，数据库已是 bigint；拉取正确 `--platform linux/amd64` 新镜像（BigInt）后 `db push` 零变更
+- [x] 改进 `start-local-sync.sh`：启动前自动注册 binfmt + 自动拉取匹配镜像（防 VM 重启复发）
+- [x] 打通手机同步：诊断 fetchevent（SW NetworkFirst 拦截 + iOS 不信 IP 证书）、URL is not valid（手动输入字符串非法）；确认 **mDNS fallback 已自动生效**（bootstrap 200，JWT_SECRET 一致）
+- [x] 手机 8-31 后数据全部同步入本地 PG（3469 条 +53，最新 2026-09-24，serverVersion 122）
+- [x] 导出 Excel 存档：`Desktop/记账数据-截至2026-09-25.xlsx`（3321 条有效流水）
+- **Status:** complete（本地栈恢复 + 数据同步打通；**云端服务器失效待决策**；无新 commit，`start-local-sync.sh` 改动未提交）
+
 ## Key Questions
 1. Where should notes persist so they survive refresh and sync to cloud?
 2. How should anomaly IDs remain stable across refreshes and months?
@@ -113,6 +133,17 @@ Phase 8
 | `crontab` 在沙箱内报 "operation not permitted" | 直接 `crontab -` | 改用 WorkBuddy 自动化 + launchd plist (用户手动加载) |
 | Git push HTTPS 被 Clash 代理 127.0.0.1:10808 拦截 | `env -u ... git push` | 改用 SSH: `GIT_SSH_COMMAND="ssh -o ProxyCommand=none" git push git@github.com:...` |
 | npm install 移除 @rollup/rollup-darwin-arm64 | build 失败 | `npm install --no-save @rollup/rollup-darwin-arm64` 恢复 |
+| OrbStack 安装脚本失效 | 改用免 sudo 方案 | 直接下载 docker CLI + colima 二进制到 ~/bin |
+| Caddyfile.local 多余外层 `{` 导致崩溃循环 | 删除多余括号 | 修正 Caddyfile.local 语法 |
+| Caddy `:443` 无法预签证书 | 添加 `on_demand` | tls internal 加 on_demand 选项 |
+| restore-to-local 在已有表结构时失败 | 先 DROP SCHEMA | 恢复前先 DROP SCHEMA public CASCADE + CREATE SCHEMA |
+| 本地 arm64 Docker 构建失败 (tsup/esbuild) | 回退 GHCR amd64 镜像 | qemu 模拟运行 amd64 镜像 |
+| arm64 安装 @rollup/rollup-linux-x64-gnu 报错 | Dockerfile 条件判断 | 仅 x86_64 时安装 rollup 原生包 |
+| CORS 只允许 GET/HEAD/POST，PUT/DELETE 被拦截 | 显式声明全方法 | `methods: ["GET","HEAD","POST","PUT","DELETE","PATCH","OPTIONS"]` |
+| data-sync.sh last_tx 查错字段 (createdAt≠occurredAt) | 改查 occurredAt | 排除已删除记录，正确反映交易时间 |
+| 手机端 .sync-card 被 CSS display:none 隐藏 | 新增 mobile-sync-bar | 手机端顶部独立状态栏 |
+| sync/push 500: amountCents=9999999900 超过 integer 上限 | Int→BigInt | Prisma schema 迁移 + prisma db push 自动列迁移 |
+| PWA registerType:"prompt" 导致 iOS 无法更新 | 改为 autoUpdate | skipWaiting:true + clientsClaim:true |
 
 ## Notes
 - Confirmed requirements: all keypad friction points exist; add professional anomaly analysis and persistent analysis notes.
