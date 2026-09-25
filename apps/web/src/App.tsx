@@ -3233,7 +3233,7 @@ function Reports({ transactions, accounts, categories, budgets, analysisNotes, o
           <section className="panel pace-panel">
             <div className="chart-heading">
               <h2>本月消费节奏</h2>
-              <span>{monthLabel(month)} · 每日累计 vs 预算平均线</span>
+              <span>{monthLabel(month)} · 每日累计 vs 预算参考线</span>
             </div>
             <TrendFocusCards month={month} transactions={transactions} categories={categories} budgetCents={monthlyAnalysis.budgetCents} />
             <DailyPaceChart month={month} transactions={transactions} categories={categories} budgetCents={monthlyAnalysis.budgetCents} />

@@ -392,9 +392,9 @@ export function DailyPaceChart({ month, transactions, categories, budgetCents }:
       <div className={`pace-status ${budgetCents > 0 ? (paceDelta > 0 ? "over" : "under") : ""}`}>
         {budgetCents > 0 ? (
           paceDelta > 0 ? (
-            <span>日均 ¥{centsToYuan(dailyAverage)}，<b>超出预算平均线 ¥{centsToYuan(paceDelta)}</b>，照此节奏月底约 ¥{centsToYuan(projected)}</span>
+            <span>日均 ¥{centsToYuan(dailyAverage)}，<b>比预算快 ¥{centsToYuan(paceDelta)}</b>，照这个速度月底约 ¥{centsToYuan(projected)}</span>
           ) : (
-            <span>日均 ¥{centsToYuan(dailyAverage)}，<b>低于预算平均线 ¥{centsToYuan(Math.abs(paceDelta))}</b>，节奏良好</span>
+            <span>日均 ¥{centsToYuan(dailyAverage)}，<b>比预算慢 ¥{centsToYuan(Math.abs(paceDelta))}</b>，花得比计划的省</span>
           )
         ) : (
           <span>日均 ¥{centsToYuan(dailyAverage)}，未设日常预算，无法对比平均线（设置 → 预算管理）</span>
@@ -436,7 +436,7 @@ export function DailyPaceChart({ month, transactions, categories, budgetCents }:
       <div className="pace-legend">
         <span><i className="pace-swatch actual" />本月累计</span>
         <span><i className="pace-swatch prev" />上月累计</span>
-        {budgetCents > 0 && <span><i className="pace-swatch budget" />预算平均线</span>}
+        {budgetCents > 0 && <span><i className="pace-swatch budget" />预算参考线</span>}
         {isCurrent && <span><i className="pace-swatch projection" />按当前节奏预测</span>}
       </div>
     </div>
@@ -527,7 +527,7 @@ export function TrendFocusCards({ month, transactions, categories, budgetCents }
       <article className={`trend-focus-card ${toneOf(budgetDelta)}`}>
         <span>日均 vs 预算日均线</span>
         <strong>{budgetDelta === null ? "未设预算" : deltaText(budgetDelta)}</strong>
-        <em><TrendIcon delta={budgetDelta ?? 0} />{budgetDelta === null ? "设置日常预算后自动对比" : `预算日均 ¥${centsToYuan(budgetDailyAvg)} · 实际日均 ¥${centsToYuan(currentDailyAvg)}`}</em>
+        <em><TrendIcon delta={budgetDelta ?? 0} />{budgetDelta === null ? "设置日常预算后自动对比" : `预算每天可花 ¥${centsToYuan(budgetDailyAvg)} · 实际每天花 ¥${centsToYuan(currentDailyAvg)}`}</em>
       </article>
     </div>
   );
