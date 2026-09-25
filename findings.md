@@ -291,3 +291,41 @@
 - **修复**：`docker compose -f docker-compose.local.yml --env-file .env.local up -d --force-recreate caddy-local`（注意：配置没变时 `up -d` 不会重建容器，必须加 `--force-recreate`）
 - **部署流程补充**：本地 build 改动 dist 后，必须 force-recreate caddy-local 并 curl 验证 `https://localhost:8443/` 返回 200 且 App chunk 含新特征字符串
 - **手机 PWA origin 决定能否更新**：从云端地址（ledger.47.74.3.104.sslip.io）安装的 PWA 在云端失效后永远收不到更新，必须从 mDNS 地址重新添加到主屏幕（数据已同步入本地 PG，删除旧 PWA 安全）
+
+## 本地栈部署可复用流程（2026-09-25 固化）
+
+云端失效后，每次改动的完整上线步骤（前端，约 1 分钟）：
+
+```bash
+cd /Users/frori/Vibecoding/personal-ledger-pwa
+export PATH="$HOME/bin:$PATH"
+npm run typecheck && npm --workspace @ledger/web run test
+mv apps/web/dist /tmp/ledger-web-dist-$(date +%s)   # 规避沙箱 safe-delete shim
+npm run build
+docker compose -f docker-compose.local.yml --env-file .env.local up -d --force-recreate caddy-local
+curl -sk -o /dev/null -w "%{http_code}\n" https://localhost:8443/            # 期望 200
+curl -sk https://localhost:8443/assets/App-*.js | grep -c "<新特征字符串>"    # 期望 >=1
+git add <files> && git commit -m "..." && git push origin main               # 代理抖动时重试
+```
+
+后端改动（Prisma schema / API）额外步骤：
+
+```bash
+# 等 CI 构建 GHCR 镜像后
+docker pull --platform linux/amd64 ghcr.io/mr-z11/personal-ledger-pwa-api:main
+bash scripts/data-sync.sh backup-local                 # 迁移前备份
+docker compose -f docker-compose.local.yml --env-file .env.local up -d api-local
+docker logs personal-ledger-pwa-api-local-1 | tail     # 确认 prisma db push 无 --accept-data-loss 警告
+```
+
+注意点：
+- caddy 绑定挂载按目录解析，`mv` + 重建会让容器内挂载悬空（`ls /srv/web` 报 Operation not permitted）→ 必须 force-recreate
+- 配置未变化的服务，普通 `up -d` 不会重建容器
+- 手机端要看到前端变化：本地 origin 的 PWA 划掉重开两次（autoUpdate 后台下载）；云端 origin 的 PWA 无法更新，必须从 mDNS 地址重装
+
+## 新功能语义备忘（2026-09-25）
+
+- 蓄水池两个池子：日常消费额度（不含专项）/ 总开支额度（含专项），读数为磨砂玻璃卡片，水位≤85% 蓝绿、85-100% 琥珀、>100% 红并显示超支额
+- 消费节奏图口径：只统计日常消费；预算参考线 = 预算 ÷ 当月天数 × 今天；投影线 = 当前日均 × 当月天数
+- 趋势焦点卡：环比（上月同期）/ 同比（去年同月）/ 近3月 vs 前3月日均（±5% 视为持平）/ 日均 vs 预算日均
+- 大额阈值优先级：max(用户设定默认 ¥1000, 当月中位数×3 且当月支出 ≥8 笔)

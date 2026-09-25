@@ -6,16 +6,22 @@
 
 ## 2. 已完成并部署的变更（2026-09-25 最新）
 
-最新 commit `7796d90` 已推送 GitHub main 并部署到**本地 Mac 栈**（云端服务器仍失效，见第 3 节）。
+最新 commit `2da791d` 已推送 GitHub main；前端已构建并部署到**本地 Mac 栈**（云端服务器仍失效，见第 3 节）。
 
 | Commit | 描述 | 关键文件 | 状态 |
 |--------|------|---------|------|
-| `7796d90` | **预算两层（日常/总开支 scope）+ 首页双蓄水池 + 消费节奏图（预算平均线）+ 大额开销规律分析 + 工资提醒纯本地化 + 默认首页改总览** | schema.prisma, shared, serializers, api/index.ts, App.tsx, widgets.tsx(新), utils.ts(新), styles.css | 已部署本地栈 |
+| `7796d90` | **预算两层（日常/总开支 scope）+ 首页双蓄水池 + 消费节奏图（预算参考线）+ 大额开销规律分析 + 工资提醒纯本地化 + 默认首页改总览** | schema.prisma, shared, serializers, api/index.ts, App.tsx, widgets.tsx(新), utils.ts(新), styles.css | 已部署 |
+| `d1907cf` | 手机（≤480px）两个蓄水池保持横向两列（删除堆叠规则，收紧间距字号） | styles.css | 已部署 |
+| `717ff32` | 节奏图措辞口语化：「低于/超出预算平均线」→「比预算慢/快 ¥X」；图例改「预算参考线」；焦点卡改「预算每天可花 / 实际每天花」 | widgets.tsx, App.tsx | 已部署 |
+| `2da791d` | 蓄水池数字可读性：读数包进磨砂玻璃卡片（半透明米白 + backdrop-blur + 阴影），任意水位高对比 | widgets.tsx, styles.css | 已部署 |
+| `1929b20` / `7c6bacd` | 交接文件同步 + caddy 悬空挂载坑记录 | HANDOFF/findings/task_plan/progress | — |
 
 ### 2026-09-25 部署细节
 
 - CI (3609435) 构建 GHCR 镜像 → 本机 `docker pull --platform linux/amd64` → 备份（ledger-local-20260925-122935.sql, 3469 条）→ `compose up -d api-local` → 启动自动 `prisma db push` 添加 `Budget.scope` 列（已有 4 行预算全部落为 daily，正确）
-- 本地 API health 通过；前端 dist 本地重新构建，caddy 挂载即时生效
+- 本地 API health 通过；前端 dist 本地重新构建
+- **每次重建 dist 后必须 `up -d --force-recreate caddy-local`**（配置未变时普通 `up -d` 不会重建，绑定挂载会悬空 → 根路径 403，手机看不到任何更新）
+- 部署验证：`curl -sk https://localhost:8443/` 返回 200，且 App chunk / App css 含新特征字符串；`https://FrorideMacBook-Air.local:8443/` 返回 200
 - vitest 冒烟测试 6 项通过（apps/web/src/widgets.smoke.test.tsx）
 
 ### 历史变更（2026-08-16，云端失效前最后部署）
@@ -48,6 +54,8 @@
 - 本地 API：`https://localhost:8443/api` / `https://192.168.3.21:8443/api` / `https://FrorideMacBook-Air.local:8443/api`
 - 数据库：**3469 笔（2020-05-31 ~ 2026-09-24）**，bigint 金额列，serverVersion 122；**Budget 表 2026-09-25 新增 scope 列（daily/total）**
 - api-local 镜像：GHCR main @ 7796d90（含预算两层 + 工资本地化后端）
+- 前端静态文件：`apps/web/dist` 本地构建 @ 2da791d，由 caddy-local 挂载 `/srv/web`（**改 dist 后需 force-recreate caddy-local**）
+- 前端版本核对方法：`curl -sk https://localhost:8443/` → 200；`curl -sk https://localhost:8443/assets/App-*.js | grep -c "总开支额度"` → 1
 - 手机 8-31 后数据已于 2026-09-25 11:15 全部同步入本地 PG（用户确认）
 - 物理数据：`data/local-postgres/`（65MB，Docker 卷挂载，容器删除数据不丢）
 - **风险**：数据仅 Mac 单点，建议异地备份
@@ -111,6 +119,21 @@
 
 ## 6. 关键文件位置
 
+### 2026-09-25 新增/重构模块
+
+| 文件 | 用途 |
+|------|------|
+| `apps/web/src/widgets.tsx` | `BudgetReservoir`（蓄水池 SVG 水位）、`SalaryBanner` + `LocalSalaryReminderPanel`（纯本地工资提醒）、`DailyPaceChart`（每日累计 vs 预算参考线）、`TrendFocusCards`（环比/同比/近3月趋势/日均对比）、`BigExpensePanel`（大额清单 + 规律识别） |
+| `apps/web/src/utils.ts` | 从 App.tsx 抽出的纯函数（日期/金额/专项分类判定/预算汇总），widgets 与 App 共用 |
+| `apps/web/src/widgets.smoke.test.tsx` | vitest + renderToString 冒烟测试（6 项，无浏览器环境可跑） |
+
+### 关键行为约定（改动前务必了解）
+
+- 预算模型：`categoryId` 非空 = 分类预算；`categoryId=null & scope=daily` = 日常消费预算；`categoryId=null & scope=total` = 总开支预算（含日常+专项）
+- 日常消费 vs 专项支出：靠 `isNonDailyExpenseCategory()` 关键词正则划分（贷款/保险/教育/购车养车等），节奏图与趋势卡只统计日常消费
+- 默认首页是 `overview`（蓄水池），记账 FAB 仍指向 `entry`
+- 本地设置（不同步服务器）：`localStorage` 键 `ledger-salary-reminder`（工资提醒）、`ledger-big-expense-threshold`（大额判定线）、`ledger-salary-dismissed`、`ledger-salary-notified`
+
 | 文件 | 用途 |
 |------|------|
 | `apps/web/src/App.tsx` | 前端主应用（含 .mobile-sync-bar 手机同步状态栏） |
@@ -171,13 +194,17 @@
 - 不要把"无分类预算"直接当日常预算用；Budget 有 scope 字段，查询必须过滤 `scope ?? "daily"`，否则总开支预算会串进日常统计
 - 不要试图恢复旧版 Web Push 工资提醒面板（前端已移除）；工资提醒是纯本地 localStorage 方案，后端 notifications.ts 保留但未被前端调用
 - 不要在沙箱里直接 vite build 而不处理 dist 清空拦截（safe-delete shim）；先 `mv apps/web/dist /tmp/...` 再 build
+- **不要忘了：改 dist 后必须 `docker compose -f docker-compose.local.yml --env-file .env.local up -d --force-recreate caddy-local`**，否则 caddy 挂载悬空 → 页面 403，手机看不到任何更新（配置未变时普通 `up -d` 不重建容器）
+- 不要在"总开支预算"存在时把它当日常预算用；`monthBudgetTotal` 已按 `scope ?? "daily"` 过滤，勿改回 `find(!categoryId)`
 
 ## 10. 待确认/建议下一步
 
+- **手机端 PWA 需要用户操作确认**：若 PWA 是从云端 origin（ledger.47.74.3.104.sslip.io）安装的，云端失效后永远收不到更新，需从 `https://FrorideMacBook-Air.local:8443` 重新「添加到主屏幕」（数据已全部入本地 PG，删除旧 PWA 安全）；若本就是本地 origin 安装，划掉重开两次即可。**用户是否已完成重装、手机实测反馈尚未回收**
+- **用户已提出的观察点**：首页蓄水池数字可读性（已改为磨砂玻璃读数卡，待手机实测确认）；两个蓄水池横向排列（已修）
 - **`scripts/start-local-sync.sh` 的改进尚未提交**（自动注册 binfmt + 自动拉镜像），建议提交
 - **云端 47.74.3.104 归属待确认**：是否重装/被回收？决定是重建云端还是彻底转向纯本地架构
 - **数据异地备份（紧迫）**：当前数据仅 Mac 单点 + backups/，建议把 backups/ 自动复制到云盘/移动硬盘
 - 建议用户检查那条金额约 1 亿元的交易（amountCents=9999999900），很可能是输入错误
-- 导出功能在 iOS PWA 独立模式静默失败（`a.download` 被 WebKit 忽略）；如需手机导出，改用 Web Share API（`navigator.share`），但仅本地 origin 的 PWA 能受益（云端 origin 无法更新）
+- 导出功能在 iOS PWA 独立模式静默失败（`a.download` 被 WebKit 忽略）；如需手机导出，改用 Web Share API（`navigator.share`），但仅本地 origin 的 PWA 能受益
 - `limactl` 二进制缺失导致 `colima status/list` 失败；docker 仍可用，但建议修复 lima PATH 便于管理 VM
 - findings.md 中 P0 项「reliable-sync 工作包」（串行化 syncNow、逐行 ack outbox、启动先 flush 再 pull）尚未实施，是后续可靠性改进的首选

@@ -4,7 +4,7 @@
 Eliminate the 2–10 second blank screen during iPhone home-screen PWA cold starts by rendering an immediate static shell, showing local data first, and keeping cloud synchronization off the critical rendering path; verify, push main, and deploy production.
 
 ## Current Phase
-Phase 14
+Phase 15
 
 ## Phases
 
@@ -113,6 +113,15 @@ Phase 14
 - [x] 核心洞察 6 卡降级为折叠 details；纯函数抽取到 apps/web/src/utils.ts；新组件集中在 widgets.tsx + vitest 冒烟测试 6 项
 - [x] 部署到本地栈：CI 构建 GHCR → docker pull --platform linux/amd64 → 备份 → compose up api-local → prisma db push 加 scope 列（默认 daily）→ health OK；caddy 挂载 dist 即新前端
 - **Status:** complete（已部署到本地栈；云端服务器仍失效）
+
+### Phase 15: 上线后用户反馈三轮修复 (2026-09-25)
+- [x] 手机看不到更新排查：caddy 绑定挂载悬空（mv dist 重建导致）→ `up -d --force-recreate caddy-local`，root 恢复 200（commit 1929b20 记录）
+- [x] 蓄水池手机端横向排列：删除 ≤480px 单列规则，改收紧间距字号（d1907cf）
+- [x] 节奏图措辞口语化：低于/超出预算平均线 → 比预算慢/快 ¥X；图例与焦点卡同步改写（717ff32）
+- [x] 蓄水池数字可读性：读数包进磨砂玻璃卡片（2da791d）
+- [x] 解答用户疑问："低于预算平均线 ¥1571.25" = 5000÷30×25 − 实际日常消费 2595.42
+- [x] 交接文件四件套同步（task_plan / findings / progress / HANDOFF）
+- **Status:** complete（4 个 commit 已推送，本地栈已部署；等待手机实测反馈）
 
 ## Key Questions
 1. Where should notes persist so they survive refresh and sync to cloud?
