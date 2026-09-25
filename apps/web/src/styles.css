@@ -5195,6 +5195,27 @@ input[type="month"],
 
 @media (max-width: 480px) {
   .reservoir-grid {
-    grid-template-columns: 1fr;
+    gap: 0.45rem;
+  }
+
+  .reservoir-head strong {
+    font-size: 0.88rem;
+  }
+
+  .reservoir-head span {
+    font-size: 0.62rem;
+  }
+
+  .reservoir-center strong {
+    font-size: 1.25rem;
+  }
+
+  .reservoir-center span {
+    font-size: 0.58rem;
+  }
+
+  .reservoir-foot {
+    font-size: 0.6rem;
+    line-height: 1.35;
   }
 }
