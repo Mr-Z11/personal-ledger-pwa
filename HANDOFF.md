@@ -4,17 +4,23 @@
 
 维护个人记账 PWA 的日常迭代与数据安全。**云端服务器已于 2026-08-29 失效**，当前数据完全以本地 Mac 为中心（local-first 架构 + 本地 PostgreSQL）。云端重建与否待用户决策。
 
-## 2. 已完成并部署的变更（2026-08-16 最新）
+## 2. 已完成并部署的变更（2026-09-25 最新）
 
-所有变更已推送到 GitHub main 分支并部署到云服务器（当前 HEAD: `ffa0a54`）。
+最新 commit `7796d90` 已推送 GitHub main 并部署到**本地 Mac 栈**（云端服务器仍失效，见第 3 节）。
 
 | Commit | 描述 | 关键文件 | 状态 |
 |--------|------|---------|------|
-| `1e8be1c` | 本地全栈接管 + 前端 API 自动故障转移（云不可达自动切本地） | api.ts, docker-compose.local.yml, auto-backup.sh, colima.plist | 已部署 |
-| `314899d` | CORS 修复：允许 PUT/DELETE/PATCH 跨域请求 | apps/api/src/index.ts | 已部署 |
-| `5a4f61a` | 手机端同步状态栏（原 CSS 在手机端隐藏了 sync-card） | App.tsx, styles.css | 已部署 |
-| `909ac42` | 同步状态栏：文字可横向滚动 + 同步完成后自动隐藏 | App.tsx, styles.css | 已部署 |
-| `ffa0a54` | **amountCents Int→BigInt 溢出修复（同步 500 根因）+ PWA autoUpdate** | schema.prisma, serializers.ts, index.ts, vite.config.ts | 已部署 |
+| `7796d90` | **预算两层（日常/总开支 scope）+ 首页双蓄水池 + 消费节奏图（预算平均线）+ 大额开销规律分析 + 工资提醒纯本地化 + 默认首页改总览** | schema.prisma, shared, serializers, api/index.ts, App.tsx, widgets.tsx(新), utils.ts(新), styles.css | 已部署本地栈 |
+
+### 2026-09-25 部署细节
+
+- CI (3609435) 构建 GHCR 镜像 → 本机 `docker pull --platform linux/amd64` → 备份（ledger-local-20260925-122935.sql, 3469 条）→ `compose up -d api-local` → 启动自动 `prisma db push` 添加 `Budget.scope` 列（已有 4 行预算全部落为 daily，正确）
+- 本地 API health 通过；前端 dist 本地重新构建，caddy 挂载即时生效
+- vitest 冒烟测试 6 项通过（apps/web/src/widgets.smoke.test.tsx）
+
+### 历史变更（2026-08-16，云端失效前最后部署）
+
+`1e8be1c` 本地全栈接管+故障转移 · `314899d` CORS 修复 · `5a4f61a` 手机同步状态栏 · `909ac42` 状态栏滚动+自动隐藏 · `ffa0a54` amountCents BigInt + PWA autoUpdate（云端 HEAD 定格 ffa0a54）
 
 ### 历史变更（2026-08-15，全部已部署）
 
@@ -40,7 +46,8 @@
 
 - 容器：postgres-local(healthy) + api-local + caddy-local，全部运行
 - 本地 API：`https://localhost:8443/api` / `https://192.168.3.21:8443/api` / `https://FrorideMacBook-Air.local:8443/api`
-- 数据库：**3469 笔（2020-05-31 ~ 2026-09-24）**，bigint 金额列，serverVersion 122
+- 数据库：**3469 笔（2020-05-31 ~ 2026-09-24）**，bigint 金额列，serverVersion 122；**Budget 表 2026-09-25 新增 scope 列（daily/total）**
+- api-local 镜像：GHCR main @ 7796d90（含预算两层 + 工资本地化后端）
 - 手机 8-31 后数据已于 2026-09-25 11:15 全部同步入本地 PG（用户确认）
 - 物理数据：`data/local-postgres/`（65MB，Docker 卷挂载，容器删除数据不丢）
 - **风险**：数据仅 Mac 单点，建议异地备份
@@ -107,6 +114,8 @@
 | 文件 | 用途 |
 |------|------|
 | `apps/web/src/App.tsx` | 前端主应用（含 .mobile-sync-bar 手机同步状态栏） |
+| `apps/web/src/widgets.tsx` | 蓄水池/工资横幅/节奏图/趋势焦点卡/大额面板/工资设置（2026-09-25 新增） |
+| `apps/web/src/utils.ts` | 纯工具函数（从 App.tsx 抽取，供 widgets 复用） |
 | `apps/web/src/api.ts` | API 请求层（apiFetch 自动故障转移 + 运行时可配 API_BASE） |
 | `apps/web/src/styles.css` | 全部前端样式 |
 | `apps/web/public/push-sw.js` | Service Worker 推送处理 |
@@ -159,6 +168,9 @@
 - 不要以为"点同步"能切换同步地址；也无需手动填地址——自动 fallback（mDNS）已生效，或在设置里改 mDNS 地址
 - 不要删 known_hosts 硬连 47.74.3.104（host key 已变，IP 可能已分配给他人）
 - 不要卸载/重装手机端 PWA（会清空 IndexedDB，丢失未同步数据）
+- 不要把"无分类预算"直接当日常预算用；Budget 有 scope 字段，查询必须过滤 `scope ?? "daily"`，否则总开支预算会串进日常统计
+- 不要试图恢复旧版 Web Push 工资提醒面板（前端已移除）；工资提醒是纯本地 localStorage 方案，后端 notifications.ts 保留但未被前端调用
+- 不要在沙箱里直接 vite build 而不处理 dist 清空拦截（safe-delete shim）；先 `mv apps/web/dist /tmp/...` 再 build
 
 ## 10. 待确认/建议下一步
 

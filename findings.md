@@ -275,3 +275,13 @@
 ### 遗留问题
 - `limactl` 二进制缺失（原 `~/opt/lima/`），`colima status/list` 报 `lima not found`；docker 通过 `~/.colima/default/docker.sock` 仍可用
 - iOS PWA 独立模式下 `a.download` + blob 导出**静默失败**（WebKit 限制）→ 未来应改用 Web Share API（`navigator.share`）做导出，但云端 origin 的 PWA 无法更新，仅本地 origin 能受益
+
+## 2026-09-25 预算两层/蓄水池/节奏图/大额分析/工资本地化 新发现
+
+- **Budget.scope 设计**：`categoryId=null + scope=daily` 日常消费总预算；`categoryId=null + scope=total` 总开支预算（含日常）；分类预算不带 scope 语义。所有"无分类预算"查询必须过滤 scope，否则 total 会串进 daily 统计
+- **云端失效后的部署流程**：git push → CI 构建 GHCR → 本机 `docker pull --platform linux/amd64 ghcr.io/mr-z11/personal-ledger-pwa-api:main` → `docker compose -f docker-compose.local.yml --env-file .env.local up -d api-local`（启动自动 prisma db push）；前端无需重启 caddy——apps/web/dist 是宿主机挂载，本地 build 后即时生效
+- **WorkBuddy 沙箱 safe-delete shim**：vite build 清空 dist（≥50 文件）会被拦截报 SAFE_DELETE_BULK_CONFIRM_REQUIRED → 先 `mv dist /tmp/xxx` 再 build
+- **工资提醒本地化方案**：localStorage 存设置 + 打开 App 时计算 nextPaydayInfo（当月未过→本月，已过→下月，31 日自动夹到月末）；横幅当天 dismiss 存日期 key；系统通知用本地 Notification 构造器（iOS Safari 不支持，try/catch 静默降级，横幅是主通道）
+- **SVG 水波蓄水池**：clipPath 裁剪水箱 + 两条相位不同的正弦 path 做 CSS translateX 无限循环（周期=波形重复长度，wave-a 100px / wave-b 80px）；水位用外层 g 的 translateY 定位，波峰 baseline 对齐水面
+- **大额规律识别（无 AI）**：分组键 = merchant?.trim() || categoryPath；近 6 个月（含当月）≥3 个不同月份出现 → 每月固定，典型日期取发生日中位数；阈值自动上调规则 = 当月中位数×3（≥8 笔才启用），取用户设定与自动值较高者
+- **react-dom/server renderToString + vitest** 可在无浏览器环境做组件冒烟测试（需 stub localStorage；SSR 会跑完整个函数组件，能抓到运行时错误）

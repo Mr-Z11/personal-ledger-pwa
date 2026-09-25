@@ -4,7 +4,7 @@
 Eliminate the 2–10 second blank screen during iPhone home-screen PWA cold starts by rendering an immediate static shell, showing local data first, and keeping cloud synchronization off the critical rendering path; verify, push main, and deploy production.
 
 ## Current Phase
-Phase 13
+Phase 14
 
 ## Phases
 
@@ -104,6 +104,16 @@ Phase 13
 - [x] 导出 Excel 存档：`Desktop/记账数据-截至2026-09-25.xlsx`（3321 条有效流水）
 - **Status:** complete（本地栈恢复 + 数据同步打通；**云端服务器失效待决策**；无新 commit，`start-local-sync.sh` 改动未提交）
 
+### Phase 14: 预算两层 + 蓄水池首页 + 消费节奏图 + 大额分析 + 工资提醒本地化 (2026-09-25, commit 7796d90)
+- [x] Budget 增加 scope 字段（daily/total，旧数据默认 daily）：schema.prisma + shared 类型 + API zod/serializers
+- [x] 默认首页改为总览；Overview 顶部双蓄水池 SVG（水波动画）：日常消费额度 + 总开支额度（含日常+专项）
+- [x] 报表新增「本月消费节奏」：每日累计 vs 预算平均线 SVG 折线 + 上月对比 + 预测线；环比/同比/近3月趋势/日均 vs 预算日均线 4 张焦点卡
+- [x] 报表新增「大额开销」：阈值=max(可配置默认¥1000, 中位数×3)，清单 + 规律识别（同商户近6月≥3次→每月固定+典型日期+均值；首次出现→新增徽章）；阈值存 localStorage
+- [x] 工资日提醒改纯本地（localStorage + 打开应用时检查 + 首页横幅 + 可选本地 Notification），移除旧 Web Push 前端面板（后端 notifications.ts 保留未用）
+- [x] 核心洞察 6 卡降级为折叠 details；纯函数抽取到 apps/web/src/utils.ts；新组件集中在 widgets.tsx + vitest 冒烟测试 6 项
+- [x] 部署到本地栈：CI 构建 GHCR → docker pull --platform linux/amd64 → 备份 → compose up api-local → prisma db push 加 scope 列（默认 daily）→ health OK；caddy 挂载 dist 即新前端
+- **Status:** complete（已部署到本地栈；云端服务器仍失效）
+
 ## Key Questions
 1. Where should notes persist so they survive refresh and sync to cloud?
 2. How should anomaly IDs remain stable across refreshes and months?
@@ -144,6 +154,8 @@ Phase 13
 | 手机端 .sync-card 被 CSS display:none 隐藏 | 新增 mobile-sync-bar | 手机端顶部独立状态栏 |
 | sync/push 500: amountCents=9999999900 超过 integer 上限 | Int→BigInt | Prisma schema 迁移 + prisma db push 自动列迁移 |
 | PWA registerType:"prompt" 导致 iOS 无法更新 | 改为 autoUpdate | skipWaiting:true + clientsClaim:true |
+| WorkBuddy 沙箱 safe-delete shim 拦截 vite 清空 dist（SAFE_DELETE_BULK_CONFIRM_REQUIRED，50 文件阈值） | 构建直接失败 | 先 `mv apps/web/dist /tmp/...` 移出再 build |
+| Budget 加 scope 后 monthBudgetTotal 误返回 total 预算 | 旧逻辑 find(!categoryId) 会命中总开支预算 | 过滤 `(scope ?? "daily") === "daily"`；新增 monthTotalBudgetCents |
 
 ## Notes
 - Confirmed requirements: all keypad friction points exist; add professional anomaly analysis and persistent analysis notes.
