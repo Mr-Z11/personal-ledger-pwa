@@ -285,3 +285,9 @@
 - **SVG 水波蓄水池**：clipPath 裁剪水箱 + 两条相位不同的正弦 path 做 CSS translateX 无限循环（周期=波形重复长度，wave-a 100px / wave-b 80px）；水位用外层 g 的 translateY 定位，波峰 baseline 对齐水面
 - **大额规律识别（无 AI）**：分组键 = merchant?.trim() || categoryPath；近 6 个月（含当月）≥3 个不同月份出现 → 每月固定，典型日期取发生日中位数；阈值自动上调规则 = 当月中位数×3（≥8 笔才启用），取用户设定与自动值较高者
 - **react-dom/server renderToString + vitest** 可在无浏览器环境做组件冒烟测试（需 stub localStorage；SSR 会跑完整个函数组件，能抓到运行时错误）
+
+### 部署后手机看不到更新（2026-09-25 第二次会话）
+- **根因**：为绕过 safe-delete shim 把 `apps/web/dist` `mv` 到 /tmp 后重新 build → colima/virtiofs 绑定挂载按 inode 解析，caddy 容器内的 `/srv/web` 变成悬空挂载（`ls` 报 Operation not permitted，根路径 403 空响应）
+- **修复**：`docker compose -f docker-compose.local.yml --env-file .env.local up -d --force-recreate caddy-local`（注意：配置没变时 `up -d` 不会重建容器，必须加 `--force-recreate`）
+- **部署流程补充**：本地 build 改动 dist 后，必须 force-recreate caddy-local 并 curl 验证 `https://localhost:8443/` 返回 200 且 App chunk 含新特征字符串
+- **手机 PWA origin 决定能否更新**：从云端地址（ledger.47.74.3.104.sslip.io）安装的 PWA 在云端失效后永远收不到更新，必须从 mDNS 地址重新添加到主屏幕（数据已同步入本地 PG，删除旧 PWA 安全）
