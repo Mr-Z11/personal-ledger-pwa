@@ -257,9 +257,11 @@ export function BudgetReservoir({ title, note, spentCents, budgetCents, accent }
             <rect className="reservoir-outline empty-outline" x="30" y="14" width="140" height="210" rx="16" />
           </svg>
           <div className="reservoir-center">
-            <strong>未设预算</strong>
-            <span>本月已花 ¥{centsToYuan(spentCents)}</span>
-            <em>设置 → 预算管理</em>
+            <div className="reservoir-readout">
+              <strong>未设预算</strong>
+              <span>本月已花 ¥{centsToYuan(spentCents)}</span>
+              <em>设置 → 预算管理</em>
+            </div>
           </div>
         </div>
       </article>
@@ -289,9 +291,11 @@ export function BudgetReservoir({ title, note, spentCents, budgetCents, accent }
           <rect className="reservoir-outline" x="30" y="14" width="140" height="210" rx="16" />
         </svg>
         <div className="reservoir-center">
-          <strong>{Math.round(ratio * 100)}%</strong>
-          <span>¥{centsToYuan(spentCents)} / ¥{centsToYuan(budgetCents)}</span>
-          {over && <em className="reservoir-over-badge">超支 ¥{centsToYuan(spentCents - budgetCents)}</em>}
+          <div className="reservoir-readout">
+            <strong>{Math.round(ratio * 100)}%</strong>
+            <span>¥{centsToYuan(spentCents)} / ¥{centsToYuan(budgetCents)}</span>
+            {over && <em className="reservoir-over-badge">超支 ¥{centsToYuan(spentCents - budgetCents)}</em>}
+          </div>
         </div>
       </div>
       <footer className="reservoir-foot">

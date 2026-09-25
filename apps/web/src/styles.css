@@ -4640,30 +4640,44 @@ input[type="month"],
   position: absolute;
   inset: 0;
   display: flex;
-  flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 0.14rem;
   text-align: center;
   pointer-events: none;
-  padding: 0 1.4rem;
+  padding: 0 1.2rem;
 }
 
-.reservoir-center strong {
-  font-size: 1.9rem;
+.reservoir-readout {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.16rem;
+  background: rgba(255, 253, 247, 0.88);
+  border: 1px solid rgba(49, 71, 58, 0.14);
+  border-radius: 1rem;
+  padding: 0.55rem 0.95rem;
+  box-shadow: 0 3px 10px rgba(36, 49, 39, 0.16);
+  backdrop-filter: blur(3px);
+  -webkit-backdrop-filter: blur(3px);
+}
+
+.reservoir-readout strong {
+  font-size: 1.8rem;
+  font-weight: 800;
   color: #243127;
-  text-shadow: 0 1px 0 rgba(255, 253, 247, 0.65);
+  line-height: 1.1;
 }
 
-.reservoir-center span {
-  font-size: 0.72rem;
+.reservoir-readout span {
+  font-size: 0.78rem;
+  font-weight: 600;
   color: #3c4a40;
-  text-shadow: 0 1px 0 rgba(255, 253, 247, 0.65);
+  white-space: nowrap;
 }
 
-.reservoir-center em {
+.reservoir-readout em {
   font-style: normal;
-  font-size: 0.7rem;
+  font-size: 0.72rem;
   color: #8a7154;
 }
 
@@ -5152,12 +5166,17 @@ input[type="month"],
     padding: 0.6rem 0.55rem 0.45rem;
   }
 
-  .reservoir-center strong {
-    font-size: 1.4rem;
+  .reservoir-readout {
+    padding: 0.42rem 0.7rem;
+    border-radius: 0.85rem;
   }
 
-  .reservoir-center span {
-    font-size: 0.62rem;
+  .reservoir-readout strong {
+    font-size: 1.45rem;
+  }
+
+  .reservoir-readout span {
+    font-size: 0.66rem;
   }
 
   .reservoir-foot {
@@ -5206,12 +5225,26 @@ input[type="month"],
     font-size: 0.62rem;
   }
 
-  .reservoir-center strong {
-    font-size: 1.25rem;
+  .reservoir-readout {
+    padding: 0.36rem 0.6rem;
+    border-radius: 0.75rem;
+    gap: 0.1rem;
   }
 
-  .reservoir-center span {
-    font-size: 0.58rem;
+  .reservoir-head strong {
+    font-size: 0.88rem;
+  }
+
+  .reservoir-head span {
+    font-size: 0.62rem;
+  }
+
+  .reservoir-readout strong {
+    font-size: 1.3rem;
+  }
+
+  .reservoir-readout span {
+    font-size: 0.6rem;
   }
 
   .reservoir-foot {
