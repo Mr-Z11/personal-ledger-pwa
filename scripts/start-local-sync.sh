@@ -21,6 +21,26 @@ if [ ! -f .env.local ]; then
   read -p "Press Enter after editing .env.local, or Ctrl+C to cancel..."
 fi
 
+# On Apple Silicon, the GHCR API image is linux/amd64 and needs qemu binfmt.
+# colima VMs lose the binfmt registration on restart, which makes the api
+# container crash-loop with "exec format error". Re-register it when missing.
+if [ "$(uname -m)" = "arm64" ]; then
+  if ! docker run --rm --privileged tonistiigi/binfmt 2>/dev/null | grep -q "linux/amd64"; then
+    echo "Registering amd64 emulation (needed after a VM restart)..."
+    docker run --rm --privileged tonistiigi/binfmt --install amd64 >/dev/null
+    echo "✅ amd64 emulation registered."
+  fi
+fi
+
+# The api image must match the database schema. An outdated local image makes
+# `prisma db push` demand --accept-data-loss, which would downgrade the BigInt
+# money columns and corrupt real data. Refresh the image before starting.
+# Note: docker pull needs an explicit platform, otherwise it looks for an
+# arm64 manifest that does not exist.
+echo "Ensuring API image is up to date..."
+docker pull --platform linux/amd64 "${API_IMAGE:-ghcr.io/mr-z11/personal-ledger-pwa-api:main}" >/dev/null 2>&1 \
+  || echo "⚠️  Could not reach GHCR. Using the cached image."
+
 echo "Starting local sync server..."
 docker compose -f docker-compose.local.yml --env-file .env.local up -d
 

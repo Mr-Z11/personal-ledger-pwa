@@ -51,7 +51,7 @@ count_records_local() {
 last_tx_local() {
   container_running "$LOCAL_PG" || { echo "n/a"; return; }
   docker exec "$LOCAL_PG" psql -U "$PG_USER" -d "$PG_DB" -t -A -c \
-    "SELECT to_char(max(\"createdAt\"), 'YYYY-MM-DD HH24:MI:SS') FROM \"Transaction\";" 2>/dev/null || echo "error"
+    "SELECT to_char(max(\"occurredAt\"), 'YYYY-MM-DD HH24:MI:SS') FROM \"Transaction\" WHERE \"deletedAt\" IS NULL;" 2>/dev/null || echo "error"
 }
 
 # Count records in cloud DB (small query — direct ssh is fine)
@@ -62,7 +62,7 @@ count_records_cloud() {
 
 last_tx_cloud() {
   ssh_ok || { echo "n/a"; return; }
-  ssh "$SSH_ALIAS" "docker exec $CLOUD_PG psql -U $PG_USER -d $PG_DB -t -A -c \"SELECT to_char(max(\\\"createdAt\\\"), 'YYYY-MM-DD HH24:MI:SS') FROM \\\"Transaction\\\";\"" 2>/dev/null || echo "error"
+  ssh "$SSH_ALIAS" "docker exec $CLOUD_PG psql -U $PG_USER -d $PG_DB -t -A -c \"SELECT to_char(max(\\\"occurredAt\\\"), 'YYYY-MM-DD HH24:MI:SS') FROM \\\"Transaction\\\" WHERE \\\"deletedAt\\\" IS NULL;\"" 2>/dev/null || echo "error"
 }
 
 # Dump cloud DB → local file via compressed transfer.
