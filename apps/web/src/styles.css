@@ -5784,7 +5784,7 @@ input[type="month"],
 
 .plan-month-row {
   display: grid;
-  grid-template-columns: minmax(4.4rem, 0.9fr) repeat(4, minmax(0, 1fr));
+  grid-template-columns: minmax(4.4rem, 0.9fr) repeat(5, minmax(0, 1fr));
   gap: 0.5rem;
   align-items: center;
   background: #faf6ee;
@@ -5829,6 +5829,88 @@ input[type="month"],
 
 .plan-month-lastyear b {
   color: #8a7154;
+}
+
+.plan-month-ins b {
+  color: #2f7d4f;
+}
+
+.plan-kpi-ins {
+  color: #2f7d4f !important;
+}
+
+.plan-insurance {
+  padding: 0;
+}
+
+.plan-insurance-body {
+  padding: 0 1.1rem 1.1rem;
+  display: grid;
+  gap: 0.6rem;
+}
+
+.plan-insurance-list {
+  display: grid;
+  gap: 0.4rem;
+}
+
+.plan-insurance-row {
+  display: grid;
+  grid-template-columns: 4.6rem minmax(0, 1.4fr) minmax(0, 1fr) 2rem;
+  gap: 0.4rem;
+  align-items: center;
+}
+
+.plan-insurance-row select,
+.plan-insurance-row input {
+  min-width: 0;
+  border: 1px solid #e0d4bc;
+  border-radius: 0.5rem;
+  padding: 0.4rem 0.5rem;
+  background: #fffdf7;
+  font-size: 0.8rem;
+  color: #31473a;
+}
+
+.plan-insurance-row .icon-button {
+  min-height: 2rem;
+  font-size: 1rem;
+  color: #a03d24;
+}
+
+.plan-insurance-import {
+  border: 1px dashed #d9cbae;
+  border-radius: 0.6rem;
+  padding: 0.5rem 0.7rem;
+}
+
+.plan-insurance-import summary {
+  cursor: pointer;
+  font-size: 0.74rem;
+  color: #1f5f74;
+  list-style: none;
+}
+
+.plan-insurance-import summary::-webkit-details-marker {
+  display: none;
+}
+
+.plan-insurance-import textarea {
+  width: 100%;
+  margin: 0.5rem 0 0.4rem;
+  border: 1px solid #e0d4bc;
+  border-radius: 0.5rem;
+  padding: 0.5rem;
+  background: #fffdf7;
+  font-size: 0.78rem;
+  color: #31473a;
+  resize: vertical;
+}
+
+@media (max-width: 940px) {
+  .plan-insurance-row {
+    grid-template-columns: 4.2rem minmax(0, 1.3fr) minmax(0, 1fr) 1.8rem;
+  }
 }
 
 .plan-chart-wrap {

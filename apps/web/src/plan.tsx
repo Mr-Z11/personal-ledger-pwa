@@ -1,7 +1,8 @@
-import { centsToYuan, monthKey, type Budget, type Category, type Transaction } from "@ledger/shared";
-import { useMemo } from "react";
+import { centsToYuan, monthKey, yuanToCents, type Budget, type Category, type Transaction } from "@ledger/shared";
+import { useMemo, useState } from "react";
 import {
   beijingDateTimeParts,
+  categoryPath,
   dailyExpenseTransactions,
   dateKey,
   daysInMonth,
@@ -110,6 +111,188 @@ function compactYuan(cents: number) {
   return `¥${Math.round(yuan)}`;
 }
 
+/* ------------------------------------------------------------------ */
+/* 保险缴费日历（本机 localStorage，不进仓库、不同步）                     */
+/* ------------------------------------------------------------------ */
+
+export type InsuranceItem = {
+  id: string;
+  name: string;
+  /** 缴费月份 1-12 */
+  month: number;
+  amountCents: number;
+  note?: string;
+};
+
+const INSURANCE_SCHEDULE_KEY = "ledger-insurance-schedule";
+
+export function loadInsuranceSchedule(): InsuranceItem[] {
+  try {
+    const raw = localStorage.getItem(INSURANCE_SCHEDULE_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw) as Partial<InsuranceItem>[];
+    return parsed
+      .filter((item) => item && typeof item.name === "string" && Number(item.month) >= 1 && Number(item.month) <= 12)
+      .map((item, index) => ({
+        id: typeof item.id === "string" ? item.id : `ins-${index}`,
+        name: item.name as string,
+        month: Number(item.month),
+        amountCents: Math.max(0, Math.round(Number(item.amountCents) || 0)),
+        note: typeof item.note === "string" ? item.note : undefined
+      }));
+  } catch {
+    return [];
+  }
+}
+
+export function saveInsuranceSchedule(items: InsuranceItem[]) {
+  localStorage.setItem(INSURANCE_SCHEDULE_KEY, JSON.stringify(items));
+}
+
+/** 某月（"2026-11"）的日历保费合计 */
+function scheduledInsuranceCents(items: InsuranceItem[], monthKeyValue: string) {
+  const month = Number(monthKeyValue.slice(5, 7));
+  return items.filter((item) => item.month === month).reduce((sum, item) => sum + item.amountCents, 0);
+}
+
+/** 历史保险月均：近 12 个月（含当月）保险类支出平均值（零月份计入，代表历史上的月均负担） */
+function historyInsuranceMonthlyAvg(transactions: Transaction[], categories: Category[], endMonth: string) {
+  let total = 0;
+  for (let offset = 11; offset >= 0; offset -= 1) {
+    const key = offsetMonthKey(endMonth, -offset);
+    total += transactions
+      .filter((item) => {
+        if (item.type !== "expense" || !dateKey(item.occurredAt).startsWith(key)) return false;
+        const category = categories.find((entry) => entry.id === item.categoryId);
+        return /保险/.test(categoryPath(category, categories));
+      })
+      .reduce((sum, item) => sum + item.amountCents, 0);
+  }
+  return Math.round(total / 12);
+}
+
+/** 保险日历修正：预测总支出 = 原预测 − 历史保险月均 + 当月日历保费（下限为当月预测日常消费） */
+function applyInsuranceAdjustment(totalCents: number, historyAvgCents: number, scheduledCents: number, dailyFloorCents: number) {
+  return Math.max(dailyFloorCents, totalCents - historyAvgCents + scheduledCents);
+}
+
+function newInsuranceItem(): InsuranceItem {
+  return { id: `ins-${Date.now()}-${Math.round(Math.random() * 1e6)}`, name: "", month: 1, amountCents: 0 };
+}
+
+/** 解析粘贴文本：每行「月份 名称 金额」，如「11月 重疾险续费 4700」 */
+export function parseInsuranceText(text: string): InsuranceItem[] {
+  const items: InsuranceItem[] = [];
+  text.split(/\r?\n/).forEach((line) => {
+    const trimmed = line.trim();
+    if (!trimmed) return;
+    const match = trimmed.match(/^(\d{1,2})\s*月?\s*[、,，.\s]+\s*(.+?)\s+([\d,]+(?:\.\d+)?)\s*元?\s*$/);
+    if (!match) return;
+    const month = Number(match[1]);
+    if (month < 1 || month > 12) return;
+    const amount = Number(match[3].replace(/,/g, ""));
+    if (!(amount > 0)) return;
+    items.push({
+      id: `ins-${month}-${items.length}-${Math.round(Math.random() * 1e6)}`,
+      name: match[2].trim(),
+      month,
+      amountCents: Math.round(amount * 100)
+    });
+  });
+  return items;
+}
+
+function InsuranceSchedulePanel({ items, futureKeys, onChange }: {
+  items: InsuranceItem[];
+  futureKeys: string[];
+  onChange: (items: InsuranceItem[]) => void;
+}) {
+  const [draft, setDraft] = useState<InsuranceItem[]>(items);
+  const [importText, setImportText] = useState("");
+  const [saved, setSaved] = useState(false);
+  const changed = JSON.stringify(draft) !== JSON.stringify(items);
+  const futurePremium = futureKeys.reduce((sum, key) => sum + scheduledInsuranceCents(items, key), 0);
+
+  function updateRow(id: string, patch: Partial<InsuranceItem>) {
+    setDraft((current) => current.map((item) => item.id === id ? { ...item, ...patch } : item));
+  }
+
+  function save() {
+    const cleaned = draft.filter((item) => item.name.trim() && item.amountCents > 0);
+    setDraft(cleaned);
+    onChange(cleaned);
+    saveInsuranceSchedule(cleaned);
+    setSaved(true);
+    window.setTimeout(() => setSaved(false), 2000);
+  }
+
+  return (
+    <details className="panel plan-insurance">
+      <summary className="insights-fold-summary">
+        <div>
+          <h2>保险缴费日历（本机）</h2>
+          <span>{items.length > 0 ? `${items.length} 项保单 · 未来3个月日历保费 ¥${centsToYuan(futurePremium)} · 点击管理` : "配置后，预测总支出会按缴费月份精确修正（只保存在本机）"}</span>
+        </div>
+        <em>{items.length > 0 ? "管理" : "去配置"}</em>
+      </summary>
+      <div className="plan-insurance-body">
+        {draft.length > 0 && (
+          <div className="plan-insurance-list">
+            {draft.map((item) => (
+              <div className="plan-insurance-row" key={item.id}>
+                <select value={item.month} onChange={(event) => updateRow(item.id, { month: Number(event.target.value) })}>
+                  {Array.from({ length: 12 }, (_, index) => index + 1).map((month) => (
+                    <option key={month} value={month}>{month}月</option>
+                  ))}
+                </select>
+                <input value={item.name} placeholder="保单名称" onChange={(event) => updateRow(item.id, { name: event.target.value })} />
+                <input
+                  value={item.amountCents > 0 ? String(item.amountCents / 100) : ""}
+                  placeholder="金额（元/年）"
+                  inputMode="decimal"
+                  onChange={(event) => {
+                    try {
+                      updateRow(item.id, { amountCents: event.target.value ? yuanToCents(event.target.value) : 0 });
+                    } catch {
+                      // 输入过程中允许非法值，保存时过滤
+                    }
+                  }}
+                />
+                <button type="button" className="icon-button" title="删除" onClick={() => setDraft((current) => current.filter((entry) => entry.id !== item.id))}>×</button>
+              </div>
+            ))}
+          </div>
+        )}
+        <div className="data-actions">
+          <button type="button" onClick={() => setDraft((current) => [...current, newInsuranceItem()])}>添加一行</button>
+          <button type="button" className="primary" disabled={!changed && draft.length === items.length} onClick={save}>{saved ? "已保存" : "保存日历"}</button>
+        </div>
+        <details className="plan-insurance-import">
+          <summary>批量导入（每行：月份 名称 金额）</summary>
+          <textarea
+            value={importText}
+            rows={5}
+            placeholder={"11月 重疾险续费 4000\n11月 百万医疗 700\n6月 重疾险 4056"}
+            onChange={(event) => setImportText(event.target.value)}
+          />
+          <button
+            type="button"
+            disabled={!importText.trim()}
+            onClick={() => {
+              const parsed = parseInsuranceText(importText);
+              if (parsed.length > 0) {
+                setDraft(parsed);
+                setImportText("");
+              }
+            }}
+          >解析并替换上方列表（记得再点保存）</button>
+        </details>
+        <p className="reminder-hint">只保存在本机（换设备需重新导入）。预测总支出 = 原预测 − 历史保险月均 + 当月日历保费；没有保单的月份（如 10 月、12 月）不会计入保险支出。</p>
+      </div>
+    </details>
+  );
+}
+
 export function PlanView({ transactions, categories, budgets }: {
   transactions: Transaction[];
   categories: Category[];
@@ -125,23 +308,40 @@ export function PlanView({ transactions, categories, budgets }: {
     [currentKey]
   );
 
-  /** 每个未来月份单独预测：去年同期（主权重）+ 近期基准 */
+  const [insuranceItems, setInsuranceItems] = useState<InsuranceItem[]>(() => loadInsuranceSchedule());
+  const scheduleConfigured = insuranceItems.length > 0;
+  const histInsAvgCents = useMemo(
+    () => historyInsuranceMonthlyAvg(transactions, categories, currentKey),
+    [transactions, categories, currentKey]
+  );
+
+  /** 每个未来月份单独预测：去年同期（主权重）+ 近期基准；总支出再按保险缴费日历修正 */
   const forecasts = useMemo(() => futureKeys.map((key) => {
     const lastYearKey = offsetMonthKey(key, -12);
     const lastYearDaily = sumMonth(transactions, lastYearKey, true, categories);
     const lastYearTotal = sumMonth(transactions, lastYearKey, false, categories);
+    const daily = forecastFromHistory(history.map((point) => point.dailyCents), lastYearDaily);
+    const total = forecastFromHistory(history.map((point) => point.totalCents), lastYearTotal);
+    const scheduledInsCents = scheduleConfigured ? scheduledInsuranceCents(insuranceItems, key) : null;
+    const adjustedTotalCents = total && scheduledInsCents !== null
+      ? applyInsuranceAdjustment(total.value, histInsAvgCents, scheduledInsCents, daily?.value ?? 0)
+      : null;
     return {
       key,
       lastYearKey,
       lastYearDaily,
       lastYearTotal,
-      daily: forecastFromHistory(history.map((point) => point.dailyCents), lastYearDaily),
-      total: forecastFromHistory(history.map((point) => point.totalCents), lastYearTotal)
+      daily,
+      total,
+      scheduledInsCents,
+      adjustedTotalCents,
+      shownTotalCents: adjustedTotalCents ?? total?.value ?? 0
     };
-  }), [futureKeys, history, transactions, categories]);
+  }), [futureKeys, history, transactions, categories, insuranceItems, scheduleConfigured, histInsAvgCents]);
 
   const nextDailyForecast = forecasts[0]?.daily ?? null;
   const nextTotalForecast = forecasts[0]?.total ?? null;
+  const nextShownTotalCents = forecasts[0]?.shownTotalCents ?? 0;
 
   const nextDailyBudget = monthBudgetTotal(budgets, nextKey);
   const nextTotalBudget = monthTotalBudgetCents(budgets, nextKey);
@@ -160,9 +360,9 @@ export function PlanView({ transactions, categories, budgets }: {
   }, [transactions, categories, currentKey]);
 
   const fixedCents = items.reduce((sum, item) => sum + item.predictedCents, 0);
-  const flexibleCents = nextTotalForecast ? Math.max(0, nextTotalForecast.value - fixedCents) : 0;
+  const flexibleCents = nextTotalForecast ? Math.max(0, nextShownTotalCents - fixedCents) : 0;
   const specialForecastCents = nextDailyForecast && nextTotalForecast
-    ? Math.max(0, nextTotalForecast.value - nextDailyForecast.value)
+    ? Math.max(0, nextShownTotalCents - nextDailyForecast.value)
     : 0;
   const hasData = history.some((point) => point.totalCents > 0);
 
@@ -180,7 +380,7 @@ export function PlanView({ transactions, categories, budgets }: {
   const barW = Math.min(22, groupW * 0.26);
   const allValues = [
     ...history.map((point) => point.totalCents),
-    ...forecasts.flatMap((item) => item.total ? [item.total.value, item.total.high] : []),
+    ...forecasts.flatMap((item) => item.total ? [item.shownTotalCents, item.total.high] : []),
     nextTotalBudget
   ];
   const maxY = Math.max(...allValues, 1) * 1.08;
@@ -216,14 +416,17 @@ export function PlanView({ transactions, categories, budgets }: {
       <div className="plan-kpi-grid four">
         <article className="plan-kpi">
           <span>{monthLabel(nextKey)}预测总支出</span>
-          <strong>{nextTotalForecast ? `¥${centsToYuan(nextTotalForecast.value)}` : "数据不足"}</strong>
+          <strong>{nextTotalForecast ? `¥${centsToYuan(nextShownTotalCents)}` : "数据不足"}</strong>
           <em>{nextTotalBudget > 0 && nextTotalForecast
-            ? nextTotalForecast.value > nextTotalBudget
-              ? `比总开支预算多 ¥${centsToYuan(nextTotalForecast.value - nextTotalBudget)}`
-              : `在总开支预算内（余 ¥${centsToYuan(nextTotalBudget - nextTotalForecast.value)}）`
+            ? nextShownTotalCents > nextTotalBudget
+              ? `比总开支预算多 ¥${centsToYuan(nextShownTotalCents - nextTotalBudget)}`
+              : `在总开支预算内（余 ¥${centsToYuan(nextTotalBudget - nextShownTotalCents)}）`
             : nextTotalForecast?.lastYearCents
               ? `去年同期 ¥${centsToYuan(nextTotalForecast.lastYearCents)} · 历史区间 ${compactYuan(nextTotalForecast.low)} ~ ${compactYuan(nextTotalForecast.high)}`
               : "无去年同期对照"}</em>
+          {scheduleConfigured && forecasts[0]?.scheduledInsCents !== null && (
+            <em className="plan-kpi-ins">已按保险日历修正{forecasts[0]!.scheduledInsCents! > 0 ? `（含保费 ¥${centsToYuan(forecasts[0]!.scheduledInsCents!)}）` : "（本月无保费）"}</em>
+          )}
         </article>
         <article className="plan-kpi">
           <span>其中预测日常消费</span>
@@ -280,7 +483,7 @@ export function PlanView({ transactions, categories, budgets }: {
               return (
                 <g key={item.key}>
                   <rect className="plan-bar daily forecast" x={xGroup(index) - barW - 2} y={y(daily.value)} width={barW} height={top + innerH - y(daily.value)} rx="3" />
-                  <rect className="plan-bar total forecast" x={xGroup(index) + 2} y={y(total.value)} width={barW} height={top + innerH - y(total.value)} rx="3" />
+                  <rect className="plan-bar total forecast" x={xGroup(index) + 2} y={y(item.shownTotalCents)} width={barW} height={top + innerH - y(item.shownTotalCents)} rx="3" />
                   <line className="plan-whisker" x1={xGroup(index) + 2 + barW / 2} x2={xGroup(index) + 2 + barW / 2} y1={y(total.low)} y2={y(total.high)} />
                   {total.lastYearCents !== null && (
                     <>
@@ -291,7 +494,7 @@ export function PlanView({ transactions, categories, budgets }: {
                       <text className="plan-axis plan-lastyear-tag" x={markX - 5} y={y(total.lastYearCents) - 7} textAnchor="middle">去年</text>
                     </>
                   )}
-                  <text className="plan-axis plan-forecast-value" x={xGroup(index)} y={y(total.high) - 6} textAnchor="middle">{compactYuan(total.value)}</text>
+                  <text className="plan-axis plan-forecast-value" x={xGroup(index)} y={y(total.high) - 6} textAnchor="middle">{compactYuan(item.shownTotalCents)}</text>
                   <text className="plan-axis" x={xGroup(index)} y={height - 18} textAnchor="middle">{shortMonthLabel(item.key)}</text>
                 </g>
               );
@@ -330,9 +533,10 @@ export function PlanView({ transactions, categories, budgets }: {
             {forecasts.map((item) => (
               <div className="plan-month-row" role="row" key={item.key}>
                 <span className="plan-month-key">{monthLabel(item.key)}</span>
-                <span className="plan-month-total"><em>预测总支出</em><b>¥{centsToYuan(item.total!.value)}</b></span>
+                <span className="plan-month-total"><em>预测总支出</em><b>¥{centsToYuan(item.shownTotalCents)}</b></span>
                 <span><em>日常消费</em><b>¥{centsToYuan(item.daily!.value)}</b></span>
-                <span><em>专项支出</em><b>¥{centsToYuan(Math.max(0, item.total!.value - item.daily!.value))}</b></span>
+                <span><em>专项支出</em><b>¥{centsToYuan(Math.max(0, item.shownTotalCents - item.daily!.value))}</b></span>
+                <span className="plan-month-ins"><em>保险日历</em><b>{item.scheduledInsCents === null ? "未配置" : item.scheduledInsCents > 0 ? `¥${centsToYuan(item.scheduledInsCents)}` : "无保费"}</b></span>
                 <span className="plan-month-lastyear"><em>去年同期总支出</em><b>{item.total!.lastYearCents !== null ? `¥${centsToYuan(item.total!.lastYearCents)}` : "无记录"}</b></span>
               </div>
             ))}
@@ -341,6 +545,12 @@ export function PlanView({ transactions, categories, budgets }: {
           <p className="empty">历史数据不足 {PLAN_HISTORY} 个月，暂无法生成逐月预测明细。</p>
         )}
       </section>
+
+      <InsuranceSchedulePanel
+        items={insuranceItems}
+        futureKeys={futureKeys}
+        onChange={setInsuranceItems}
+      />
 
       <section className="panel">
         <div className="chart-heading">
@@ -370,7 +580,7 @@ export function PlanView({ transactions, categories, budgets }: {
               </div>
               <div className="plan-item-amount">
                 <strong>¥{centsToYuan(flexibleCents)}</strong>
-                <div className="bar"><i style={{ width: `${nextTotalForecast && nextTotalForecast.value > 0 ? Math.max(4, Math.round((flexibleCents / nextTotalForecast.value) * 100)) : 4}%` }} /></div>
+                <div className="bar"><i style={{ width: `${nextTotalForecast && nextShownTotalCents > 0 ? Math.max(4, Math.round((flexibleCents / nextShownTotalCents) * 100)) : 4}%` }} /></div>
               </div>
             </div>
           </div>
@@ -437,7 +647,19 @@ export function PlanView({ transactions, categories, budgets }: {
           ) : (
             <p>历史数据不足 {PLAN_HISTORY} 个月，暂无法生成公式化预测。</p>
           )}
-          <h3>4. 主要支出项识别规则</h3>
+          <h3>4. 保险缴费日历修正{scheduleConfigured ? "（已生效）" : "（未配置）"}</h3>
+          <ul>
+            {scheduleConfigured ? (
+              <>
+                <li>历史保险月均（近12个月保险类支出平均）= ¥{centsToYuan(histInsAvgCents)}</li>
+                <li>修正公式：预测总支出 = 原预测 − 历史保险月均 + 当月日历保费（下限为当月预测日常消费）；{futureKeys.map((key) => `${monthLabel(key)}日历保费 ¥${centsToYuan(scheduledInsuranceCents(insuranceItems, key))}`).join("，")}</li>
+                <li>没有保单的月份日历保费为 0，保险支出即被剔除——保险只在缴费月出现</li>
+              </>
+            ) : (
+              <li>在上方「保险缴费日历」配置各保单的缴费月份与金额后，预测总支出会按缴费月份精确修正（保险是刚性年度支出，只在缴费月发生，用日历比用历史平均准确得多）</li>
+            )}
+          </ul>
+          <h3>5. 主要支出项识别规则</h3>
           <ul>
             <li>同一支出分类近 {PLAN_HISTORY} 个月出现 ≥3 个月 → 判定为常规项（含贷款、保险等固定专项）</li>
             <li>预测金额 = 该分类在「有支出的月份」的平均值（没出现的月份不计入，避免低估固定开销）</li>

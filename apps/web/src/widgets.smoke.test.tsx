@@ -14,7 +14,7 @@ import {
   salaryBannerState,
   saveSalarySettings
 } from "./widgets";
-import { PlanView } from "./plan";
+import { PlanView, loadInsuranceSchedule, parseInsuranceText, saveInsuranceSchedule } from "./plan";
 
 beforeAll(() => {
   const store = new Map<string, string>();
@@ -151,5 +151,19 @@ describe("常规项支出与规划页", () => {
   it("PlanView 空数据时不崩溃", () => {
     const html = renderToString(<PlanView transactions={[]} categories={categories} budgets={[]} />);
     expect(html).toContain("支出规划");
+  });
+
+  it("保险缴费日历：粘贴解析 + 本地存取 + 规划页引用", () => {
+    const parsed = parseInsuranceText("11月 重疾险续费 4000\n11月 百万医疗 700\n6月 重疾险 4056\n13月 非法月份 100\n坏行");
+    expect(parsed).toHaveLength(3);
+    expect(parsed[0]).toMatchObject({ month: 11, name: "重疾险续费", amountCents: 400000 });
+    saveInsuranceSchedule(parsed);
+    const loaded = loadInsuranceSchedule();
+    expect(loaded).toHaveLength(3);
+    expect(loaded[1].amountCents).toBe(70000);
+    const html = renderToString(<PlanView transactions={regularTransactions} categories={categories} budgets={[]} />);
+    expect(html).toContain("保险缴费日历");
+    expect(html).toContain("保险日历");
+    saveInsuranceSchedule([]);
   });
 });
