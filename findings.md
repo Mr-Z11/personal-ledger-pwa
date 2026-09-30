@@ -337,3 +337,10 @@ docker logs personal-ledger-pwa-api-local-1 | tail     # 确认 prisma db push �
 - 当月未结束时历史序列用「实际至今 ÷ 当天号数 × 当月天数」的投影值，图表上标「含预测」
 - React `<details open={true}>` 作为「默认展开但可收起」是安全的：prop 不变时 React 不会回写 DOM 属性，用户收起状态在组件重渲染后保留
 - 验证部署时 grep 首页拿到的入口 chunk 是 index-*.js 而非 App-*.js（App 是异步 chunk）；要直接取 dist 里的 App-*.js 文件名验证
+
+## Phase 17 新发现（2026-09-30）
+
+- 手机底部导航是 `@media (max-width:940px)` 里 nav 的 `grid-template-columns`，新增导航项必须同步改列数；5 项用 repeat(5,1fr) 单行后，FAB（bottom: calc(5rem+…)）自然不再遮挡
+- 常规项表格在手机的"显示不全"根因：min-width:34rem（544px）超过手机视口，overflow-x:auto 理论可滚但体验差且不明显；解法是重构列布局（月均并入名称行）让 grid 自适应，而非依赖横滚
+- plan 预测算法 v2：预测值 = 去年同期×0.6 + 近期基准×0.4；每个未来月份独立取各自去年同月；去年无记录退化为全额近期基准；区间须线 = 近6月与去年同期的 min~max 包络
+- SVG 里画"去年同期参照"用 path 菱形（rotate 45° 的方块图例 + path 标记），成本低且直观

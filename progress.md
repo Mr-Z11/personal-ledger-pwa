@@ -377,3 +377,19 @@
 | 目标是什么？ | 个人记账 PWA 持续迭代（本地 Mac 为唯一活跃数据中心） |
 | 我学到了什么？ | 常规项/预测的口径设计（出现月均值 vs 窗口均值）；details 默认展开可收起的 React 写法；入口 chunk 是 index-*.js |
 | 我做了什么？ | 两个需求一次交付：报表常规项+折叠+重排、规划页（KPI/趋势预测图/主要支出项/分析依据），全链路验证部署推送 |
+
+## 会话记录（2026-09-30，Phase 17）
+
+### 用户手机实测反馈（5 项）
+1. 底部导航换行 + FAB 挡规划 → nav 5 列修复
+2. 规划要含总支出 → KPI 4 卡 + 预测明细表（总支出/日常/专项/去年同期）
+3. 报表显示不全 → 常规项表格自适应重构
+4. 规划页内容标题加"预测" → 全部标题改为"预测XX"
+5. 预测参考去年同期且以去年为主 → 去年同期 60% + 近期基准 40%，每月独立预测，图表菱形标记
+
+### 实施
+- commit e78b11d（5 文件，+343/-157）：styles.css（nav 5列/常规项自适应/plan-month-table/去年标记）、plan.tsx（forecastFromHistory 加 lastYearCents 参数、per-month forecasts、KPI 4卡、明细表、标题）、widgets.tsx（常规项行重构）、App.tsx（plan heading）、测试更新
+- 验证：typecheck ✓ → vitest 10/10 ✓ → build ✓ → force-recreate caddy-local → localhost/mDNS 200，bundle 含新特征串，CSS 含 repeat(5,1fr)
+
+### 交接状态
+- 四件套已同步；待用户手机复测：导航单行不换行、FAB 不挡、报表常规项完整显示、规划页 4 卡+明细表+预测标题+去年参照

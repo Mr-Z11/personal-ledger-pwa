@@ -184,3 +184,12 @@ Phase 15
 - [x] vitest 冒烟测试 10 项通过（新增常规项×2 + 规划页×2）
 - [x] typecheck + build 通过 → mv dist 重建 → force-recreate caddy-local → localhost/mDNS 200，bundle grep 验证「常规项支出」「分析依据与计算过程」「plan-kpi」
 - **Status:** complete（已推送 main + 部署本地栈；云端服务器仍失效；待手机实测反馈）
+
+### Phase 17: 手机端反馈修复 + 预测算法升级为去年同期主权重 (2026-09-30, commit e78b11d)
+- [x] 手机底部导航换行 + FAB 挡「规划」：nav 4列→5列（≤940px），收紧字号间距，nav 回到单行后 FAB 不再重叠
+- [x] 报表页显示不全：常规项表格去掉月均列（并入名称行），grid 自适应 minmax(2.05rem)，彻底取消 min-width:34rem 横向滚动
+- [x] 规划页覆盖总支出：KPI 4 卡（预测总支出/日常消费/专项支出/固定项），新增「未来3个月预测明细」表（每月总支出+构成+去年同期）
+- [x] 预测算法：去年同期为主权重（60%）+ 近期基准（(近3月均值+近6月均值)/2 × 趋势因子 clamp 0.9~1.1）40%；每个未来月份按各自去年同期独立预测；无去年同期退化为全额近期基准；图表加去年同期菱形标记
+- [x] 所有规划页内容标题带「预测」二字；预测依据新增去年同期对照表 + 60/40 公式实例
+- [x] 验证：typecheck ✓ vitest 10/10 ✓ build ✓ → force-recreate caddy-local → 200 + 特征串（预测依据与计算过程/去年同期/plan-month-row/repeat(5,1fr)）
+- **Status:** complete（已推送 main + 部署本地栈；待手机实测反馈）

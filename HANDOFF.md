@@ -6,10 +6,11 @@
 
 ## 2. 已完成并部署的变更（2026-09-30 最新）
 
-最新 commit `46350bf` 已推送 GitHub main；前端已构建并部署到**本地 Mac 栈**（云端服务器仍失效，见第 3 节）。
+最新 commit `e78b11d` 已推送 GitHub main；前端已构建并部署到**本地 Mac 栈**（云端服务器仍失效，见第 3 节）。
 
 | Commit | 描述 | 关键文件 | 状态 |
 |--------|------|---------|------|
+| `e78b11d` | **手机端修复：导航 5 列不换行 + FAB 不再挡规划 + 常规项表格自适应（报表显示不全修复）；规划升级：覆盖总支出（4 KPI + 逐月预测明细表）+ 去年同期主权重预测（60% 去年 + 40% 近期基准）+ 标题统一带「预测」** | plan.tsx, widgets.tsx, App.tsx, styles.css, widgets.smoke.test.tsx | 已部署 |
 | `46350bf` | **报表「常规项支出」模块 + 四个报表模块可折叠（异常分析移到大额开销上方）+ 新导航专栏「规划」（未来3个月消费/总支出预测图 + 主要支出项 + 分析依据）** | plan.tsx(新), widgets.tsx, App.tsx, styles.css, widgets.smoke.test.tsx | 已部署 |
 | `7796d90` | 预算两层（日常/总开支 scope）+ 首页双蓄水池 + 消费节奏图（预算参考线）+ 大额开销规律分析 + 工资提醒纯本地化 + 默认首页改总览 | schema.prisma, shared, serializers, api/index.ts, App.tsx, widgets.tsx(新), utils.ts(新), styles.css | 已部署 |
 | `d1907cf` | 手机（≤480px）两个蓄水池保持横向两列（删除堆叠规则，收紧间距字号） | styles.css | 已部署 |
@@ -23,6 +24,13 @@
 - 验证：`https://localhost:8443/` 200、`https://FrorideMacBook-Air.local:8443/` 200；App chunk 含「常规项支出」「分析依据与计算过程」，css 含「plan-kpi」
 - 注意：首页入口 chunk 是 `index-*.js`，App 是异步 chunk，grep 验证要用 dist 里的 `App-*.js` 文件名
 - 纯前端变更，API/DB 无改动，无需重启 api-local
+
+### 2026-09-30 预测算法 v2（去年同期主权重）
+
+- 预测值 = 去年同期 × 0.6 + 近期基准 × 0.4（PLAN_LAST_YEAR_WEIGHT=0.6，plan.tsx 可调）
+- 近期基准 =（近3月均值 + 近6月均值）÷ 2 × 趋势因子（近3月÷前3月，clamp 0.9~1.1）
+- 每个未来月份独立取各自去年同月；去年无记录 → 退化为全额近期基准；区间 = 近6月与去年同期的 min~max 包络
+- 手机底部导航：新增导航项必须同步改 `@media(max-width:940px)` 里 nav 的列数（当前 repeat(5,1fr)），否则换行 + FAB 遮挡
 
 ### 2026-09-25 部署细节
 
@@ -214,6 +222,8 @@
 - 不要在"总开支预算"存在时把它当日常预算用；`monthBudgetTotal` 已按 `scope ?? "daily"` 过滤，勿改回 `find(!categoryId)`
 - 不要把规划页预测金额改成按 6 个月窗口平均；常规项预测用「有支出的月份」均值（窗口均值会低估非满勤固定项），常规项模块的月均才是窗口均值——两处口径不同是有意的
 - 不要 grep 首页引用的入口 chunk 验证新功能（入口是 index-*.js，App 是异步 chunk）；用 dist 里的 App-*.js 文件名直接 curl 验证
+- 不要给手机端模块设固定 min-width（如常规项表格曾经的 34rem）——手机视口 ~390px 会"显示不全"，改为 grid 自适应列布局；plan 趋势图是例外（SVG viewBox 680 固定，靠 .plan-chart-wrap 横滚）
+- 不要改 PLAN_LAST_YEAR_WEIGHT 的语义（去年同期主权重 60% 是用户明确要求）；调权重只改 plan.tsx 常量
 
 ## 10. 待确认/建议下一步
 
