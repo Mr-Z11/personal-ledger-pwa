@@ -206,3 +206,10 @@ Phase 15
 - [x] KPI 总支出卡显示修正标注；预测明细表新增「保险日历」列；图表预测柱用修正后值；预测依据新增第 4 节公式说明
 - [x] 验证：typecheck ✓ vitest 11/11 ✓ build ✓ → force-recreate caddy-local → 200 + bundle 含保险特征串
 - **Status:** complete（已推送 main + 部署本地栈；用户需在手机上粘贴导入保单清单）
+
+### Phase 20: 保险日历保存按钮无反应修复 (2026-09-30, commit c359160)
+- [x] 根因：保存按钮 disabled={!changed && draft.length===items.length}，面板首次打开时草稿=已存数据 → 恒禁用，点击无反应
+- [x] 修复：去掉禁用条件（保存幂等，随时可点）；保存后按钮变「已保存（共 N 项）」2.5 秒 + 面板标题行同步显示 N 项保单与未来3个月保费
+- [x] 批量导入改为「解析并保存」一步完成（按钮实时显示解析行数），不再需要二次点保存
+- [x] 验证：typecheck ✓ vitest 11/11 ✓ build ✓ → force-recreate caddy-local → 200 + 特征串「解析并保存」在线
+- **Status:** complete（已推送 main + 部署本地栈）
