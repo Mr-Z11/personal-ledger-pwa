@@ -210,20 +210,23 @@ function InsuranceSchedulePanel({ items, futureKeys, onChange }: {
   const [draft, setDraft] = useState<InsuranceItem[]>(items);
   const [importText, setImportText] = useState("");
   const [saved, setSaved] = useState(false);
-  const changed = JSON.stringify(draft) !== JSON.stringify(items);
+  const savedCount = items.length;
   const futurePremium = futureKeys.reduce((sum, key) => sum + scheduledInsuranceCents(items, key), 0);
 
   function updateRow(id: string, patch: Partial<InsuranceItem>) {
     setDraft((current) => current.map((item) => item.id === id ? { ...item, ...patch } : item));
   }
 
-  function save() {
-    const cleaned = draft.filter((item) => item.name.trim() && item.amountCents > 0);
-    setDraft(cleaned);
-    onChange(cleaned);
-    saveInsuranceSchedule(cleaned);
+  function persist(next: InsuranceItem[]) {
+    setDraft(next);
+    onChange(next);
+    saveInsuranceSchedule(next);
     setSaved(true);
-    window.setTimeout(() => setSaved(false), 2000);
+    window.setTimeout(() => setSaved(false), 2500);
+  }
+
+  function save() {
+    persist(draft.filter((item) => item.name.trim() && item.amountCents > 0));
   }
 
   return (
@@ -265,7 +268,7 @@ function InsuranceSchedulePanel({ items, futureKeys, onChange }: {
         )}
         <div className="data-actions">
           <button type="button" onClick={() => setDraft((current) => [...current, newInsuranceItem()])}>添加一行</button>
-          <button type="button" className="primary" disabled={!changed && draft.length === items.length} onClick={save}>{saved ? "已保存" : "保存日历"}</button>
+          <button type="button" className="primary" onClick={save}>{saved ? `已保存（共 ${savedCount} 项）` : "保存日历"}</button>
         </div>
         <details className="plan-insurance-import">
           <summary>批量导入（每行：月份 名称 金额）</summary>
@@ -281,11 +284,11 @@ function InsuranceSchedulePanel({ items, futureKeys, onChange }: {
             onClick={() => {
               const parsed = parseInsuranceText(importText);
               if (parsed.length > 0) {
-                setDraft(parsed);
+                persist(parsed);
                 setImportText("");
               }
             }}
-          >解析并替换上方列表（记得再点保存）</button>
+          >解析并保存（{importText.trim() ? `${importText.trim().split(/\r?\n/).filter(Boolean).length} 行` : "粘贴后可用"}）</button>
         </details>
         <p className="reminder-hint">只保存在本机（换设备需重新导入）。预测总支出 = 原预测 − 历史保险月均 + 当月日历保费；没有保单的月份（如 10 月、12 月）不会计入保险支出。</p>
       </div>
