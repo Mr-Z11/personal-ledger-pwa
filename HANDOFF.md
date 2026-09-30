@@ -10,6 +10,7 @@
 
 | Commit | 描述 | 关键文件 | 状态 |
 |--------|------|---------|------|
+| `f382de2` | **规划页手机显示修复（趋势图随容器缩放 + 预测明细表内联标签自适应卡片 + 依据表可换行）；报表页四模块默认折叠（defaultOpen=false）** | plan.tsx, styles.css, App.tsx | 已部署 |
 | `e78b11d` | **手机端修复：导航 5 列不换行 + FAB 不再挡规划 + 常规项表格自适应（报表显示不全修复）；规划升级：覆盖总支出（4 KPI + 逐月预测明细表）+ 去年同期主权重预测（60% 去年 + 40% 近期基准）+ 标题统一带「预测」** | plan.tsx, widgets.tsx, App.tsx, styles.css, widgets.smoke.test.tsx | 已部署 |
 | `46350bf` | **报表「常规项支出」模块 + 四个报表模块可折叠（异常分析移到大额开销上方）+ 新导航专栏「规划」（未来3个月消费/总支出预测图 + 主要支出项 + 分析依据）** | plan.tsx(新), widgets.tsx, App.tsx, styles.css, widgets.smoke.test.tsx | 已部署 |
 | `7796d90` | 预算两层（日常/总开支 scope）+ 首页双蓄水池 + 消费节奏图（预算参考线）+ 大额开销规律分析 + 工资提醒纯本地化 + 默认首页改总览 | schema.prisma, shared, serializers, api/index.ts, App.tsx, widgets.tsx(新), utils.ts(新), styles.css | 已部署 |
@@ -31,6 +32,7 @@
 - 近期基准 =（近3月均值 + 近6月均值）÷ 2 × 趋势因子（近3月÷前3月，clamp 0.9~1.1）
 - 每个未来月份独立取各自去年同月；去年无记录 → 退化为全额近期基准；区间 = 近6月与去年同期的 min~max 包络
 - 手机底部导航：新增导航项必须同步改 `@media(max-width:940px)` 里 nav 的列数（当前 repeat(5,1fr)），否则换行 + FAB 遮挡
+- 报表四个模块（节奏/常规项/异常分析/大额开销）默认折叠（ReportFold defaultOpen=false），用户点开看；不要改回默认展开
 
 ### 2026-09-25 部署细节
 

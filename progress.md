@@ -393,3 +393,14 @@
 
 ### 交接状态
 - 四件套已同步；待用户手机复测：导航单行不换行、FAB 不挡、报表常规项完整显示、规划页 4 卡+明细表+预测标题+去年参照
+
+## 会话记录（2026-09-30，Phase 18）
+
+### 用户反馈（2 项）
+1. 规划页显示不全 → 趋势图改缩放 + 预测表改内联标签自适应卡片 + 依据表可换行
+2. 报表页模块默认折叠保持清爽 → ReportFold defaultOpen=false
+
+### 实施
+- commit f382de2（3 文件，+47/-42）：plan.tsx（预测明细行重构）、styles.css（plan-month-key 布局/去 min-width/依据表换行）、App.tsx（defaultOpen 默认 false）
+- 验证：typecheck ✓ vitest 10/10 ✓ build ✓ → force-recreate caddy-local → localhost/mDNS 200
+- 待手机复测：规划页完整显示、报表页默认折叠清爽

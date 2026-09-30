@@ -193,3 +193,9 @@ Phase 15
 - [x] 所有规划页内容标题带「预测」二字；预测依据新增去年同期对照表 + 60/40 公式实例
 - [x] 验证：typecheck ✓ vitest 10/10 ✓ build ✓ → force-recreate caddy-local → 200 + 特征串（预测依据与计算过程/去年同期/plan-month-row/repeat(5,1fr)）
 - **Status:** complete（已推送 main + 部署本地栈；待手机实测反馈）
+
+### Phase 18: 规划页手机显示修复 + 报表模块默认折叠 (2026-09-30, commit f382de2)
+- [x] 规划页手机显示不全：趋势图去掉 min-width:38rem 改为随容器缩放（与消费节奏图同方案）；预测明细表重构为带内联标签的单元格（月份/预测总支出/日常/专项/去年同期），手机 2 列卡片布局；依据表格手机端允许换行
+- [x] 报表页四个模块（消费节奏/常规项/异常分析/大额开销）默认折叠（ReportFold defaultOpen=false），页面清爽，点开展开
+- [x] 验证：typecheck ✓ vitest 10/10 ✓ build ✓ → force-recreate caddy-local → 200；CSS 含 plan-month-key、不含 min-width:38rem
+- **Status:** complete（已推送 main + 部署本地栈；待手机复测）
