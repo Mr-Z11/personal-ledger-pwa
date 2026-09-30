@@ -199,3 +199,10 @@ Phase 15
 - [x] 报表页四个模块（消费节奏/常规项/异常分析/大额开销）默认折叠（ReportFold defaultOpen=false），页面清爽，点开展开
 - [x] 验证：typecheck ✓ vitest 10/10 ✓ build ✓ → force-recreate caddy-local → 200；CSS 含 plan-month-key、不含 min-width:38rem
 - **Status:** complete（已推送 main + 部署本地栈；待手机复测）
+
+### Phase 19: 保险缴费日历修正预测 (2026-09-30, commit 69a1227)
+- [x] 新增「保险缴费日历（本机）」面板（plan.tsx InsuranceSchedulePanel）：行编辑器（月份/名称/金额）+ 批量粘贴导入（parseInsuranceText：「11月 名称 金额」逐行解析，过滤非法行）；存 localStorage `ledger-insurance-schedule`（真实保单数据不进 GitHub、不同步，与工资提醒同模式）
+- [x] 预测修正公式：预测总支出 = 原预测 − 历史保险月均（近12个月保险类支出均值）+ 当月日历保费，下限为当月预测日常消费；无保单月份（10/12月）不含保险
+- [x] KPI 总支出卡显示修正标注；预测明细表新增「保险日历」列；图表预测柱用修正后值；预测依据新增第 4 节公式说明
+- [x] 验证：typecheck ✓ vitest 11/11 ✓ build ✓ → force-recreate caddy-local → 200 + bundle 含保险特征串
+- **Status:** complete（已推送 main + 部署本地栈；用户需在手机上粘贴导入保单清单）

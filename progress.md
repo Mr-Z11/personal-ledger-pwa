@@ -404,3 +404,14 @@
 - commit f382de2（3 文件，+47/-42）：plan.tsx（预测明细行重构）、styles.css（plan-month-key 布局/去 min-width/依据表换行）、App.tsx（defaultOpen 默认 false）
 - 验证：typecheck ✓ vitest 10/10 ✓ build ✓ → force-recreate caddy-local → localhost/mDNS 200
 - 待手机复测：规划页完整显示、报表页默认折叠清爽
+
+## 会话记录（2026-09-30，Phase 19）
+
+### 需求
+用户提供保险汇总表（8 张保单：重疾×3、中高端医疗×2、意外×2、社保；缴费月 8/11/7(已结束)/1-2/6/5/9），要求规划预测参考该日历，10 月和 12 月没有保险支出项
+
+### 实施
+- commit 69a1227（3 文件，+339/-21）：保险日历本机存储 + 行编辑/批量导入 UI + 预测修正公式（−历史保险月均+当月日历保费）+ KPI/明细表/图表/依据全链路展示
+- 按数据安全规则，保单数据不硬编码进仓库，改由用户粘贴导入 localStorage
+- 验证：typecheck ✓ vitest 11/11 ✓ build ✓ → caddy force-recreate → 200
+- 待用户操作：手机上打开规划页「保险缴费日历」→ 批量导入粘贴保单清单 → 保存
