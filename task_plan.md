@@ -172,3 +172,15 @@ Phase 15
 - New confirmed requirements: add input confirmation feeling (press feedback, haptic where supported, amount preview) and reduce report confusion while scrolling by making month/data scope obvious.
 - 2026-06-27 confirmed audit scope: single-user use, prioritize entry efficiency, analysis, and long-term habits; include features, UX, performance, and offline sync; prefer low-cost/high-impact improvements; recommendations only, no application code changes.
 - 2026-06-29 confirmed startup scope: iPhone home-screen PWA cold start is blank for about 2–10 seconds; local-first rendering is acceptable; complete production deployment is required.
+
+### Phase 16: 常规项支出模块 + 报表模块折叠 + 规划专栏 (2026-09-30, commit 46350bf)
+- [x] 报表新增「常规项支出」：同一分类近6个月出现≥3次→常规项，逐月迷你柱+月均+环比，取前8项（widgets.tsx RegularExpensePanel / collectRegularExpenses）
+- [x] 消费异常分析移到大额开销上方；本月消费节奏/常规项/异常分析/大额开销四个模块全部改为可折叠（App.tsx ReportFold，默认展开）
+- [x] 新导航专栏「规划」（View=plan, CalendarClock 图标，位于报表与设置之间）：plan.tsx PlanView
+  - 3 张 KPI 卡：下月预计日常消费/预计总支出（含 vs 总开支预算）/固定项合计+弹性消费
+  - 趋势图：近6个月实际（日常+总支出双系列柱）+ 未来3个月预测（浅色虚线柱+历史区间须线+预测区底色），下月预算参考线
+  - 主要支出项：常规项预测金额=有支出月份的均值，top8 + 弹性消费行
+  - 「分析依据与计算过程」折叠区：数据窗口表（当月含日均投影标注）+ 公式（基准=(近3月均值+近6月均值)/2 × 趋势因子clamp 0.9~1.1）+ 识别规则 + 免责
+- [x] vitest 冒烟测试 10 项通过（新增常规项×2 + 规划页×2）
+- [x] typecheck + build 通过 → mv dist 重建 → force-recreate caddy-local → localhost/mDNS 200，bundle grep 验证「常规项支出」「分析依据与计算过程」「plan-kpi」
+- **Status:** complete（已推送 main + 部署本地栈；云端服务器仍失效；待手机实测反馈）

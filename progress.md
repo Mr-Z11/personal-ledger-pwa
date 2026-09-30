@@ -353,3 +353,27 @@
 | 目标是什么？ | 维护个人记账 PWA（本地 Mac 为唯一活跃数据中心）+ 数据安全 |
 | 我学到了什么？ | caddy 绑定挂载在 dist 重建后会悬空必须 force-recreate；沙箱 safe-delete shim 拦截 vite 清空 dist；云端 origin 的 PWA 无法接收本地更新 |
 | 我做了什么？ | 预算两层 + 双蓄水池 + 节奏图 + 大额分析 + 工资本地化上线；3 轮反馈修复（横向排列/措辞/读数可读性）；四件套交接同步 |
+
+## 会话记录（2026-09-30，Phase 16）
+
+### 需求
+1. 报表增加「每月常规项支出」模块；消费异常分析移到大额开销上方；每个模块可展开/收起
+2. 新开「规划」专栏：可视化下月及未来几个月消费/总支出趋势 + 一眼看到主要支出项；数据有历史依据并展示分析过程；页面不臃肿
+
+### 实施
+- commit 46350bf（5 文件，+1129/-25）：widgets.tsx（RegularExpensePanel + collectRegularExpenses）、plan.tsx（新建 PlanView + buildPlanHistory + forecastFromHistory）、App.tsx（ReportFold + 模块重排 + plan 导航/路由）、styles.css（report-fold/regular-expense/plan 样式）、widgets.smoke.test.tsx（+4 用例）
+- 验证：typecheck ✓ → vitest 10/10 ✓ → build ✓（PWA startup verification 12 项）→ mv dist + build → force-recreate caddy-local → localhost:8443 200、mDNS 200、bundle 含新特征串
+
+### 交接状态
+- 四件套已同步：task_plan.md（Phase 16）/ findings.md（语义备忘）/ progress.md（本节）/ HANDOFF.md（第 2、6、9、10 节）
+- 待用户手机实测：规划页观感、常规项模块、折叠交互
+
+## 5-Question Reboot Check（2026-09-30 会话结束）
+
+| 问题 | 答案 |
+|------|------|
+| 我在哪？ | Phase 16 完成：常规项模块 + 报表折叠 + 规划专栏已上线本地栈（46350bf） |
+| 我要去哪？ | 等用户手机实测反馈；遗留待办：start-local-sync.sh 改进未提交、数据异地备份、云端归属决策 |
+| 目标是什么？ | 个人记账 PWA 持续迭代（本地 Mac 为唯一活跃数据中心） |
+| 我学到了什么？ | 常规项/预测的口径设计（出现月均值 vs 窗口均值）；details 默认展开可收起的 React 写法；入口 chunk 是 index-*.js |
+| 我做了什么？ | 两个需求一次交付：报表常规项+折叠+重排、规划页（KPI/趋势预测图/主要支出项/分析依据），全链路验证部署推送 |

@@ -4,17 +4,25 @@
 
 维护个人记账 PWA 的日常迭代与数据安全。**云端服务器已于 2026-08-29 失效**，当前数据完全以本地 Mac 为中心（local-first 架构 + 本地 PostgreSQL）。云端重建与否待用户决策。
 
-## 2. 已完成并部署的变更（2026-09-25 最新）
+## 2. 已完成并部署的变更（2026-09-30 最新）
 
-最新 commit `2da791d` 已推送 GitHub main；前端已构建并部署到**本地 Mac 栈**（云端服务器仍失效，见第 3 节）。
+最新 commit `46350bf` 已推送 GitHub main；前端已构建并部署到**本地 Mac 栈**（云端服务器仍失效，见第 3 节）。
 
 | Commit | 描述 | 关键文件 | 状态 |
 |--------|------|---------|------|
-| `7796d90` | **预算两层（日常/总开支 scope）+ 首页双蓄水池 + 消费节奏图（预算参考线）+ 大额开销规律分析 + 工资提醒纯本地化 + 默认首页改总览** | schema.prisma, shared, serializers, api/index.ts, App.tsx, widgets.tsx(新), utils.ts(新), styles.css | 已部署 |
+| `46350bf` | **报表「常规项支出」模块 + 四个报表模块可折叠（异常分析移到大额开销上方）+ 新导航专栏「规划」（未来3个月消费/总支出预测图 + 主要支出项 + 分析依据）** | plan.tsx(新), widgets.tsx, App.tsx, styles.css, widgets.smoke.test.tsx | 已部署 |
+| `7796d90` | 预算两层（日常/总开支 scope）+ 首页双蓄水池 + 消费节奏图（预算参考线）+ 大额开销规律分析 + 工资提醒纯本地化 + 默认首页改总览 | schema.prisma, shared, serializers, api/index.ts, App.tsx, widgets.tsx(新), utils.ts(新), styles.css | 已部署 |
 | `d1907cf` | 手机（≤480px）两个蓄水池保持横向两列（删除堆叠规则，收紧间距字号） | styles.css | 已部署 |
 | `717ff32` | 节奏图措辞口语化：「低于/超出预算平均线」→「比预算慢/快 ¥X」；图例改「预算参考线」；焦点卡改「预算每天可花 / 实际每天花」 | widgets.tsx, App.tsx | 已部署 |
 | `2da791d` | 蓄水池数字可读性：读数包进磨砂玻璃卡片（半透明米白 + backdrop-blur + 阴影），任意水位高对比 | widgets.tsx, styles.css | 已部署 |
 | `1929b20` / `7c6bacd` | 交接文件同步 + caddy 悬空挂载坑记录 | HANDOFF/findings/task_plan/progress | — |
+
+### 2026-09-30 部署细节
+
+- typecheck ✓ → vitest 10/10 ✓（新增常规项/规划页 4 用例）→ `mv apps/web/dist /tmp/...` → `npm run build` ✓ → `compose up -d --force-recreate caddy-local`
+- 验证：`https://localhost:8443/` 200、`https://FrorideMacBook-Air.local:8443/` 200；App chunk 含「常规项支出」「分析依据与计算过程」，css 含「plan-kpi」
+- 注意：首页入口 chunk 是 `index-*.js`，App 是异步 chunk，grep 验证要用 dist 里的 `App-*.js` 文件名
+- 纯前端变更，API/DB 无改动，无需重启 api-local
 
 ### 2026-09-25 部署细节
 
@@ -54,8 +62,8 @@
 - 本地 API：`https://localhost:8443/api` / `https://192.168.3.21:8443/api` / `https://FrorideMacBook-Air.local:8443/api`
 - 数据库：**3469 笔（2020-05-31 ~ 2026-09-24）**，bigint 金额列，serverVersion 122；**Budget 表 2026-09-25 新增 scope 列（daily/total）**
 - api-local 镜像：GHCR main @ 7796d90（含预算两层 + 工资本地化后端）
-- 前端静态文件：`apps/web/dist` 本地构建 @ 2da791d，由 caddy-local 挂载 `/srv/web`（**改 dist 后需 force-recreate caddy-local**）
-- 前端版本核对方法：`curl -sk https://localhost:8443/` → 200；`curl -sk https://localhost:8443/assets/App-*.js | grep -c "总开支额度"` → 1
+- 前端静态文件：`apps/web/dist` 本地构建 @ 46350bf，由 caddy-local 挂载 `/srv/web`（**改 dist 后需 force-recreate caddy-local**）
+- 前端版本核对方法：`curl -sk https://localhost:8443/` → 200；`curl -sk https://localhost:8443/assets/App-*.js | grep -c "常规项支出"` → 1（App 是异步 chunk，文件名从 dist 目录取）
 - 手机 8-31 后数据已于 2026-09-25 11:15 全部同步入本地 PG（用户确认）
 - 物理数据：`data/local-postgres/`（65MB，Docker 卷挂载，容器删除数据不丢）
 - **风险**：数据仅 Mac 单点，建议异地备份
@@ -118,6 +126,14 @@
 - `VITE_FALLBACK_API_BASES` 通过 CI build-arg 编入 JS bundle
 
 ## 6. 关键文件位置
+
+### 2026-09-30 新增/重构模块
+
+| 文件 | 用途 |
+|------|------|
+| `apps/web/src/plan.tsx` | 「规划」专栏：`PlanView`（KPI 卡 + 趋势预测图 + 主要支出项 + 分析依据折叠区）、`buildPlanHistory`（近6月序列，当月按日均投影）、`forecastFromHistory`（基准=(近3月均值+近6月均值)/2 × 趋势因子 clamp 0.9~1.1） |
+| `apps/web/src/widgets.tsx` | 追加 `RegularExpensePanel` + `collectRegularExpenses`（常规项：同一分类近6月出现≥3次，逐月迷你柱+月均+环比，top8） |
+| `apps/web/src/App.tsx` | `ReportFold` 通用折叠面板（details 默认展开可收起）；报表模块顺序：消费节奏→常规项→消费异常分析→大额开销→核心洞察→专项支出→分类统计/趋势；新增 View=`plan` 导航（CalendarClock 图标，报表与设置之间） |
 
 ### 2026-09-25 新增/重构模块
 
@@ -196,9 +212,12 @@
 - 不要在沙箱里直接 vite build 而不处理 dist 清空拦截（safe-delete shim）；先 `mv apps/web/dist /tmp/...` 再 build
 - **不要忘了：改 dist 后必须 `docker compose -f docker-compose.local.yml --env-file .env.local up -d --force-recreate caddy-local`**，否则 caddy 挂载悬空 → 页面 403，手机看不到任何更新（配置未变时普通 `up -d` 不重建容器）
 - 不要在"总开支预算"存在时把它当日常预算用；`monthBudgetTotal` 已按 `scope ?? "daily"` 过滤，勿改回 `find(!categoryId)`
+- 不要把规划页预测金额改成按 6 个月窗口平均；常规项预测用「有支出的月份」均值（窗口均值会低估非满勤固定项），常规项模块的月均才是窗口均值——两处口径不同是有意的
+- 不要 grep 首页引用的入口 chunk 验证新功能（入口是 index-*.js，App 是异步 chunk）；用 dist 里的 App-*.js 文件名直接 curl 验证
 
 ## 10. 待确认/建议下一步
 
+- **手机端实测反馈（最新）**：规划专栏（预测图/主要支出项/分析依据）、报表常规项模块、四个模块折叠交互 —— 本地 origin PWA 划掉重开两次即可看到
 - **手机端 PWA 需要用户操作确认**：若 PWA 是从云端 origin（ledger.47.74.3.104.sslip.io）安装的，云端失效后永远收不到更新，需从 `https://FrorideMacBook-Air.local:8443` 重新「添加到主屏幕」（数据已全部入本地 PG，删除旧 PWA 安全）；若本就是本地 origin 安装，划掉重开两次即可。**用户是否已完成重装、手机实测反馈尚未回收**
 - **用户已提出的观察点**：首页蓄水池数字可读性（已改为磨砂玻璃读数卡，待手机实测确认）；两个蓄水池横向排列（已修）
 - **`scripts/start-local-sync.sh` 的改进尚未提交**（自动注册 binfmt + 自动拉镜像），建议提交
