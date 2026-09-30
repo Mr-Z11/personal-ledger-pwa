@@ -2793,7 +2793,7 @@ function AnalysisNoteEditor({ value, placeholder, onSave, compact = false }: {
   );
 }
 
-function ReportFold({ title, hint, badge, defaultOpen = true, children }: {
+function ReportFold({ title, hint, badge, defaultOpen = false, children }: {
   title: string;
   hint: string;
   badge?: string;

@@ -327,22 +327,13 @@ export function PlanView({ transactions, categories, budgets }: {
         </div>
         {forecastComplete ? (
           <div className="plan-month-table" role="table" aria-label="未来月份预测明细">
-            <div className="plan-month-row plan-month-head" role="row">
-              <span>月份</span>
-              <span>预测总支出</span>
-              <span>其中日常消费</span>
-              <span>其中专项支出</span>
-              <span>去年同期总支出</span>
-            </div>
             {forecasts.map((item) => (
               <div className="plan-month-row" role="row" key={item.key}>
-                <span><strong>{monthLabel(item.key)}</strong></span>
-                <span className="plan-month-total">¥{centsToYuan(item.total!.value)}</span>
-                <span>¥{centsToYuan(item.daily!.value)}</span>
-                <span>¥{centsToYuan(Math.max(0, item.total!.value - item.daily!.value))}</span>
-                <span className="plan-month-lastyear">
-                  {item.total!.lastYearCents !== null ? `¥${centsToYuan(item.total!.lastYearCents)}` : "无记录"}
-                </span>
+                <span className="plan-month-key">{monthLabel(item.key)}</span>
+                <span className="plan-month-total"><em>预测总支出</em><b>¥{centsToYuan(item.total!.value)}</b></span>
+                <span><em>日常消费</em><b>¥{centsToYuan(item.daily!.value)}</b></span>
+                <span><em>专项支出</em><b>¥{centsToYuan(Math.max(0, item.total!.value - item.daily!.value))}</b></span>
+                <span className="plan-month-lastyear"><em>去年同期总支出</em><b>{item.total!.lastYearCents !== null ? `¥${centsToYuan(item.total!.lastYearCents)}` : "无记录"}</b></span>
               </div>
             ))}
           </div>

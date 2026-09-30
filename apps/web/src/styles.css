@@ -5779,46 +5779,55 @@ input[type="month"],
 .plan-month-table {
   display: flex;
   flex-direction: column;
-  gap: 0.3rem;
+  gap: 0.4rem;
 }
 
 .plan-month-row {
   display: grid;
-  grid-template-columns: minmax(4.6rem, 1.1fr) repeat(4, minmax(3.6rem, 1fr));
-  gap: 0.4rem;
+  grid-template-columns: minmax(4.4rem, 0.9fr) repeat(4, minmax(0, 1fr));
+  gap: 0.5rem;
   align-items: center;
-}
-
-.plan-month-head {
-  font-size: 0.66rem;
-  color: #8a7154;
-  padding-bottom: 0.15rem;
-}
-
-.plan-month-row:not(.plan-month-head) {
   background: #faf6ee;
   border: 1px solid #eee2cc;
   border-radius: 0.6rem;
-  padding: 0.55rem 0.7rem;
+  padding: 0.6rem 0.75rem;
 }
 
-.plan-month-row strong {
-  font-size: 0.8rem;
+.plan-month-key {
+  font-size: 0.82rem;
+  font-weight: 700;
   color: #31473a;
 }
 
-.plan-month-row > span {
-  font-size: 0.78rem;
+.plan-month-row > span:not(.plan-month-key) {
+  display: flex;
+  flex-direction: column;
+  gap: 0.12rem;
+  min-width: 0;
+}
+
+.plan-month-row > span em {
+  font-style: normal;
+  font-size: 0.62rem;
+  color: #8a7154;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.plan-month-row > span b {
+  font-size: 0.84rem;
+  font-weight: 600;
   color: #6b5a41;
   white-space: nowrap;
 }
 
-.plan-month-total {
-  font-weight: 700;
+.plan-month-total b {
   color: #a03d24;
+  font-weight: 700;
 }
 
-.plan-month-lastyear {
+.plan-month-lastyear b {
   color: #8a7154;
 }
 
@@ -5833,17 +5842,22 @@ input[type="month"],
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
-  .plan-chart {
-    min-width: 38rem;
-  }
-
   .plan-month-row {
-    grid-template-columns: minmax(4.2rem, 1fr) repeat(4, minmax(3.2rem, 1fr));
-    gap: 0.25rem;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 0.55rem 0.5rem;
   }
 
-  .plan-month-row:not(.plan-month-head) {
-    padding: 0.5rem 0.55rem;
+  .plan-month-key {
+    align-self: center;
+  }
+
+  .plan-month-total {
+    align-items: flex-end;
+  }
+
+  .plan-evidence-table th,
+  .plan-evidence-table td {
+    white-space: normal;
   }
 
   .plan-item-row {
