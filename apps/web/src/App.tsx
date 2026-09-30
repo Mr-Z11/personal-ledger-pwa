@@ -373,7 +373,7 @@ const viewHeadingMap: Record<View, { strong: string; span: string; icon: typeof 
   entry: { strong: "快速记账", span: "日常消费、收入、转账", icon: Plus },
   transactions: { strong: "流水明细", span: "搜索、筛选、批量管理", icon: ListFilter },
   reports: { strong: "消费分析", span: "趋势、预算、支出结构", icon: PieChartIcon },
-  plan: { strong: "消费规划", span: "未来消费趋势与主要支出预测", icon: CalendarClock },
+  plan: { strong: "支出规划", span: "未来消费与总支出预测（去年同期为主）", icon: CalendarClock },
   settings: { strong: "账户设置", span: "账户、分类、预算、数据", icon: Settings2 },
   trash: { strong: "回收站", span: "已删除流水可恢复", icon: Undo2 }
 };

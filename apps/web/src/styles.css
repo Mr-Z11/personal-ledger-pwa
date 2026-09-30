@@ -3729,25 +3729,25 @@ input[type="month"],
   }
 
   nav {
-    grid-template-columns: repeat(4, 1fr);
-    gap: 0.18rem;
+    grid-template-columns: repeat(5, 1fr);
+    gap: 0.12rem;
   }
 
   nav button {
     justify-content: center;
     min-width: 0;
-    min-height: 3.6rem;
-    padding: 0.28rem 0.1rem 0.24rem;
+    min-height: 3.4rem;
+    padding: 0.24rem 0.06rem 0.2rem;
     flex-direction: column;
-    gap: 0.22rem;
-    border-radius: 0.65rem;
+    gap: 0.18rem;
+    border-radius: 0.6rem;
   }
 
   nav button span {
     display: block;
     width: 100%;
     color: rgba(246, 241, 231, 0.76);
-    font-size: 0.7rem;
+    font-size: 0.66rem;
     font-weight: 700;
     line-height: 1.05;
     overflow: hidden;
@@ -5336,6 +5336,7 @@ input[type="month"],
 
 .report-fold-body {
   padding: 0 1.1rem 1.1rem;
+  min-width: 0;
 }
 
 /* ------------------------------------------------------------------ */
@@ -5373,15 +5374,14 @@ input[type="month"],
   display: flex;
   flex-direction: column;
   gap: 0.35rem;
-  overflow-x: auto;
+  min-width: 0;
 }
 
 .regular-expense-row {
   display: grid;
-  grid-template-columns: minmax(7.5rem, 1.4fr) repeat(6, minmax(2.9rem, 1fr)) minmax(4.6rem, 1.1fr);
-  gap: 0.35rem;
+  grid-template-columns: minmax(5.4rem, 1.2fr) repeat(6, minmax(2.05rem, 1fr));
+  gap: 0.28rem;
   align-items: stretch;
-  min-width: 34rem;
 }
 
 .regular-expense-head {
@@ -5412,8 +5412,11 @@ input[type="month"],
 
 .regular-expense-name em {
   font-style: normal;
-  font-size: 0.64rem;
+  font-size: 0.62rem;
   color: #8a7154;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .regular-expense-cell {
@@ -5427,10 +5430,13 @@ input[type="month"],
   background: #faf6ee;
 }
 
-.regular-expense-head .regular-expense-cell {
+.regular-expense-cell.head {
   height: auto;
   background: transparent;
   justify-content: center;
+  font-size: 0.64rem;
+  color: #8a7154;
+  font-weight: 600;
 }
 
 .regular-expense-cell i {
@@ -5442,11 +5448,12 @@ input[type="month"],
 }
 
 .regular-expense-cell b {
-  font-size: 0.62rem;
+  font-size: 0.6rem;
   font-weight: 600;
   color: #6b5a41;
   line-height: 1.2;
   padding-bottom: 2px;
+  white-space: nowrap;
 }
 
 .regular-expense-cell.current {
@@ -5456,33 +5463,6 @@ input[type="month"],
 
 .regular-expense-cell.current i {
   background: #d45b3f;
-}
-
-.regular-expense-avg {
-  display: flex;
-  flex-direction: column;
-  justify-content: center;
-  gap: 0.1rem;
-  text-align: right;
-}
-
-.regular-expense-avg strong {
-  font-size: 0.84rem;
-  color: #31473a;
-}
-
-.regular-expense-avg em {
-  font-style: normal;
-  font-size: 0.64rem;
-  color: #8a7154;
-}
-
-.regular-expense-avg em.up {
-  color: #c0392b;
-}
-
-.regular-expense-avg em.down {
-  color: #2f7d4f;
 }
 
 .regular-expense-more {
@@ -5505,6 +5485,10 @@ input[type="month"],
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 0.8rem;
+}
+
+.plan-kpi-grid.four {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
 }
 
 .plan-kpi {
@@ -5624,6 +5608,26 @@ input[type="month"],
 .plan-swatch-forecast {
   background: rgba(212, 91, 63, 0.4);
   border: 1px dashed #d45b3f;
+}
+
+.plan-swatch-lastyear {
+  background: transparent;
+  border: 1px solid #8a7154;
+  transform: rotate(45deg) scale(0.9);
+  border-radius: 0;
+  height: 0.5rem;
+  width: 0.5rem;
+}
+
+.plan-lastyear-mark {
+  fill: rgba(138, 113, 84, 0.85);
+  stroke: #8a7154;
+  stroke-width: 1;
+}
+
+.plan-lastyear-tag {
+  fill: #8a7154;
+  font-size: 9px;
 }
 
 .plan-chart-note {
@@ -5762,9 +5766,84 @@ input[type="month"],
   margin: 0.6rem 0 0;
 }
 
+.plan-evidence-note {
+  font-size: 0.72rem;
+  color: #6b5a41;
+  background: #f4f7f2;
+  border-left: 3px solid #8a7154;
+  border-radius: 0 0.5rem 0.5rem 0;
+  padding: 0.5rem 0.7rem;
+  margin: 0.5rem 0 0;
+}
+
+.plan-month-table {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+}
+
+.plan-month-row {
+  display: grid;
+  grid-template-columns: minmax(4.6rem, 1.1fr) repeat(4, minmax(3.6rem, 1fr));
+  gap: 0.4rem;
+  align-items: center;
+}
+
+.plan-month-head {
+  font-size: 0.66rem;
+  color: #8a7154;
+  padding-bottom: 0.15rem;
+}
+
+.plan-month-row:not(.plan-month-head) {
+  background: #faf6ee;
+  border: 1px solid #eee2cc;
+  border-radius: 0.6rem;
+  padding: 0.55rem 0.7rem;
+}
+
+.plan-month-row strong {
+  font-size: 0.8rem;
+  color: #31473a;
+}
+
+.plan-month-row > span {
+  font-size: 0.78rem;
+  color: #6b5a41;
+  white-space: nowrap;
+}
+
+.plan-month-total {
+  font-weight: 700;
+  color: #a03d24;
+}
+
+.plan-month-lastyear {
+  color: #8a7154;
+}
+
+.plan-chart-wrap {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
 @media (max-width: 940px) {
-  .plan-kpi-grid {
-    grid-template-columns: 1fr;
+  .plan-kpi-grid,
+  .plan-kpi-grid.four {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .plan-chart {
+    min-width: 38rem;
+  }
+
+  .plan-month-row {
+    grid-template-columns: minmax(4.2rem, 1fr) repeat(4, minmax(3.2rem, 1fr));
+    gap: 0.25rem;
+  }
+
+  .plan-month-row:not(.plan-month-head) {
+    padding: 0.5rem 0.55rem;
   }
 
   .plan-item-row {

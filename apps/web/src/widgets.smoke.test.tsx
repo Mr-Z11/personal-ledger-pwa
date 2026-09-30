@@ -134,21 +134,22 @@ describe("常规项支出与规划页", () => {
     expect(html).toContain("暂无常规项");
   });
 
-  it("PlanView 渲染预测 KPI、趋势图、主要支出项与分析依据", () => {
+  it("PlanView 渲染预测 KPI、趋势图、主要支出项与预测依据", () => {
     const budgets: Budget[] = [
       { ...stamp, id: "b-total", month: monthOffsetKey(1), categoryId: null, amountCents: yuanToCents(9000), scope: "total" }
     ];
     const html = renderToString(<PlanView transactions={regularTransactions} categories={categories} budgets={budgets} />);
-    expect(html).toContain("预计日常消费");
-    expect(html).toContain("预计总支出");
-    expect(html).toContain("主要支出项");
-    expect(html).toContain("分析依据与计算过程");
+    expect(html).toContain("预测总支出");
+    expect(html).toContain("预测日常消费");
+    expect(html).toContain("主要支出项预测");
+    expect(html).toContain("预测依据与计算过程");
     expect(html).toContain("plan-chart");
+    expect(html).toContain("去年同期");
     expect(html).toContain("贷款本金");
   });
 
   it("PlanView 空数据时不崩溃", () => {
     const html = renderToString(<PlanView transactions={[]} categories={categories} budgets={[]} />);
-    expect(html).toContain("消费规划");
+    expect(html).toContain("支出规划");
   });
 });

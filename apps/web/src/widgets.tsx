@@ -837,9 +837,8 @@ export function RegularExpensePanel({ month, transactions, categories }: {
         <div className="regular-expense-row regular-expense-head" role="row">
           <span className="regular-expense-name">常规项（近{REGULAR_WINDOW}个月出现≥{REGULAR_MIN_HITS}次）</span>
           {monthKeys.map((key) => (
-            <span key={key} className={`regular-expense-cell ${key === month ? "current" : ""}`}>{shortMonthLabel(key)}</span>
+            <span key={key} className={`regular-expense-cell head ${key === month ? "current" : ""}`}>{shortMonthLabel(key)}</span>
           ))}
-          <span className="regular-expense-avg">月均</span>
         </div>
         {shown.map((row) => {
           const maxValue = Math.max(...row.monthly, 1);
@@ -847,7 +846,10 @@ export function RegularExpensePanel({ month, transactions, categories }: {
             <div className="regular-expense-row" role="row" key={row.name}>
               <span className="regular-expense-name">
                 <strong>{row.name}</strong>
-                <em>{row.monthsHit}/{REGULAR_WINDOW} 个月有支出</em>
+                <em>
+                  月均 ¥{centsToYuan(row.avgCents)}
+                  {row.momDelta !== null ? ` · 环比 ${row.momDelta > 0 ? "+" : ""}${row.momDelta}%` : ""}
+                </em>
               </span>
               {row.monthly.map((value, index) => (
                 <span
@@ -859,12 +861,6 @@ export function RegularExpensePanel({ month, transactions, categories }: {
                   <b>{compactYuanText(value)}</b>
                 </span>
               ))}
-              <span className="regular-expense-avg">
-                <strong>¥{centsToYuan(row.avgCents)}</strong>
-                <em className={row.momDelta === null ? "" : row.momDelta > 5 ? "up" : row.momDelta < -5 ? "down" : "flat"}>
-                  {row.momDelta === null ? "上月无对照" : `环比 ${row.momDelta > 0 ? "+" : ""}${row.momDelta}%`}
-                </em>
-              </span>
             </div>
           );
         })}
