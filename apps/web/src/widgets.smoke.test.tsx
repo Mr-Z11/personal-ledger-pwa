@@ -1,11 +1,12 @@
 import { renderToString } from "react-dom/server";
 import { beforeAll, describe, expect, it } from "vitest";
-import { yuanToCents, monthKey, type Account, type Category, type Transaction } from "@ledger/shared";
+import { yuanToCents, monthKey, type Account, type Budget, type Category, type Transaction } from "@ledger/shared";
 import {
   BigExpensePanel,
   BudgetReservoir,
   DailyPaceChart,
   LocalSalaryReminderPanel,
+  RegularExpensePanel,
   SalaryBanner,
   TrendFocusCards,
   DEFAULT_SALARY_SETTINGS,
@@ -13,6 +14,7 @@ import {
   salaryBannerState,
   saveSalarySettings
 } from "./widgets";
+import { PlanView } from "./plan";
 
 beforeAll(() => {
   const store = new Map<string, string>();
@@ -101,5 +103,52 @@ describe("widgets 冒烟渲染", () => {
     const html = renderToString(<LocalSalaryReminderPanel value={DEFAULT_SALARY_SETTINGS} onChange={() => undefined} />);
     expect(html).toContain("工资日");
     expect(html).toContain("提前倒计时");
+  });
+});
+
+function monthOffsetKey(offset: number) {
+  const date = new Date();
+  date.setDate(1);
+  date.setMonth(date.getMonth() + offset);
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}`;
+}
+
+const regularTransactions: Transaction[] = [];
+for (let offset = -5; offset <= 0; offset += 1) {
+  const key = monthOffsetKey(offset);
+  regularTransactions.push(tx(`r-food-${offset}`, 120 + offset * 5, `${key}-03T12:00:00.000+08:00`));
+  regularTransactions.push(tx(`r-loan-${offset}`, 4500, `${key}-06T12:00:00.000+08:00`, "cat-loan", "招行房贷"));
+}
+
+describe("常规项支出与规划页", () => {
+  it("RegularExpensePanel 识别连续出现的分类并逐月对比", () => {
+    const html = renderToString(<RegularExpensePanel month={thisMonth} transactions={regularTransactions} categories={categories} />);
+    expect(html).toContain("常规项");
+    expect(html).toContain("三餐");
+    expect(html).toContain("月均");
+    expect(html).toContain("环比");
+  });
+
+  it("RegularExpensePanel 空数据时给出提示", () => {
+    const html = renderToString(<RegularExpensePanel month={thisMonth} transactions={[]} categories={categories} />);
+    expect(html).toContain("暂无常规项");
+  });
+
+  it("PlanView 渲染预测 KPI、趋势图、主要支出项与分析依据", () => {
+    const budgets: Budget[] = [
+      { ...stamp, id: "b-total", month: monthOffsetKey(1), categoryId: null, amountCents: yuanToCents(9000), scope: "total" }
+    ];
+    const html = renderToString(<PlanView transactions={regularTransactions} categories={categories} budgets={budgets} />);
+    expect(html).toContain("预计日常消费");
+    expect(html).toContain("预计总支出");
+    expect(html).toContain("主要支出项");
+    expect(html).toContain("分析依据与计算过程");
+    expect(html).toContain("plan-chart");
+    expect(html).toContain("贷款本金");
+  });
+
+  it("PlanView 空数据时不崩溃", () => {
+    const html = renderToString(<PlanView transactions={[]} categories={categories} budgets={[]} />);
+    expect(html).toContain("消费规划");
   });
 });

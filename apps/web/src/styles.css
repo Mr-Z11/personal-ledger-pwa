@@ -5252,3 +5252,527 @@ input[type="month"],
     line-height: 1.35;
   }
 }
+
+/* ------------------------------------------------------------------ */
+/* 报表模块折叠面板（ReportFold）                                       */
+/* ------------------------------------------------------------------ */
+
+.report-fold {
+  padding: 0;
+}
+
+.report-fold-summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.8rem;
+  cursor: pointer;
+  padding: 0.9rem 1.1rem;
+  list-style: none;
+}
+
+.report-fold-summary::-webkit-details-marker {
+  display: none;
+}
+
+.report-fold-summary .chart-heading {
+  margin: 0;
+  min-width: 0;
+}
+
+.report-fold-summary .chart-heading h2 {
+  margin: 0;
+  font-size: 1rem;
+}
+
+.report-fold-summary .chart-heading span {
+  font-size: 0.74rem;
+  color: #8a7154;
+}
+
+.report-fold-summary > em {
+  font-style: normal;
+  font-size: 0.74rem;
+  color: #1f5f74;
+  border: 1px solid #bcd3dd;
+  border-radius: 999px;
+  padding: 0.15rem 0.7rem;
+  white-space: nowrap;
+}
+
+.report-fold-summary > em::before {
+  content: "";
+}
+
+.report-fold:not([open]) .report-fold-summary > em {
+  background: transparent;
+  color: #1f5f74;
+}
+
+.report-fold[open] .report-fold-summary > em {
+  background: #1f5f74;
+  color: #fff;
+}
+
+.report-fold:not([open]) .report-fold-summary > em {
+  font-size: 0;
+}
+
+.report-fold:not([open]) .report-fold-summary > em::after {
+  content: "展开";
+  font-size: 0.74rem;
+}
+
+.report-fold-badge {
+  font-size: 0.74rem;
+  color: #8a5a2b;
+  background: #f7ecd9;
+  border-radius: 999px;
+  padding: 0.15rem 0.7rem;
+  white-space: nowrap;
+  margin-left: auto;
+  margin-right: 0.2rem;
+}
+
+.report-fold-body {
+  padding: 0 1.1rem 1.1rem;
+}
+
+/* ------------------------------------------------------------------ */
+/* 常规项支出（RegularExpensePanel）                                    */
+/* ------------------------------------------------------------------ */
+
+.regular-expense-summary {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 0.6rem;
+  margin-bottom: 0.9rem;
+}
+
+.regular-expense-summary > div {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  background: #faf6ee;
+  border: 1px solid #e8ddc8;
+  border-radius: 0.7rem;
+  padding: 0.55rem 0.7rem;
+}
+
+.regular-expense-summary span {
+  font-size: 0.7rem;
+  color: #8a7154;
+}
+
+.regular-expense-summary strong {
+  font-size: 1rem;
+  color: #31473a;
+}
+
+.regular-expense-table {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  overflow-x: auto;
+}
+
+.regular-expense-row {
+  display: grid;
+  grid-template-columns: minmax(7.5rem, 1.4fr) repeat(6, minmax(2.9rem, 1fr)) minmax(4.6rem, 1.1fr);
+  gap: 0.35rem;
+  align-items: stretch;
+  min-width: 34rem;
+}
+
+.regular-expense-head {
+  align-items: end;
+}
+
+.regular-expense-head > span {
+  font-size: 0.66rem;
+  color: #8a7154;
+  padding-bottom: 0.1rem;
+}
+
+.regular-expense-name {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 0.1rem;
+  min-width: 0;
+}
+
+.regular-expense-name strong {
+  font-size: 0.82rem;
+  color: #31473a;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.regular-expense-name em {
+  font-style: normal;
+  font-size: 0.64rem;
+  color: #8a7154;
+}
+
+.regular-expense-cell {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 2px;
+  height: 3.2rem;
+  border-radius: 0.4rem;
+  background: #faf6ee;
+}
+
+.regular-expense-head .regular-expense-cell {
+  height: auto;
+  background: transparent;
+  justify-content: center;
+}
+
+.regular-expense-cell i {
+  display: block;
+  width: 62%;
+  max-width: 14px;
+  background: #1f5f74;
+  border-radius: 2px 2px 0 0;
+}
+
+.regular-expense-cell b {
+  font-size: 0.62rem;
+  font-weight: 600;
+  color: #6b5a41;
+  line-height: 1.2;
+  padding-bottom: 2px;
+}
+
+.regular-expense-cell.current {
+  background: #e7f0f3;
+  outline: 1px solid #bcd3dd;
+}
+
+.regular-expense-cell.current i {
+  background: #d45b3f;
+}
+
+.regular-expense-avg {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 0.1rem;
+  text-align: right;
+}
+
+.regular-expense-avg strong {
+  font-size: 0.84rem;
+  color: #31473a;
+}
+
+.regular-expense-avg em {
+  font-style: normal;
+  font-size: 0.64rem;
+  color: #8a7154;
+}
+
+.regular-expense-avg em.up {
+  color: #c0392b;
+}
+
+.regular-expense-avg em.down {
+  color: #2f7d4f;
+}
+
+.regular-expense-more {
+  font-size: 0.7rem;
+  color: #8a7154;
+  margin: 0.5rem 0 0;
+}
+
+@media (max-width: 940px) {
+  .regular-expense-summary {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+/* ------------------------------------------------------------------ */
+/* 规划页（PlanView）                                                   */
+/* ------------------------------------------------------------------ */
+
+.plan-kpi-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.8rem;
+}
+
+.plan-kpi {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  background: #fff;
+  border: 1px solid #e8ddc8;
+  border-radius: 0.9rem;
+  padding: 0.85rem 1rem;
+}
+
+.plan-kpi span {
+  font-size: 0.72rem;
+  color: #8a7154;
+}
+
+.plan-kpi strong {
+  font-size: 1.35rem;
+  color: #1f5f74;
+}
+
+.plan-kpi em {
+  font-style: normal;
+  font-size: 0.7rem;
+  color: #8a7154;
+}
+
+.plan-chart {
+  width: 100%;
+  height: auto;
+  display: block;
+}
+
+.plan-grid {
+  stroke: #e8ddc8;
+  stroke-width: 1;
+}
+
+.plan-axis {
+  font-size: 10px;
+  fill: #8a7154;
+}
+
+.plan-bar.daily {
+  fill: #1f5f74;
+}
+
+.plan-bar.total {
+  fill: #d45b3f;
+}
+
+.plan-bar.forecast {
+  fill-opacity: 0.4;
+  stroke-dasharray: 4 3;
+  stroke-width: 1;
+}
+
+.plan-bar.daily.forecast {
+  stroke: #1f5f74;
+}
+
+.plan-bar.total.forecast {
+  stroke: #d45b3f;
+}
+
+.plan-forecast-zone {
+  fill: rgba(31, 95, 116, 0.05);
+}
+
+.plan-forecast-tag {
+  fill: #1f5f74;
+  font-weight: 700;
+}
+
+.plan-forecast-value {
+  fill: #a03d24;
+  font-weight: 700;
+}
+
+.plan-projected-tag {
+  fill: #b47b28;
+}
+
+.plan-whisker {
+  stroke: #8a7154;
+  stroke-width: 1.2;
+  stroke-dasharray: 2 2;
+}
+
+.plan-budget-line {
+  stroke: #2f7d4f;
+  stroke-width: 1.4;
+  stroke-dasharray: 6 4;
+}
+
+.plan-budget-line.daily {
+  stroke: #1f5f74;
+}
+
+.plan-budget-tag {
+  fill: #2f7d4f;
+}
+
+.plan-budget-line.daily + .plan-budget-tag {
+  fill: #1f5f74;
+}
+
+.plan-swatch-daily {
+  background: #1f5f74;
+}
+
+.plan-swatch-total {
+  background: #d45b3f;
+}
+
+.plan-swatch-forecast {
+  background: rgba(212, 91, 63, 0.4);
+  border: 1px dashed #d45b3f;
+}
+
+.plan-chart-note {
+  font-size: 0.7rem;
+  color: #8a7154;
+  margin: 0.4rem 0 0;
+}
+
+.plan-item-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.55rem;
+}
+
+.plan-item-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr);
+  gap: 0.8rem;
+  align-items: center;
+  background: #faf6ee;
+  border: 1px solid #eee2cc;
+  border-radius: 0.7rem;
+  padding: 0.6rem 0.8rem;
+}
+
+.plan-item-row.flexible {
+  background: #eef4f6;
+  border-color: #bcd3dd;
+}
+
+.plan-item-main {
+  display: flex;
+  flex-direction: column;
+  gap: 0.12rem;
+  min-width: 0;
+}
+
+.plan-item-main strong {
+  font-size: 0.86rem;
+  color: #31473a;
+}
+
+.plan-item-main span {
+  font-size: 0.68rem;
+  color: #8a7154;
+}
+
+.plan-item-amount {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  align-items: flex-end;
+}
+
+.plan-item-amount strong {
+  font-size: 0.94rem;
+  color: #1f5f74;
+}
+
+.plan-item-amount .bar {
+  width: 100%;
+  height: 5px;
+  background: #e8ddc8;
+  border-radius: 999px;
+  overflow: hidden;
+}
+
+.plan-item-amount .bar i {
+  display: block;
+  height: 100%;
+  background: #1f5f74;
+  border-radius: 999px;
+}
+
+.plan-item-row.flexible .plan-item-amount .bar i {
+  background: #d6b25e;
+}
+
+.plan-evidence {
+  padding: 0;
+}
+
+.plan-evidence-body {
+  padding: 0 1.1rem 1.1rem;
+}
+
+.plan-evidence-body h3 {
+  font-size: 0.86rem;
+  color: #31473a;
+  margin: 0.9rem 0 0.4rem;
+}
+
+.plan-evidence-body ul {
+  margin: 0.2rem 0 0.4rem;
+  padding-left: 1.2rem;
+}
+
+.plan-evidence-body li {
+  font-size: 0.76rem;
+  color: #6b5a41;
+  line-height: 1.6;
+}
+
+.plan-evidence-table-wrap {
+  overflow-x: auto;
+}
+
+.plan-evidence-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.74rem;
+}
+
+.plan-evidence-table th,
+.plan-evidence-table td {
+  text-align: left;
+  padding: 0.35rem 0.5rem;
+  border-bottom: 1px solid #eee2cc;
+  color: #6b5a41;
+  white-space: nowrap;
+}
+
+.plan-evidence-table th {
+  color: #8a7154;
+  font-weight: 600;
+  background: #faf6ee;
+}
+
+.plan-evidence-disclaimer {
+  font-size: 0.72rem;
+  color: #8a7154;
+  background: #faf6ee;
+  border: 1px solid #eee2cc;
+  border-radius: 0.6rem;
+  padding: 0.55rem 0.7rem;
+  margin: 0.6rem 0 0;
+}
+
+@media (max-width: 940px) {
+  .plan-kpi-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .plan-item-row {
+    grid-template-columns: 1fr;
+    gap: 0.4rem;
+  }
+
+  .plan-item-amount {
+    align-items: stretch;
+  }
+}

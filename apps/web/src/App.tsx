@@ -19,6 +19,7 @@ import {
   Banknote,
   Bell,
   BellRing,
+  CalendarClock,
   Cloud,
   CloudOff,
   Download,
@@ -76,6 +77,7 @@ import {
   BudgetReservoir,
   DailyPaceChart,
   LocalSalaryReminderPanel,
+  RegularExpensePanel,
   SalaryBanner,
   TrendFocusCards,
   dismissSalaryBannerForToday,
@@ -86,8 +88,9 @@ import {
   saveSalarySettings,
   type SalarySettings
 } from "./widgets";
+import { PlanView } from "./plan";
 
-type View = "overview" | "entry" | "transactions" | "reports" | "settings" | "trash";
+type View = "overview" | "entry" | "transactions" | "reports" | "plan" | "settings" | "trash";
 type LedgerGroupMode = "day" | "month" | "year";
 type ReportPeriod = "month" | "year";
 type ExportFormat = "ledger" | "portable" | "suishouji" | "qianji";
@@ -97,6 +100,7 @@ const navItems: { id: View; label: string; icon: typeof Home }[] = [
   { id: "overview", label: "总览", icon: Home },
   { id: "transactions", label: "流水", icon: ListFilter },
   { id: "reports", label: "报表", icon: PieChartIcon },
+  { id: "plan", label: "规划", icon: CalendarClock },
   { id: "settings", label: "设置", icon: Settings2 }
 ];
 
@@ -369,6 +373,7 @@ const viewHeadingMap: Record<View, { strong: string; span: string; icon: typeof 
   entry: { strong: "快速记账", span: "日常消费、收入、转账", icon: Plus },
   transactions: { strong: "流水明细", span: "搜索、筛选、批量管理", icon: ListFilter },
   reports: { strong: "消费分析", span: "趋势、预算、支出结构", icon: PieChartIcon },
+  plan: { strong: "消费规划", span: "未来消费趋势与主要支出预测", icon: CalendarClock },
   settings: { strong: "账户设置", span: "账户、分类、预算、数据", icon: Settings2 },
   trash: { strong: "回收站", span: "已删除流水可恢复", icon: Undo2 }
 };
@@ -867,6 +872,13 @@ export function App() {
             budgets={activeBudgets}
             analysisNotes={activeAnalysisNotes}
             onSaveAnalysisNote={(item) => saveLocalAndQueue("analysisNotes", item)}
+          />
+        )}
+        {view === "plan" && (
+          <PlanView
+            transactions={activeTransactions}
+            categories={activeCategories}
+            budgets={activeBudgets}
           />
         )}
         {view === "settings" && (
@@ -2781,6 +2793,28 @@ function AnalysisNoteEditor({ value, placeholder, onSave, compact = false }: {
   );
 }
 
+function ReportFold({ title, hint, badge, defaultOpen = true, children }: {
+  title: string;
+  hint: string;
+  badge?: string;
+  defaultOpen?: boolean;
+  children: ReactNode;
+}) {
+  return (
+    <details className="panel report-fold" open={defaultOpen}>
+      <summary className="report-fold-summary">
+        <div className="chart-heading">
+          <h2>{title}</h2>
+          <span>{hint}</span>
+        </div>
+        {badge && <strong className="report-fold-badge">{badge}</strong>}
+        <em>收起</em>
+      </summary>
+      <div className="report-fold-body">{children}</div>
+    </details>
+  );
+}
+
 function ReportScopePill({ label, detail }: { label: string; detail: string }) {
   return (
     <div className="report-scope-pill">
@@ -3230,22 +3264,14 @@ function Reports({ transactions, accounts, categories, budgets, analysisNotes, o
 
       {period === "month" && (
         <>
-          <section className="panel pace-panel">
-            <div className="chart-heading">
-              <h2>本月消费节奏</h2>
-              <span>{monthLabel(month)} · 每日累计 vs 预算参考线</span>
-            </div>
+          <ReportFold title="本月消费节奏" hint={`${monthLabel(month)} · 每日累计 vs 预算参考线`}>
             <TrendFocusCards month={month} transactions={transactions} categories={categories} budgetCents={monthlyAnalysis.budgetCents} />
             <DailyPaceChart month={month} transactions={transactions} categories={categories} budgetCents={monthlyAnalysis.budgetCents} />
-          </section>
+          </ReportFold>
 
-          <section className="panel">
-            <div className="chart-heading">
-              <h2>大额开销</h2>
-              <span>{monthLabel(month)} · 清单 + 规律识别（纯统计规则，无 AI）</span>
-            </div>
-            <BigExpensePanel month={month} transactions={transactions} categories={categories} accounts={accounts} />
-          </section>
+          <ReportFold title="常规项支出" hint={`近6个月 · 每月固定开销逐月对比`}>
+            <RegularExpensePanel month={month} transactions={transactions} categories={categories} />
+          </ReportFold>
         </>
       )}
 
@@ -3295,14 +3321,12 @@ function Reports({ transactions, accounts, categories, budgets, analysisNotes, o
       </details>
 
       {period === "month" && (
-        <section className="panel monthly-analysis-panel">
-          <div className="analysis-panel-head">
-            <div>
-              <h2>消费异常分析</h2>
-              <span>{monthLabel(month)} · 本月异常，历史数据只作参照</span>
-            </div>
-            <strong>{monthlyAnalysis.findings.length > 0 ? `${monthlyAnalysis.findings.length} 项提醒` : "暂无异常"}</strong>
-          </div>
+        <>
+        <ReportFold
+          title="消费异常分析"
+          hint={`${monthLabel(month)} · 本月异常，历史数据只作参照`}
+          badge={monthlyAnalysis.findings.length > 0 ? `${monthlyAnalysis.findings.length} 项提醒` : "暂无异常"}
+        >
           <div className="analysis-summary-grid">
             <div className={monthlyAnalysis.budgetCents > 0 && monthlyAnalysis.budgetUsage > 100 ? "analysis-summary-card warn" : "analysis-summary-card"}>
               <span>日常预算</span>
@@ -3381,7 +3405,12 @@ function Reports({ transactions, accounts, categories, budgets, analysisNotes, o
           ) : (
             <p className="empty">本月没有触发显著异常，建议仍保留一条人工复盘笔记，记录是否有即将发生的大额支出。</p>
           )}
-        </section>
+        </ReportFold>
+
+        <ReportFold title="大额开销" hint={`${monthLabel(month)} · 清单 + 规律识别（纯统计规则，无 AI）`}>
+          <BigExpensePanel month={month} transactions={transactions} categories={categories} accounts={accounts} />
+        </ReportFold>
+        </>
       )}
 
       {specialCategoryData.length > 0 && (

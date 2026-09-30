@@ -10,7 +10,8 @@ import {
   monthLabel,
   offsetMonthKey,
   percentDelta,
-  previousMonthKeys
+  previousMonthKeys,
+  shortMonthLabel
 } from "./utils";
 
 /* ------------------------------------------------------------------ */
@@ -721,6 +722,157 @@ export function BigExpensePanel({ month, transactions, categories, accounts }: {
           规律：标「每月固定」的支出近 6 个月出现 3 次以上且金额稳定，属于可预期的刚性开销，做预算时建议先扣掉这部分再分配日常额度。
         </p>
       )}
+    </div>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/* 常规项支出：每月固定开销的逐月对比                                    */
+/* ------------------------------------------------------------------ */
+
+const REGULAR_WINDOW = 6;
+const REGULAR_MIN_HITS = 3;
+const REGULAR_MAX_ITEMS = 8;
+
+type RegularExpenseGroup = {
+  name: string;
+  monthly: number[];
+  monthsHit: number;
+  avgCents: number;
+  currentCents: number;
+  prevCents: number;
+  momDelta: number | null;
+};
+
+export function collectRegularExpenses(transactions: Transaction[], categories: Category[], endMonth: string, window = REGULAR_WINDOW, minHits = REGULAR_MIN_HITS) {
+  const monthKeys = Array.from({ length: window }, (_, index) => offsetMonthKey(endMonth, -(window - 1 - index)));
+  const groups = new Map<string, { name: string; monthly: number[]; monthsHit: number }>();
+  transactions.forEach((item) => {
+    if (item.type !== "expense") return;
+    const key = dateKey(item.occurredAt).slice(0, 7);
+    const index = monthKeys.indexOf(key);
+    if (index < 0) return;
+    const category = categories.find((entry) => entry.id === item.categoryId);
+    const name = categoryPath(category, categories) || "未分类";
+    const entry = groups.get(name) ?? { name, monthly: new Array<number>(window).fill(0), monthsHit: 0 };
+    if (entry.monthly[index] === 0) entry.monthsHit += 1;
+    entry.monthly[index] += item.amountCents;
+    groups.set(name, entry);
+  });
+  const rows: RegularExpenseGroup[] = [...groups.values()]
+    .filter((entry) => entry.monthsHit >= minHits)
+    .map((entry) => {
+      const total = entry.monthly.reduce((sum, value) => sum + value, 0);
+      const currentCents = entry.monthly[window - 1];
+      const prevCents = entry.monthly[window - 2] ?? 0;
+      return {
+        name: entry.name,
+        monthly: entry.monthly,
+        monthsHit: entry.monthsHit,
+        avgCents: Math.round(total / window),
+        currentCents,
+        prevCents,
+        momDelta: prevCents > 0 ? percentDelta(currentCents, prevCents) : null
+      };
+    })
+    .sort((left, right) => right.avgCents - left.avgCents);
+  return { monthKeys, rows };
+}
+
+function compactYuanText(cents: number) {
+  const yuan = cents / 100;
+  if (yuan <= 0) return "-";
+  if (yuan >= 10000) return `${(yuan / 10000).toFixed(1)}万`;
+  if (yuan >= 1000) return `${(yuan / 1000).toFixed(1)}k`;
+  return `${Math.round(yuan)}`;
+}
+
+export function RegularExpensePanel({ month, transactions, categories }: {
+  month: string;
+  transactions: Transaction[];
+  categories: Category[];
+}) {
+  const { monthKeys, rows } = useMemo(
+    () => collectRegularExpenses(transactions, categories, month),
+    [transactions, categories, month]
+  );
+  const shown = rows.slice(0, REGULAR_MAX_ITEMS);
+  const hiddenCount = Math.max(0, rows.length - shown.length);
+
+  const monthTotalCents = useMemo(
+    () => transactions
+      .filter((item) => item.type === "expense" && dateKey(item.occurredAt).startsWith(month))
+      .reduce((sum, item) => sum + item.amountCents, 0),
+    [transactions, month]
+  );
+  const currentRegularCents = shown.reduce((sum, row) => sum + row.currentCents, 0);
+  const avgRegularCents = shown.reduce((sum, row) => sum + row.avgCents, 0);
+  const share = monthTotalCents > 0 ? Math.round((currentRegularCents / monthTotalCents) * 100) : 0;
+
+  if (rows.length === 0) {
+    return <p className="empty">近 {REGULAR_WINDOW} 个月没有连续出现 {REGULAR_MIN_HITS} 次以上的支出分类，暂无常规项。</p>;
+  }
+
+  return (
+    <div className="regular-expense-panel">
+      <div className="regular-expense-summary">
+        <div>
+          <span>常规项</span>
+          <strong>{rows.length} 项</strong>
+        </div>
+        <div>
+          <span>常规项月均</span>
+          <strong>¥{centsToYuan(avgRegularCents)}</strong>
+        </div>
+        <div>
+          <span>{monthLabel(month)}常规项</span>
+          <strong>¥{centsToYuan(currentRegularCents)}</strong>
+        </div>
+        <div>
+          <span>占当月总支出</span>
+          <strong>{monthTotalCents > 0 ? `${share}%` : "无支出"}</strong>
+        </div>
+      </div>
+      <div className="regular-expense-table" role="table" aria-label="常规支出项逐月对比">
+        <div className="regular-expense-row regular-expense-head" role="row">
+          <span className="regular-expense-name">常规项（近{REGULAR_WINDOW}个月出现≥{REGULAR_MIN_HITS}次）</span>
+          {monthKeys.map((key) => (
+            <span key={key} className={`regular-expense-cell ${key === month ? "current" : ""}`}>{shortMonthLabel(key)}</span>
+          ))}
+          <span className="regular-expense-avg">月均</span>
+        </div>
+        {shown.map((row) => {
+          const maxValue = Math.max(...row.monthly, 1);
+          return (
+            <div className="regular-expense-row" role="row" key={row.name}>
+              <span className="regular-expense-name">
+                <strong>{row.name}</strong>
+                <em>{row.monthsHit}/{REGULAR_WINDOW} 个月有支出</em>
+              </span>
+              {row.monthly.map((value, index) => (
+                <span
+                  key={monthKeys[index]}
+                  className={`regular-expense-cell ${monthKeys[index] === month ? "current" : ""}`}
+                  title={`${monthLabel(monthKeys[index])} ¥${centsToYuan(value)}`}
+                >
+                  <i style={{ height: `${Math.max(value > 0 ? 8 : 2, Math.round((value / maxValue) * 100))}%` }} />
+                  <b>{compactYuanText(value)}</b>
+                </span>
+              ))}
+              <span className="regular-expense-avg">
+                <strong>¥{centsToYuan(row.avgCents)}</strong>
+                <em className={row.momDelta === null ? "" : row.momDelta > 5 ? "up" : row.momDelta < -5 ? "down" : "flat"}>
+                  {row.momDelta === null ? "上月无对照" : `环比 ${row.momDelta > 0 ? "+" : ""}${row.momDelta}%`}
+                </em>
+              </span>
+            </div>
+          );
+        })}
+      </div>
+      {hiddenCount > 0 && <p className="regular-expense-more">另有 {hiddenCount} 个金额较小的常规项未列出，按 6 个月均值排序取前 {REGULAR_MAX_ITEMS} 项。</p>}
+      <p className="big-expense-insight">
+        口径：同一支出分类近 {REGULAR_WINDOW} 个月出现 {REGULAR_MIN_HITS} 次及以上即判定为常规项（含日常消费与贷款、保险等固定专项），月均按 {REGULAR_WINDOW} 个月平均；这些是可预期的刚性开销，做下月规划时可先锁定。
+      </p>
     </div>
   );
 }
