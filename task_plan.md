@@ -213,3 +213,10 @@ Phase 15
 - [x] 批量导入改为「解析并保存」一步完成（按钮实时显示解析行数），不再需要二次点保存
 - [x] 验证：typecheck ✓ vitest 11/11 ✓ build ✓ → force-recreate caddy-local → 200 + 特征串「解析并保存」在线
 - **Status:** complete（已推送 main + 部署本地栈）
+
+### Phase 21: 保险日历保存动作简化 (2026-10-01, commit ca0cfc0)
+- [x] 删除冗余「保存日历」按钮；手动行编辑（月份/名称/金额/删除）改为静默自动保存（只落库名称+金额齐全的完整行，半成品行留在草稿）
+- [x] 批量导入 textarea 移出嵌套 details 直接展示；「解析并保存」成为唯一保存动作，全宽 primary 按钮突出显示，按钮实时显示解析行数，保存后变「已保存（共 N 项）」
+- [x] 添加一行旁显示「修改自动保存」提示
+- [x] 验证：typecheck ✓ vitest 11/11 ✓ build ✓ → force-recreate caddy-local → 200；bundle 含「修改自动保存」、不含「保存日历」
+- **Status:** complete（已推送 main + 部署本地栈）

@@ -428,3 +428,12 @@
 
 ### 验证
 typecheck ✓ vitest 11/11 ✓ build ✓ → caddy force-recreate → 200；待用户手机复测保存反馈
+
+## 会话记录（2026-10-01，Phase 21）
+
+### 用户反馈
+「保存日历」与「解析并保存」重复，删除前者、突出后者
+
+### 实施（commit ca0cfc0）
+- 行编辑改自动保存（完整行才落库）；textarea 移出嵌套 details；解析并保存为唯一全宽保存按钮
+- 验证：typecheck ✓ vitest 11/11 ✓ build ✓ → caddy force-recreate → 200
