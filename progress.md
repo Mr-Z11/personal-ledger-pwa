@@ -437,3 +437,13 @@ typecheck ✓ vitest 11/11 ✓ build ✓ → caddy force-recreate → 200；待�
 ### 实施（commit ca0cfc0）
 - 行编辑改自动保存（完整行才落库）；textarea 移出嵌套 details；解析并保存为唯一全宽保存按钮
 - 验证：typecheck ✓ vitest 11/11 ✓ build ✓ → caddy force-recreate → 200
+
+## 会话记录（2026-10-01，Phase 22）
+
+### 用户反馈
+规划只显示 11 月内容，缺本月 10 月；希望可选择任意月份（10 月规划、9 月回测）
+
+### 实施（commit c972ed0）
+- 锚点月选择器（默认本月）；历史=锚点前 6 完整月，预测=锚点起 3 月
+- 过去月份回测：明细「实际总支出」+ KPI 实际对照
+- 验证：typecheck ✓ vitest 11/11 ✓ build ✓ → caddy force-recreate → 200

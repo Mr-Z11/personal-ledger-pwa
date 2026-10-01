@@ -220,3 +220,11 @@ Phase 15
 - [x] 添加一行旁显示「修改自动保存」提示
 - [x] 验证：typecheck ✓ vitest 11/11 ✓ build ✓ → force-recreate caddy-local → 200；bundle 含「修改自动保存」、不含「保存日历」
 - **Status:** complete（已推送 main + 部署本地栈）
+
+### Phase 22: 规划锚点月选择器 + 回测 (2026-10-01, commit c972ed0)
+- [x] 根因：规划钉死在「下月」，用户 10-01 打开只见 11 月内容
+- [x] 顶部加「规划月份」选择器（input type=month，默认本月，max=当前+12）：历史窗口=锚点前 6 个完整月（buildPlanHistory 改 endKey 参数），预测=锚点起 3 个月
+- [x] 选过去月份即回测：明细表新增「实际总支出」单元格（有数据才显示），KPI 总支出卡加「实际已发生 ¥X·回测」提示
+- [x] 明细行 grid 改 flex 布局适配 5~7 个单元格；预算对比/保险日历/主要支出项全部跟随锚点月
+- [x] 验证：typecheck ✓ vitest 11/11 ✓ build ✓ → force-recreate caddy-local → 200 + 「规划月份」在线
+- **Status:** complete（已推送 main + 部署本地栈；待手机实测）
