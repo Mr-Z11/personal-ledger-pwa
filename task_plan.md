@@ -228,3 +228,10 @@ Phase 15
 - [x] 明细行 grid 改 flex 布局适配 5~7 个单元格；预算对比/保险日历/主要支出项全部跟随锚点月
 - [x] 验证：typecheck ✓ vitest 11/11 ✓ build ✓ → force-recreate caddy-local → 200 + 「规划月份」在线
 - **Status:** complete（已推送 main + 部署本地栈；待手机实测）
+
+### Phase 23: 主要支出项保险按日历精确计入 (2026-10-01, commit 294b00c)
+- [x] 根因：保险在 4–9 月窗口出现 ≥3 次被频率规则误判为常规项，摊进了 10 月（无保费月份）
+- [x] 修复：配置保险日历后，保险类条目从频率常规项中剔除；锚点月的日历保单直接列出，标注「保险缴费日历 · 刚性支出」；无保单月份不再出现保险
+- [x] 预测依据第 5 节补充该规则说明
+- [x] 验证：typecheck ✓ vitest 11/11 ✓ build ✓ → caddy force-recreate → 200 + 特征串在线
+- **Status:** complete（已推送 main + 部署本地栈）

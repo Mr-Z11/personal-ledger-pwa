@@ -447,3 +447,12 @@ typecheck ✓ vitest 11/11 ✓ build ✓ → caddy force-recreate → 200；待�
 - 锚点月选择器（默认本月）；历史=锚点前 6 完整月，预测=锚点起 3 月
 - 过去月份回测：明细「实际总支出」+ KPI 实际对照
 - 验证：typecheck ✓ vitest 11/11 ✓ build ✓ → caddy force-recreate → 200
+
+## 会话记录（2026-10-01，Phase 23）
+
+### 用户反馈
+10 月主要支出预测明细不应出现专项-保险（10 月无保费）
+
+### 根因与修复（commit 294b00c）
+- 频率规则把保险误判常规项摊入无保费月；配置日历后保险改由日历精确决定，日历保单直接列出标注「刚性支出」
+- 验证：typecheck ✓ vitest 11/11 ✓ build ✓ → caddy force-recreate → 200
