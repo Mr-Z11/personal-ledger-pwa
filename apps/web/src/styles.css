@@ -5878,26 +5878,15 @@ input[type="month"],
   color: #a03d24;
 }
 
-.plan-insurance-import {
-  border: 1px dashed #d9cbae;
-  border-radius: 0.6rem;
-  padding: 0.5rem 0.7rem;
-}
-
-.plan-insurance-import summary {
-  cursor: pointer;
+.plan-insurance-import-label {
+  display: grid;
+  gap: 0.4rem;
   font-size: 0.74rem;
-  color: #1f5f74;
-  list-style: none;
+  color: #8a7154;
 }
 
-.plan-insurance-import summary::-webkit-details-marker {
-  display: none;
-}
-
-.plan-insurance-import textarea {
+.plan-insurance-import-label textarea {
   width: 100%;
-  margin: 0.5rem 0 0.4rem;
   border: 1px solid #e0d4bc;
   border-radius: 0.5rem;
   padding: 0.5rem;
@@ -5905,6 +5894,18 @@ input[type="month"],
   font-size: 0.78rem;
   color: #31473a;
   resize: vertical;
+}
+
+.plan-insurance-import-btn {
+  width: 100%;
+  min-height: 2.6rem;
+  font-size: 0.92rem;
+  font-weight: 700;
+}
+
+.plan-autosave-note {
+  font-size: 0.7rem;
+  color: #2f7d4f;
 }
 
 @media (max-width: 940px) {

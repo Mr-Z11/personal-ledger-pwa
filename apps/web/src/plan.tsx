@@ -210,23 +210,29 @@ function InsuranceSchedulePanel({ items, futureKeys, onChange }: {
   const [draft, setDraft] = useState<InsuranceItem[]>(items);
   const [importText, setImportText] = useState("");
   const [saved, setSaved] = useState(false);
-  const savedCount = items.length;
   const futurePremium = futureKeys.reduce((sum, key) => sum + scheduledInsuranceCents(items, key), 0);
 
-  function updateRow(id: string, patch: Partial<InsuranceItem>) {
-    setDraft((current) => current.map((item) => item.id === id ? { ...item, ...patch } : item));
+  /** 编辑即存（静默）：只有名称+金额都有效的行才落库，输入中的半成品行留在草稿 */
+  function persistSilent(next: InsuranceItem[]) {
+    setDraft(next);
+    const cleaned = next.filter((item) => item.name.trim() && item.amountCents > 0);
+    onChange(cleaned);
+    saveInsuranceSchedule(cleaned);
   }
 
-  function persist(next: InsuranceItem[]) {
-    setDraft(next);
-    onChange(next);
-    saveInsuranceSchedule(next);
+  function updateRow(id: string, patch: Partial<InsuranceItem>) {
+    persistSilent(draft.map((item) => item.id === id ? { ...item, ...patch } : item));
+  }
+
+  function importAndSave() {
+    const parsed = parseInsuranceText(importText);
+    if (parsed.length === 0) return;
+    setDraft(parsed);
+    onChange(parsed);
+    saveInsuranceSchedule(parsed);
+    setImportText("");
     setSaved(true);
     window.setTimeout(() => setSaved(false), 2500);
-  }
-
-  function save() {
-    persist(draft.filter((item) => item.name.trim() && item.amountCents > 0));
   }
 
   return (
@@ -261,35 +267,29 @@ function InsuranceSchedulePanel({ items, futureKeys, onChange }: {
                     }
                   }}
                 />
-                <button type="button" className="icon-button" title="删除" onClick={() => setDraft((current) => current.filter((entry) => entry.id !== item.id))}>×</button>
+                <button type="button" className="icon-button" title="删除" onClick={() => persistSilent(draft.filter((entry) => entry.id !== item.id))}>×</button>
               </div>
             ))}
           </div>
         )}
         <div className="data-actions">
           <button type="button" onClick={() => setDraft((current) => [...current, newInsuranceItem()])}>添加一行</button>
-          <button type="button" className="primary" onClick={save}>{saved ? `已保存（共 ${savedCount} 项）` : "保存日历"}</button>
+          {items.length > 0 && <span className="plan-autosave-note">修改自动保存</span>}
         </div>
-        <details className="plan-insurance-import">
-          <summary>批量导入（每行：月份 名称 金额）</summary>
+        <label className="plan-insurance-import-label">批量导入（每行：月份 名称 金额）
           <textarea
             value={importText}
             rows={5}
             placeholder={"11月 重疾险续费 4000\n11月 百万医疗 700\n6月 重疾险 4056"}
             onChange={(event) => setImportText(event.target.value)}
           />
-          <button
-            type="button"
-            disabled={!importText.trim()}
-            onClick={() => {
-              const parsed = parseInsuranceText(importText);
-              if (parsed.length > 0) {
-                persist(parsed);
-                setImportText("");
-              }
-            }}
-          >解析并保存（{importText.trim() ? `${importText.trim().split(/\r?\n/).filter(Boolean).length} 行` : "粘贴后可用"}）</button>
-        </details>
+        </label>
+        <button
+          type="button"
+          className="primary plan-insurance-import-btn"
+          disabled={!importText.trim()}
+          onClick={importAndSave}
+        >{saved ? `已保存（共 ${items.length} 项）` : `解析并保存${importText.trim() ? `（${importText.trim().split(/\r?\n/).filter(Boolean).length} 行）` : ""}`}</button>
         <p className="reminder-hint">只保存在本机（换设备需重新导入）。预测总支出 = 原预测 − 历史保险月均 + 当月日历保费；没有保单的月份（如 10 月、12 月）不会计入保险支出。</p>
       </div>
     </details>
