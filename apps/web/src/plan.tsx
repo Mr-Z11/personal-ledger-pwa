@@ -357,16 +357,27 @@ export function PlanView({ transactions, categories, budgets }: {
 
   const items = useMemo(() => {
     const { rows } = collectRegularExpenses(transactions, categories, historyEndKey);
-    const predicted = rows.map((row) => {
-      const total = row.monthly.reduce((sum, value) => sum + value, 0);
-      return { name: row.name, predictedCents: Math.round(total / row.monthsHit), monthsHit: row.monthsHit };
-    }).sort((left, right) => right.predictedCents - left.predictedCents);
-    const fixedSum = predicted.reduce((sum, item) => sum + item.predictedCents, 0);
-    return predicted.slice(0, PLAN_MAX_ITEMS).map((item) => ({
+    // 已配置保险日历时，保险类条目不再按频率猜测，改由日历精确决定（无保单的月份不出现保险项）
+    const predicted = rows
+      .filter((row) => !(scheduleConfigured && /保险/.test(row.name)))
+      .map((row) => {
+        const total = row.monthly.reduce((sum, value) => sum + value, 0);
+        return { name: row.name, predictedCents: Math.round(total / row.monthsHit), monthsHit: row.monthsHit, kind: "regular" as const };
+      })
+      .sort((left, right) => right.predictedCents - left.predictedCents);
+    const anchorMonth = Number(anchorKey.slice(5, 7));
+    const calendarRows = scheduleConfigured
+      ? insuranceItems
+          .filter((entry) => entry.month === anchorMonth)
+          .map((entry) => ({ name: entry.name, predictedCents: entry.amountCents, monthsHit: 0, kind: "calendar" as const }))
+      : [];
+    const combined = [...calendarRows, ...predicted];
+    const fixedSum = combined.reduce((sum, item) => sum + item.predictedCents, 0);
+    return combined.slice(0, PLAN_MAX_ITEMS).map((item) => ({
       ...item,
       share: fixedSum > 0 ? Math.round((item.predictedCents / fixedSum) * 100) : 0
     }));
-  }, [transactions, categories, historyEndKey]);
+  }, [transactions, categories, historyEndKey, scheduleConfigured, insuranceItems, anchorKey]);
 
   const fixedCents = items.reduce((sum, item) => sum + item.predictedCents, 0);
   const flexibleCents = nextTotalForecast ? Math.max(0, nextShownTotalCents - fixedCents) : 0;
@@ -580,7 +591,7 @@ export function PlanView({ transactions, categories, budgets }: {
       <section className="panel">
         <div className="chart-heading">
           <h2>{monthLabel(anchorKey)}主要支出项预测</h2>
-          <span>按近 {PLAN_HISTORY} 个月出现 ≥3 次的常规项推算 · 一眼看清钱花在哪</span>
+          <span>按近 {PLAN_HISTORY} 个月出现 ≥3 次的常规项推算{scheduleConfigured ? " · 保险按缴费日历精确计入" : ""} · 一眼看清钱花在哪</span>
         </div>
         {items.length === 0 ? (
           <p className="empty">历史数据中还识别不出固定支出项，继续记账后自动生成。</p>
@@ -590,7 +601,7 @@ export function PlanView({ transactions, categories, budgets }: {
               <div className="plan-item-row" key={item.name}>
                 <div className="plan-item-main">
                   <strong>{item.name}</strong>
-                  <span>近6个月 {item.monthsHit} 次 · 占固定项 {item.share}%</span>
+                  <span>{item.kind === "calendar" ? "保险缴费日历 · 刚性支出" : `近6个月 ${item.monthsHit} 次`} · 占固定项 {item.share}%</span>
                 </div>
                 <div className="plan-item-amount">
                   <strong>¥{centsToYuan(item.predictedCents)}</strong>
@@ -688,6 +699,7 @@ export function PlanView({ transactions, categories, budgets }: {
           <ul>
             <li>同一支出分类近 {PLAN_HISTORY} 个月出现 ≥3 个月 → 判定为常规项（含贷款、保险等固定专项）</li>
             <li>预测金额 = 该分类在「有支出的月份」的平均值（没出现的月份不计入，避免低估固定开销）</li>
+            <li>已配置保险缴费日历后：保险类条目不再按频率猜测（避免把缴费月的保费错误地摊到无保单的月份），改为按日历精确列入当月保单，标注「保险缴费日历 · 刚性支出」</li>
             <li>弹性消费 = 预测总支出 − 常规项合计，代表餐饮、购物、娱乐等可压缩空间</li>
           </ul>
           <p className="plan-evidence-disclaimer">说明：以上全部为纯统计规则（去年同期加权 + 均值 + 趋势限制 + 频率识别），不预测一次性大额支出（如旅游、家电、人情），请把这类计划内开销自行加到预测值上。</p>
