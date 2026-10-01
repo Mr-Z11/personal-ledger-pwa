@@ -53,12 +53,12 @@ function sumMonth(transactions: Transaction[], key: string, dailyOnly: boolean, 
   return scoped.reduce((sum, item) => sum + item.amountCents, 0);
 }
 
-/** 近 N 个月（含当月）的日常消费/总支出序列；当月未结束时给出日均投影值 */
-export function buildPlanHistory(transactions: Transaction[], categories: Category[], now = new Date()): PlanMonthPoint[] {
+/** 近 N 个月（截至 endKey 含当月）的日常消费/总支出序列；真实当前月落在窗口内且未结束时给出日均投影值 */
+export function buildPlanHistory(transactions: Transaction[], categories: Category[], endKey: string, now = new Date()): PlanMonthPoint[] {
   const currentKey = monthKey(now);
   const today = Math.max(1, Number(beijingDateTimeParts(now).day));
   return Array.from({ length: PLAN_HISTORY }, (_, index) => {
-    const key = offsetMonthKey(currentKey, -(PLAN_HISTORY - 1 - index));
+    const key = offsetMonthKey(endKey, -(PLAN_HISTORY - 1 - index));
     const isCurrent = key === currentKey;
     const dailyActual = sumMonth(transactions, key, true, categories);
     const totalActual = sumMonth(transactions, key, false, categories);
@@ -302,20 +302,24 @@ export function PlanView({ transactions, categories, budgets }: {
   budgets: Budget[];
 }) {
   const now = useMemo(() => new Date(), []);
-  const history = useMemo(() => buildPlanHistory(transactions, categories, now), [transactions, categories, now]);
+  /** 规划锚点月：默认本月；历史窗口 = 锚点月之前的 6 个月，预测 = 锚点月起 3 个月（选过去月份即回测） */
+  const [anchorKey, setAnchorKey] = useState(() => monthKey(now));
+  const historyEndKey = offsetMonthKey(anchorKey, -1);
+  const history = useMemo(
+    () => buildPlanHistory(transactions, categories, historyEndKey, now),
+    [transactions, categories, historyEndKey, now]
+  );
 
-  const currentKey = monthKey(now);
-  const nextKey = offsetMonthKey(currentKey, 1);
   const futureKeys = useMemo(
-    () => Array.from({ length: PLAN_AHEAD }, (_, index) => offsetMonthKey(currentKey, index + 1)),
-    [currentKey]
+    () => Array.from({ length: PLAN_AHEAD }, (_, index) => offsetMonthKey(anchorKey, index)),
+    [anchorKey]
   );
 
   const [insuranceItems, setInsuranceItems] = useState<InsuranceItem[]>(() => loadInsuranceSchedule());
   const scheduleConfigured = insuranceItems.length > 0;
   const histInsAvgCents = useMemo(
-    () => historyInsuranceMonthlyAvg(transactions, categories, currentKey),
-    [transactions, categories, currentKey]
+    () => historyInsuranceMonthlyAvg(transactions, categories, historyEndKey),
+    [transactions, categories, historyEndKey]
   );
 
   /** 每个未来月份单独预测：去年同期（主权重）+ 近期基准；总支出再按保险缴费日历修正 */
@@ -338,19 +342,21 @@ export function PlanView({ transactions, categories, budgets }: {
       total,
       scheduledInsCents,
       adjustedTotalCents,
-      shownTotalCents: adjustedTotalCents ?? total?.value ?? 0
+      shownTotalCents: adjustedTotalCents ?? total?.value ?? 0,
+      actualTotalCents: sumMonth(transactions, key, false, categories)
     };
   }), [futureKeys, history, transactions, categories, insuranceItems, scheduleConfigured, histInsAvgCents]);
 
   const nextDailyForecast = forecasts[0]?.daily ?? null;
   const nextTotalForecast = forecasts[0]?.total ?? null;
   const nextShownTotalCents = forecasts[0]?.shownTotalCents ?? 0;
+  const anchorActualTotalCents = forecasts[0]?.actualTotalCents ?? 0;
 
-  const nextDailyBudget = monthBudgetTotal(budgets, nextKey);
-  const nextTotalBudget = monthTotalBudgetCents(budgets, nextKey);
+  const nextDailyBudget = monthBudgetTotal(budgets, anchorKey);
+  const nextTotalBudget = monthTotalBudgetCents(budgets, anchorKey);
 
   const items = useMemo(() => {
-    const { rows } = collectRegularExpenses(transactions, categories, currentKey);
+    const { rows } = collectRegularExpenses(transactions, categories, historyEndKey);
     const predicted = rows.map((row) => {
       const total = row.monthly.reduce((sum, value) => sum + value, 0);
       return { name: row.name, predictedCents: Math.round(total / row.monthsHit), monthsHit: row.monthsHit };
@@ -360,7 +366,7 @@ export function PlanView({ transactions, categories, budgets }: {
       ...item,
       share: fixedSum > 0 ? Math.round((item.predictedCents / fixedSum) * 100) : 0
     }));
-  }, [transactions, categories, currentKey]);
+  }, [transactions, categories, historyEndKey]);
 
   const fixedCents = items.reduce((sum, item) => sum + item.predictedCents, 0);
   const flexibleCents = nextTotalForecast ? Math.max(0, nextShownTotalCents - fixedCents) : 0;
@@ -412,13 +418,23 @@ export function PlanView({ transactions, categories, budgets }: {
       <div className="panel report-toolbar">
         <div>
           <h2>支出规划</h2>
-          <span>基于近 {PLAN_HISTORY} 个月历史 + 去年同期（主权重 {Math.round(PLAN_LAST_YEAR_WEIGHT * 100)}%）· 预测未来 {PLAN_AHEAD} 个月的日常消费与总支出</span>
+          <span>基于近 {PLAN_HISTORY} 个月历史 + 去年同期（主权重 {Math.round(PLAN_LAST_YEAR_WEIGHT * 100)}%）· 预测所选月份起 {PLAN_AHEAD} 个月的日常消费与总支出</span>
         </div>
+        <label className="plan-anchor-field">规划月份
+          <input
+            type="month"
+            value={anchorKey}
+            max={offsetMonthKey(monthKey(now), 12)}
+            onChange={(event) => {
+              if (event.target.value) setAnchorKey(event.target.value);
+            }}
+          />
+        </label>
       </div>
 
       <div className="plan-kpi-grid four">
         <article className="plan-kpi">
-          <span>{monthLabel(nextKey)}预测总支出</span>
+          <span>{monthLabel(anchorKey)}预测总支出</span>
           <strong>{nextTotalForecast ? `¥${centsToYuan(nextShownTotalCents)}` : "数据不足"}</strong>
           <em>{nextTotalBudget > 0 && nextTotalForecast
             ? nextShownTotalCents > nextTotalBudget
@@ -429,6 +445,9 @@ export function PlanView({ transactions, categories, budgets }: {
               : "无去年同期对照"}</em>
           {scheduleConfigured && forecasts[0]?.scheduledInsCents !== null && (
             <em className="plan-kpi-ins">已按保险日历修正{forecasts[0]!.scheduledInsCents! > 0 ? `（含保费 ¥${centsToYuan(forecasts[0]!.scheduledInsCents!)}）` : "（本月无保费）"}</em>
+          )}
+          {anchorActualTotalCents > 0 && (
+            <em className="plan-kpi-actual">{monthLabel(anchorKey)}实际已发生 ¥{centsToYuan(anchorActualTotalCents)}{anchorKey < monthKey(now) ? " · 与预测对照即为回测" : "（含本月至今）"}</em>
           )}
         </article>
         <article className="plan-kpi">
@@ -452,8 +471,8 @@ export function PlanView({ transactions, categories, budgets }: {
 
       <section className="panel">
         <div className="chart-heading">
-          <h2>未来消费与总支出预测趋势</h2>
-          <span>近 {PLAN_HISTORY} 个月实际 · 未来 {PLAN_AHEAD} 个月每月独立预测（去年同期 × {Math.round(PLAN_LAST_YEAR_WEIGHT * 100)}% + 近期基准 × {Math.round((1 - PLAN_LAST_YEAR_WEIGHT) * 100)}%）</span>
+          <h2>消费与总支出预测趋势</h2>
+          <span>近 {PLAN_HISTORY} 个月实际 · {monthLabel(anchorKey)} 起 {PLAN_AHEAD} 个月预测（去年同期 × {Math.round(PLAN_LAST_YEAR_WEIGHT * 100)}% + 近期基准 × {Math.round((1 - PLAN_LAST_YEAR_WEIGHT) * 100)}%）</span>
         </div>
         <div className="plan-chart-wrap">
           <svg className="plan-chart" viewBox={`0 0 ${width} ${height}`} role="img" aria-label="历史与未来支出预测趋势图">
@@ -523,13 +542,13 @@ export function PlanView({ transactions, categories, budgets }: {
           <span><i className="pace-swatch plan-swatch-forecast" />未来预测</span>
           <span><i className="pace-swatch plan-swatch-lastyear" />去年同期参照</span>
         </div>
-        <p className="plan-chart-note">每个未来月份按各自的去年同期独立预测（菱形标记 = 去年同月实际总支出，主权重 {Math.round(PLAN_LAST_YEAR_WEIGHT * 100)}%）；须线为近 {PLAN_HISTORY} 个月最低~最高区间。时间越远不确定性越大。</p>
+        <p className="plan-chart-note">每个目标月份按各自的去年同期独立预测（菱形标记 = 去年同月实际总支出，主权重 {Math.round(PLAN_LAST_YEAR_WEIGHT * 100)}%）；须线为近 {PLAN_HISTORY} 个月最低~最高区间。时间越远不确定性越大。</p>
       </section>
 
       <section className="panel">
         <div className="chart-heading">
-          <h2>未来 {PLAN_AHEAD} 个月预测明细</h2>
-          <span>每月的预测总支出及其构成 · 均以去年同期为主推算</span>
+          <h2>{monthLabel(anchorKey)} 起 {PLAN_AHEAD} 个月预测明细</h2>
+          <span>每月的预测总支出及其构成 · 选过去月份可与「实际」列对照回测</span>
         </div>
         {forecastComplete ? (
           <div className="plan-month-table" role="table" aria-label="未来月份预测明细">
@@ -541,6 +560,9 @@ export function PlanView({ transactions, categories, budgets }: {
                 <span><em>专项支出</em><b>¥{centsToYuan(Math.max(0, item.shownTotalCents - item.daily!.value))}</b></span>
                 <span className="plan-month-ins"><em>保险日历</em><b>{item.scheduledInsCents === null ? "未配置" : item.scheduledInsCents > 0 ? `¥${centsToYuan(item.scheduledInsCents)}` : "无保费"}</b></span>
                 <span className="plan-month-lastyear"><em>去年同期总支出</em><b>{item.total!.lastYearCents !== null ? `¥${centsToYuan(item.total!.lastYearCents)}` : "无记录"}</b></span>
+                {item.actualTotalCents > 0 && (
+                  <span className="plan-month-actual"><em>实际总支出</em><b>¥{centsToYuan(item.actualTotalCents)}</b></span>
+                )}
               </div>
             ))}
           </div>
@@ -557,7 +579,7 @@ export function PlanView({ transactions, categories, budgets }: {
 
       <section className="panel">
         <div className="chart-heading">
-          <h2>{monthLabel(nextKey)}主要支出项预测</h2>
+          <h2>{monthLabel(anchorKey)}主要支出项预测</h2>
           <span>按近 {PLAN_HISTORY} 个月出现 ≥3 次的常规项推算 · 一眼看清钱花在哪</span>
         </div>
         {items.length === 0 ? (
@@ -642,7 +664,7 @@ export function PlanView({ transactions, categories, budgets }: {
           {nextDailyForecast && nextTotalForecast ? (
             <ul>
               <li>近期基准 =（近3个月均值 + 近{PLAN_HISTORY}个月均值）÷ 2 × 趋势因子；趋势因子 = 近3个月均值 ÷ 前3个月均值（限制 0.9 ~ 1.1，防止单月暴涨暴跌带偏），代表近期消费水平的走向</li>
-              <li>预测值 = 去年同期 × {PLAN_LAST_YEAR_WEIGHT} + 近期基准 × {(1 - PLAN_LAST_YEAR_WEIGHT).toFixed(1)}；例如 {monthLabel(nextKey)}总支出 = {nextTotalForecast.lastYearCents !== null ? `¥${centsToYuan(nextTotalForecast.lastYearCents)} × ${PLAN_LAST_YEAR_WEIGHT} + ` : "（无去年同期，全额用近期基准）"}¥{centsToYuan(nextTotalForecast.recentBaseCents)} × {(1 - PLAN_LAST_YEAR_WEIGHT).toFixed(1)} = ¥{centsToYuan(nextTotalForecast.value)}</li>
+              <li>预测值 = 去年同期 × {PLAN_LAST_YEAR_WEIGHT} + 近期基准 × {(1 - PLAN_LAST_YEAR_WEIGHT).toFixed(1)}；例如 {monthLabel(anchorKey)}总支出 = {nextTotalForecast.lastYearCents !== null ? `¥${centsToYuan(nextTotalForecast.lastYearCents)} × ${PLAN_LAST_YEAR_WEIGHT} + ` : "（无去年同期，全额用近期基准）"}¥{centsToYuan(nextTotalForecast.recentBaseCents)} × {(1 - PLAN_LAST_YEAR_WEIGHT).toFixed(1)} = ¥{centsToYuan(nextTotalForecast.value)}</li>
               <li>无去年同期记录的月份退化为全额近期基准</li>
               <li>预测区间 = 近 {PLAN_HISTORY} 个月实际值与去年同期的最低 ~ 最高（图中的须线）</li>
               <li>专项支出预测 = 预测总支出 − 预测日常消费（贷款、保险、教育等固定专项大多已含在常规项中）</li>

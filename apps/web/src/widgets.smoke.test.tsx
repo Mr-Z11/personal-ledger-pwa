@@ -145,6 +145,8 @@ describe("常规项支出与规划页", () => {
     expect(html).toContain("预测依据与计算过程");
     expect(html).toContain("plan-chart");
     expect(html).toContain("去年同期");
+    expect(html).toContain("规划月份");
+    expect(html).toContain('type="month"');
     expect(html).toContain("贷款本金");
   });
 

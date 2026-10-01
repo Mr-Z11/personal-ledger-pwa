@@ -5783,9 +5783,9 @@ input[type="month"],
 }
 
 .plan-month-row {
-  display: grid;
-  grid-template-columns: minmax(4.4rem, 0.9fr) repeat(5, minmax(0, 1fr));
-  gap: 0.5rem;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.55rem 0.9rem;
   align-items: center;
   background: #faf6ee;
   border: 1px solid #eee2cc;
@@ -5797,13 +5797,15 @@ input[type="month"],
   font-size: 0.82rem;
   font-weight: 700;
   color: #31473a;
+  min-width: 4.4rem;
 }
 
 .plan-month-row > span:not(.plan-month-key) {
   display: flex;
   flex-direction: column;
   gap: 0.12rem;
-  min-width: 0;
+  min-width: 4.4rem;
+  flex: 1;
 }
 
 .plan-month-row > span em {
@@ -5833,6 +5835,31 @@ input[type="month"],
 
 .plan-month-ins b {
   color: #2f7d4f;
+}
+
+.plan-month-actual b {
+  color: #8a5a2b;
+}
+
+.plan-kpi-actual {
+  color: #8a5a2b !important;
+}
+
+.plan-anchor-field {
+  display: grid;
+  gap: 0.2rem;
+  font-size: 0.7rem;
+  color: #8a7154;
+  flex-shrink: 0;
+}
+
+.plan-anchor-field input {
+  border: 1px solid #e0d4bc;
+  border-radius: 0.5rem;
+  padding: 0.35rem 0.5rem;
+  background: #fffdf7;
+  color: #31473a;
+  font-size: 0.8rem;
 }
 
 .plan-kpi-ins {
@@ -5926,16 +5953,11 @@ input[type="month"],
   }
 
   .plan-month-row {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    gap: 0.55rem 0.5rem;
+    gap: 0.5rem 0.7rem;
   }
 
-  .plan-month-key {
-    align-self: center;
-  }
-
-  .plan-month-total {
-    align-items: flex-end;
+  .plan-month-row > span:not(.plan-month-key) {
+    min-width: 3.6rem;
   }
 
   .plan-evidence-table th,
