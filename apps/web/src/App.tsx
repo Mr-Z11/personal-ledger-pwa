@@ -76,6 +76,7 @@ import {
   BigExpensePanel,
   BudgetReservoir,
   DailyPaceChart,
+  FixedExpenseOverview,
   LocalSalaryReminderPanel,
   RegularExpensePanel,
   SalaryBanner,
@@ -1057,6 +1058,8 @@ function Overview({ summary, budgetCents, totalBudgetCents, accounts, categories
           accent="#31473a"
         />
       </div>
+
+      <FixedExpenseOverview transactions={transactions} categories={categories} />
 
       <div className="overview-quick-grid">
         <article className="overview-quick-card">

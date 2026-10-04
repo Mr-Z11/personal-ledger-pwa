@@ -112,48 +112,23 @@ function compactYuan(cents: number) {
 }
 
 /* ------------------------------------------------------------------ */
-/* 保险缴费日历（本机 localStorage，不进仓库、不同步）                     */
+/* 保险缴费日历（存储在 widgets.tsx，此处转出口保持兼容）                   */
 /* ------------------------------------------------------------------ */
 
-export type InsuranceItem = {
-  id: string;
-  name: string;
-  /** 缴费月份 1-12 */
-  month: number;
-  amountCents: number;
-  note?: string;
-};
-
-const INSURANCE_SCHEDULE_KEY = "ledger-insurance-schedule";
-
-export function loadInsuranceSchedule(): InsuranceItem[] {
-  try {
-    const raw = localStorage.getItem(INSURANCE_SCHEDULE_KEY);
-    if (!raw) return [];
-    const parsed = JSON.parse(raw) as Partial<InsuranceItem>[];
-    return parsed
-      .filter((item) => item && typeof item.name === "string" && Number(item.month) >= 1 && Number(item.month) <= 12)
-      .map((item, index) => ({
-        id: typeof item.id === "string" ? item.id : `ins-${index}`,
-        name: item.name as string,
-        month: Number(item.month),
-        amountCents: Math.max(0, Math.round(Number(item.amountCents) || 0)),
-        note: typeof item.note === "string" ? item.note : undefined
-      }));
-  } catch {
-    return [];
-  }
-}
-
-export function saveInsuranceSchedule(items: InsuranceItem[]) {
-  localStorage.setItem(INSURANCE_SCHEDULE_KEY, JSON.stringify(items));
-}
-
-/** 某月（"2026-11"）的日历保费合计 */
-function scheduledInsuranceCents(items: InsuranceItem[], monthKeyValue: string) {
-  const month = Number(monthKeyValue.slice(5, 7));
-  return items.filter((item) => item.month === month).reduce((sum, item) => sum + item.amountCents, 0);
-}
+export {
+  loadInsuranceSchedule,
+  parseInsuranceText,
+  saveInsuranceSchedule,
+  scheduledInsuranceCents,
+  type InsuranceItem
+} from "./widgets";
+import {
+  loadInsuranceSchedule,
+  parseInsuranceText,
+  saveInsuranceSchedule,
+  scheduledInsuranceCents,
+  type InsuranceItem
+} from "./widgets";
 
 /** 历史保险月均：近 12 个月（含当月）保险类支出平均值（零月份计入，代表历史上的月均负担） */
 function historyInsuranceMonthlyAvg(transactions: Transaction[], categories: Category[], endMonth: string) {
@@ -178,28 +153,6 @@ function applyInsuranceAdjustment(totalCents: number, historyAvgCents: number, s
 
 function newInsuranceItem(): InsuranceItem {
   return { id: `ins-${Date.now()}-${Math.round(Math.random() * 1e6)}`, name: "", month: 1, amountCents: 0 };
-}
-
-/** 解析粘贴文本：每行「月份 名称 金额」，如「11月 重疾险续费 4700」 */
-export function parseInsuranceText(text: string): InsuranceItem[] {
-  const items: InsuranceItem[] = [];
-  text.split(/\r?\n/).forEach((line) => {
-    const trimmed = line.trim();
-    if (!trimmed) return;
-    const match = trimmed.match(/^(\d{1,2})\s*月?\s*[、,，.\s]+\s*(.+?)\s+([\d,]+(?:\.\d+)?)\s*元?\s*$/);
-    if (!match) return;
-    const month = Number(match[1]);
-    if (month < 1 || month > 12) return;
-    const amount = Number(match[3].replace(/,/g, ""));
-    if (!(amount > 0)) return;
-    items.push({
-      id: `ins-${month}-${items.length}-${Math.round(Math.random() * 1e6)}`,
-      name: match[2].trim(),
-      month,
-      amountCents: Math.round(amount * 100)
-    });
-  });
-  return items;
 }
 
 function InsuranceSchedulePanel({ items, futureKeys, onChange }: {

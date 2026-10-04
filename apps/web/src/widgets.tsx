@@ -872,3 +872,176 @@ export function RegularExpensePanel({ month, transactions, categories }: {
     </div>
   );
 }
+
+/* ------------------------------------------------------------------ */
+/* 保险缴费日历存储（本机 localStorage，不进仓库、不同步）                 */
+/* ------------------------------------------------------------------ */
+
+export type InsuranceItem = {
+  id: string;
+  name: string;
+  /** 缴费月份 1-12 */
+  month: number;
+  amountCents: number;
+  note?: string;
+};
+
+const INSURANCE_SCHEDULE_KEY = "ledger-insurance-schedule";
+
+export function loadInsuranceSchedule(): InsuranceItem[] {
+  try {
+    const raw = localStorage.getItem(INSURANCE_SCHEDULE_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw) as Partial<InsuranceItem>[];
+    return parsed
+      .filter((item) => item && typeof item.name === "string" && Number(item.month) >= 1 && Number(item.month) <= 12)
+      .map((item, index) => ({
+        id: typeof item.id === "string" ? item.id : `ins-${index}`,
+        name: item.name as string,
+        month: Number(item.month),
+        amountCents: Math.max(0, Math.round(Number(item.amountCents) || 0)),
+        note: typeof item.note === "string" ? item.note : undefined
+      }));
+  } catch {
+    return [];
+  }
+}
+
+export function saveInsuranceSchedule(items: InsuranceItem[]) {
+  localStorage.setItem(INSURANCE_SCHEDULE_KEY, JSON.stringify(items));
+}
+
+/** 某月（"2026-11"）的日历保费合计 */
+export function scheduledInsuranceCents(items: InsuranceItem[], monthKeyValue: string) {
+  const month = Number(monthKeyValue.slice(5, 7));
+  return items.filter((item) => item.month === month).reduce((sum, item) => sum + item.amountCents, 0);
+}
+
+/** 解析粘贴文本：每行「月份 名称 金额」，如「11月 重疾险续费 4700」 */
+export function parseInsuranceText(text: string): InsuranceItem[] {
+  const items: InsuranceItem[] = [];
+  text.split(/\r?\n/).forEach((line) => {
+    const trimmed = line.trim();
+    if (!trimmed) return;
+    const match = trimmed.match(/^(\d{1,2})\s*月?\s*[、,，.\s]+\s*(.+?)\s+([\d,]+(?:\.\d+)?)\s*元?\s*$/);
+    if (!match) return;
+    const month = Number(match[1]);
+    if (month < 1 || month > 12) return;
+    const amount = Number(match[3].replace(/,/g, ""));
+    if (!(amount > 0)) return;
+    items.push({
+      id: `ins-${month}-${items.length}-${Math.round(Math.random() * 1e6)}`,
+      name: match[2].trim(),
+      month,
+      amountCents: Math.round(amount * 100)
+    });
+  });
+  return items;
+}
+
+/* ------------------------------------------------------------------ */
+/* 总览：当月固定支出（数据源与规划板块一致）                              */
+/* ------------------------------------------------------------------ */
+
+const FIXED_MAX_ITEMS = 8;
+
+export function FixedExpenseOverview({ transactions, categories }: {
+  transactions: Transaction[];
+  categories: Category[];
+}) {
+  const currentKey = monthKey();
+  const schedule = useMemo(() => loadInsuranceSchedule(), []);
+  const configured = schedule.length > 0;
+
+  const items = useMemo(() => {
+    // 与规划板块同口径：常规项窗口截至上月（完整月）
+    const historyEndKey = offsetMonthKey(currentKey, -1);
+    const { rows } = collectRegularExpenses(transactions, categories, historyEndKey);
+    const realized = new Map<string, number>();
+    let insuranceSpent = 0;
+    transactions.forEach((item) => {
+      if (item.type !== "expense" || !dateKey(item.occurredAt).startsWith(currentKey)) return;
+      const category = categories.find((entry) => entry.id === item.categoryId);
+      const path = categoryPath(category, categories) || "未分类";
+      realized.set(path, (realized.get(path) ?? 0) + item.amountCents);
+      if (/保险/.test(path)) insuranceSpent += item.amountCents;
+    });
+    const regular = rows
+      .filter((row) => !(configured && /保险/.test(row.name)))
+      .map((row) => {
+        const total = row.monthly.reduce((sum, value) => sum + value, 0);
+        return {
+          name: row.name,
+          predictedCents: Math.round(total / row.monthsHit),
+          spentCents: realized.get(row.name) ?? 0,
+          calendar: false
+        };
+      });
+    const scheduledIns = configured ? scheduledInsuranceCents(schedule, currentKey) : 0;
+    return [
+      ...(scheduledIns > 0 ? [{ name: "保险（缴费日历）", predictedCents: scheduledIns, spentCents: insuranceSpent, calendar: true }] : []),
+      ...regular
+    ]
+      .sort((left, right) => right.predictedCents - left.predictedCents)
+      .slice(0, FIXED_MAX_ITEMS);
+  }, [transactions, categories, currentKey, schedule, configured]);
+
+  if (items.length === 0) return null;
+
+  const totalPredicted = items.reduce((sum, item) => sum + item.predictedCents, 0);
+  const totalSpent = items.reduce((sum, item) => sum + item.spentCents, 0);
+  const totalRemaining = Math.max(0, totalPredicted - totalSpent);
+  const donePct = totalPredicted > 0 ? Math.min(100, Math.round((totalSpent / totalPredicted) * 100)) : 0;
+
+  return (
+    <section className="panel fixed-expense-overview">
+      <div className="chart-heading">
+        <h2>本月固定支出</h2>
+        <span>{monthLabel(currentKey)} · {items.length} 项 · 数据同规划板块</span>
+      </div>
+      <div className="fixed-expense-total">
+        <div>
+          <span>固定项合计</span>
+          <strong>¥{centsToYuan(totalPredicted)}</strong>
+        </div>
+        <div>
+          <span>已实现支出</span>
+          <strong>¥{centsToYuan(totalSpent)}</strong>
+        </div>
+        <div>
+          <span>待支出额度</span>
+          <strong>¥{centsToYuan(totalRemaining)}</strong>
+        </div>
+        <div className="fixed-expense-total-progress">
+          <div className="bar"><i style={{ width: `${Math.max(2, donePct)}%` }} /></div>
+          <em>已完成 {donePct}%</em>
+        </div>
+      </div>
+      <div className="fixed-expense-list">
+        {items.map((item) => {
+          const pct = item.predictedCents > 0 ? Math.min(100, Math.round((item.spentCents / item.predictedCents) * 100)) : 0;
+          const over = item.predictedCents > 0 && item.spentCents > item.predictedCents;
+          const remaining = Math.max(0, item.predictedCents - item.spentCents);
+          return (
+            <div className="fixed-expense-row" key={item.name}>
+              <div className="fixed-expense-info">
+                <strong>{item.name}</strong>
+                <span>{item.calendar ? "缴费日历" : "常规项"}</span>
+              </div>
+              <div className="fixed-expense-progress">
+                <div className="fixed-expense-numbers">
+                  <span>已支 ¥{centsToYuan(item.spentCents)}</span>
+                  <span className={over ? "over" : ""}>{over ? `超 ¥${centsToYuan(item.spentCents - item.predictedCents)}` : `剩 ¥${centsToYuan(remaining)}`}</span>
+                  <span>预计 ¥{centsToYuan(item.predictedCents)}</span>
+                </div>
+                <div className={`bar ${over ? "over" : ""}`}>
+                  <i style={{ width: `${item.spentCents > 0 ? Math.max(3, pct) : 0}%` }} />
+                </div>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </section>
+  );
+}

@@ -5974,3 +5974,149 @@ input[type="month"],
     align-items: stretch;
   }
 }
+
+/* ------------------------------------------------------------------ */
+/* 总览：当月固定支出                                                     */
+/* ------------------------------------------------------------------ */
+
+.fixed-expense-total {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr)) minmax(6rem, 1.2fr);
+  gap: 0.6rem;
+  margin-bottom: 0.8rem;
+  align-items: center;
+}
+
+.fixed-expense-total > div {
+  display: flex;
+  flex-direction: column;
+  gap: 0.12rem;
+  background: #faf6ee;
+  border: 1px solid #e8ddc8;
+  border-radius: 0.6rem;
+  padding: 0.5rem 0.65rem;
+}
+
+.fixed-expense-total span {
+  font-size: 0.68rem;
+  color: #8a7154;
+}
+
+.fixed-expense-total strong {
+  font-size: 0.98rem;
+  color: #31473a;
+}
+
+.fixed-expense-total-progress {
+  gap: 0.3rem;
+}
+
+.fixed-expense-total-progress .bar {
+  height: 6px;
+  background: #e8ddc8;
+  border-radius: 999px;
+  overflow: hidden;
+}
+
+.fixed-expense-total-progress .bar i {
+  display: block;
+  height: 100%;
+  background: #2f7d4f;
+  border-radius: 999px;
+}
+
+.fixed-expense-total-progress em {
+  font-style: normal;
+  font-size: 0.66rem;
+  color: #2f7d4f;
+}
+
+.fixed-expense-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.fixed-expense-row {
+  display: grid;
+  grid-template-columns: minmax(6.5rem, 1fr) minmax(0, 1.6fr);
+  gap: 0.7rem;
+  align-items: center;
+  padding: 0.45rem 0.6rem;
+  border-radius: 0.55rem;
+  background: #fffdf7;
+  border: 1px solid #f0e6d2;
+}
+
+.fixed-expense-info {
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+  min-width: 0;
+}
+
+.fixed-expense-info strong {
+  font-size: 0.8rem;
+  color: #31473a;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.fixed-expense-info span {
+  font-size: 0.64rem;
+  color: #8a7154;
+}
+
+.fixed-expense-progress {
+  display: flex;
+  flex-direction: column;
+  gap: 0.22rem;
+  min-width: 0;
+}
+
+.fixed-expense-numbers {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.4rem;
+}
+
+.fixed-expense-numbers span {
+  font-size: 0.68rem;
+  color: #6b5a41;
+  white-space: nowrap;
+}
+
+.fixed-expense-numbers span.over {
+  color: #c0392b;
+  font-weight: 700;
+}
+
+.fixed-expense-progress .bar {
+  height: 7px;
+  background: #eee2cc;
+  border-radius: 999px;
+  overflow: hidden;
+}
+
+.fixed-expense-progress .bar i {
+  display: block;
+  height: 100%;
+  background: #1f5f74;
+  border-radius: 999px;
+}
+
+@media (max-width: 940px) {
+  .fixed-expense-total {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .fixed-expense-total-progress {
+    grid-column: 1 / -1;
+  }
+
+  .fixed-expense-row {
+    grid-template-columns: minmax(5.6rem, 1fr) minmax(0, 1.5fr);
+    gap: 0.5rem;
+  }
+}

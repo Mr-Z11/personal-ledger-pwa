@@ -5,6 +5,7 @@ import {
   BigExpensePanel,
   BudgetReservoir,
   DailyPaceChart,
+  FixedExpenseOverview,
   LocalSalaryReminderPanel,
   RegularExpensePanel,
   SalaryBanner,
@@ -167,5 +168,18 @@ describe("常规项支出与规划页", () => {
     expect(html).toContain("保险缴费日历");
     expect(html).toContain("保险日历");
     saveInsuranceSchedule([]);
+  });
+
+  it("FixedExpenseOverview 展示固定项合计/已实现/待支出", () => {
+    const html = renderToString(<FixedExpenseOverview transactions={regularTransactions} categories={categories} />);
+    expect(html).toContain("本月固定支出");
+    expect(html).toContain("固定项合计");
+    expect(html).toContain("已实现支出");
+    expect(html).toContain("待支出额度");
+    expect(html).toContain("贷款本金");
+  });
+
+  it("FixedExpenseOverview 无常规项时不渲染", () => {
+    expect(renderToString(<FixedExpenseOverview transactions={[]} categories={categories} />)).toBe("");
   });
 });
