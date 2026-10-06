@@ -4,12 +4,17 @@
 
 维护个人记账 PWA 的日常迭代与数据安全。**云端服务器已于 2026-08-29 失效**，当前数据完全以本地 Mac 为中心（local-first 架构 + 本地 PostgreSQL）。云端重建与否待用户决策。
 
-## 2. 已完成并部署的变更（2026-09-30 最新）
+## 2. 已完成并部署的变更（2026-10-01 最新）
 
-最新 commit `e78b11d` 已推送 GitHub main；前端已构建并部署到**本地 Mac 栈**（云端服务器仍失效，见第 3 节）。
+最新 commit `d71d13d` 已推送 GitHub main；前端已构建并部署到**本地 Mac 栈**（云端服务器仍失效，见第 3 节）。
 
 | Commit | 描述 | 关键文件 | 状态 |
 |--------|------|---------|------|
+| `d71d13d` | **总览页「本月固定支出」面板：逐项已支/剩/超进度条 + 合计三卡（固定项合计/已实现支出/待支出额度）；数据源与规划页一致（常规项 + 保险日历）；保险日历存储迁移 widgets.tsx（plan.tsx re-export）** | widgets.tsx, plan.tsx, App.tsx, styles.css, widgets.smoke.test.tsx | 已部署 |
+| `294b00c` | 主要支出项保险按日历精确计入：配置日历后保险类从频率常规项剔除，无保费月份不再出现保险 | plan.tsx, styles.css, widgets.smoke.test.tsx | 已部署 |
+| `c972ed0` | 规划锚点月选择器（默认本月）+ 回测（过去月份显示实际总支出对照） | plan.tsx, styles.css | 已部署 |
+| `ca0cfc0` | 保险日历保存简化：删「保存日历」，行编辑自动保存，「解析并保存」唯一全宽主按钮 | plan.tsx, styles.css | 已部署 |
+| `c359160` | 保险日历保存按钮无反应修复（disabled 条件误伤，改幂等可点 + 保存反馈） | plan.tsx, styles.css | 已部署 |
 | `69a1227` | **保险缴费日历（本机 localStorage，保单数据不进仓库）：行编辑 + 批量粘贴导入；预测总支出 = 原预测 − 历史保险月均 + 当月日历保费；10/12 月无保险项** | plan.tsx, styles.css, widgets.smoke.test.tsx | 已部署 |
 | `f382de2` | 规划页手机显示修复（趋势图随容器缩放 + 预测明细表内联标签自适应卡片 + 依据表可换行）；报表页四模块默认折叠（defaultOpen=false） | plan.tsx, styles.css, App.tsx | 已部署 |
 | `e78b11d` | **手机端修复：导航 5 列不换行 + FAB 不再挡规划 + 常规项表格自适应（报表显示不全修复）；规划升级：覆盖总支出（4 KPI + 逐月预测明细表）+ 去年同期主权重预测（60% 去年 + 40% 近期基准）+ 标题统一带「预测」** | plan.tsx, widgets.tsx, App.tsx, styles.css, widgets.smoke.test.tsx | 已部署 |
@@ -74,7 +79,7 @@
 - 本地 API：`https://localhost:8443/api` / `https://192.168.3.21:8443/api` / `https://FrorideMacBook-Air.local:8443/api`
 - 数据库：**3469 笔（2020-05-31 ~ 2026-09-24）**，bigint 金额列，serverVersion 122；**Budget 表 2026-09-25 新增 scope 列（daily/total）**
 - api-local 镜像：GHCR main @ 7796d90（含预算两层 + 工资本地化后端）
-- 前端静态文件：`apps/web/dist` 本地构建 @ 46350bf，由 caddy-local 挂载 `/srv/web`（**改 dist 后需 force-recreate caddy-local**）
+- 前端静态文件：`apps/web/dist` 本地构建 @ d71d13d，由 caddy-local 挂载 `/srv/web`（**改 dist 后需 force-recreate caddy-local**）
 - 前端版本核对方法：`curl -sk https://localhost:8443/` → 200；`curl -sk https://localhost:8443/assets/App-*.js | grep -c "常规项支出"` → 1（App 是异步 chunk，文件名从 dist 目录取）
 - 手机 8-31 后数据已于 2026-09-25 11:15 全部同步入本地 PG（用户确认）
 - 物理数据：`data/local-postgres/`（65MB，Docker 卷挂载，容器删除数据不丢）
@@ -144,7 +149,7 @@
 | 文件 | 用途 |
 |------|------|
 | `apps/web/src/plan.tsx` | 「规划」专栏：`PlanView`（KPI 卡 + 趋势预测图 + 主要支出项 + 分析依据折叠区）、`buildPlanHistory`（近6月序列，当月按日均投影）、`forecastFromHistory`（基准=(近3月均值+近6月均值)/2 × 趋势因子 clamp 0.9~1.1） |
-| `apps/web/src/widgets.tsx` | 追加 `RegularExpensePanel` + `collectRegularExpenses`（常规项：同一分类近6月出现≥3次，逐月迷你柱+月均+环比，top8） |
+| `apps/web/src/widgets.tsx` | 追加 `RegularExpensePanel` + `collectRegularExpenses`（常规项：同一分类近6月出现≥3次，逐月迷你柱+月均+环比，top8）；`FixedExpenseOverview`（总览固定支出面板，2026-10-01 新增）；保险日历存储实现（loadInsuranceSchedule/saveInsuranceSchedule/parseInsuranceText/scheduledInsuranceCents，2026-10-01 自 plan.tsx 迁入） |
 | `apps/web/src/App.tsx` | `ReportFold` 通用折叠面板（details 默认展开可收起）；报表模块顺序：消费节奏→常规项→消费异常分析→大额开销→核心洞察→专项支出→分类统计/趋势；新增 View=`plan` 导航（CalendarClock 图标，报表与设置之间） |
 
 ### 2026-09-25 新增/重构模块
@@ -231,8 +236,8 @@
 
 ## 10. 待确认/建议下一步
 
-- **用户需在手机上操作（最新）**：规划页「保险缴费日历（本机）」→ 批量导入 → 粘贴保单清单（会话中已给出粘贴文本）→ 保存；保存后预测明细表「保险日历」列应显示 10 月/12 月"无保费"、11 月有保费
-- **手机端实测反馈（最新）**：规划专栏（预测图/主要支出项/分析依据）、报表常规项模块、四个模块折叠交互 —— 本地 origin PWA 划掉重开两次即可看到
+- **手机端实测反馈（最新）**：总览页「本月固定支出」面板（逐项进度条 + 已实现/待支出合计）、规划锚点月选择器、保险日历行为 —— 本地 origin PWA 划掉重开两次即可看到
+- **用户需在手机上操作**：规划页「保险缴费日历（本机）」→ 批量导入 → 粘贴保单清单（会话中已给出粘贴文本）→ 保存；保存后预测明细表「保险日历」列应显示 10 月/12 月"无保费"、11 月有保费
 - **手机端 PWA 需要用户操作确认**：若 PWA 是从云端 origin（ledger.47.74.3.104.sslip.io）安装的，云端失效后永远收不到更新，需从 `https://FrorideMacBook-Air.local:8443` 重新「添加到主屏幕」（数据已全部入本地 PG，删除旧 PWA 安全）；若本就是本地 origin 安装，划掉重开两次即可。**用户是否已完成重装、手机实测反馈尚未回收**
 - **用户已提出的观察点**：首页蓄水池数字可读性（已改为磨砂玻璃读数卡，待手机实测确认）；两个蓄水池横向排列（已修）
 - **`scripts/start-local-sync.sh` 的改进尚未提交**（自动注册 binfmt + 自动拉镜像），建议提交

@@ -456,3 +456,17 @@ typecheck ✓ vitest 11/11 ✓ build ✓ → caddy force-recreate → 200；待�
 ### 根因与修复（commit 294b00c）
 - 频率规则把保险误判常规项摊入无保费月；配置日历后保险改由日历精确决定，日历保单直接列出标注「刚性支出」
 - 验证：typecheck ✓ vitest 11/11 ✓ build ✓ → caddy force-recreate → 200
+
+## 会话记录（2026-10-01，Phase 24）
+
+### 需求
+总览页除每日平均额度外，新增「本月固定支出」可视化面板：当月固定支出有哪些、已实现支出多少、还剩多少额度；数据来源于规划板块。
+
+### 实施（commit d71d13d，5 文件，+351/−62）
+- 保险日历存储迁移 plan.tsx → widgets.tsx（消除循环导入，plan.tsx re-export 兼容）
+- widgets.tsx 新增 `FixedExpenseOverview`：与规划页同数据源（collectRegularExpenses 窗口止于上完整月 + 保险日历）；逐项名称/标签/已支/剩或超/进度条；合计三卡（固定项合计/已实现支出/待支出额度）+ 完成度条
+- App.tsx Overview 蓄水池网格后渲染；styles.css 加 .fixed-expense-* 样式；冒烟测试 +2 用例
+- 验证：typecheck ✓ vitest 13/13 ✓ build ✓ → mv dist + build → caddy force-recreate → localhost/mDNS 200，bundle 含「本月固定支出」「待支出额度」
+
+### 交接状态
+- 四件套 + 项目记忆同步；待用户手机实测：总览固定支出面板观感与数字口径

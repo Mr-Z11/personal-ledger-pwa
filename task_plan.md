@@ -235,3 +235,12 @@ Phase 15
 - [x] 预测依据第 5 节补充该规则说明
 - [x] 验证：typecheck ✓ vitest 11/11 ✓ build ✓ → caddy force-recreate → 200 + 特征串在线
 - **Status:** complete（已推送 main + 部署本地栈）
+
+### Phase 24: 总览页「本月固定支出」面板 (2026-10-01, commit d71d13d)
+- [x] 保险日历存储从 plan.tsx 迁移至 widgets.tsx（load/save/parse/scheduledInsuranceCents/InsuranceItem），plan.tsx 保留 re-export 兼容（避免 widgets→plan 循环导入）
+- [x] 新增 `FixedExpenseOverview`（widgets.tsx）：数据源与规划页一致——collectRegularExpenses（窗口止于上完整月）+ 保险日历（localStorage）；逐项展示：名称 + 标签（缴费日历/常规项）+ 已支/剩（超支显示红色「超 ¥X」）/预计 + 进度条
+- [x] 合计区三卡：固定项合计 / 已实现支出 / 待支出额度 + 完成度进度条；无固定项时返回 null 不渲染
+- [x] App.tsx Overview 在蓄水池网格后渲染（总览已保留每日平均额度，新增固定支出一览）
+- [x] 样式：.fixed-expense-total（3 stat 卡+进度）/.fixed-expense-row/.fixed-expense-numbers + 手机适配
+- [x] 验证：typecheck ✓ vitest 13/13 ✓（+2 用例）→ build ✓ → caddy force-recreate → localhost/mDNS 200 + bundle 含「本月固定支出」「待支出额度」
+- **Status:** complete（已推送 main + 部署本地栈；待手机实测）

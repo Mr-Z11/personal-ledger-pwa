@@ -364,3 +364,9 @@ docker logs personal-ledger-pwa-api-local-1 | tail     # 确认 prisma db push �
 ## Phase 21 新发现（2026-10-01）
 
 - 表单交互简化范式：行级编辑自动保存（静默落库完整行）+ 批量操作单一主按钮，比"每处一个保存按钮"更符合用户心智；避免同面板两个保存动作并存造成"该点哪个"的困惑
+
+## Phase 24 新发现（2026-10-01）
+
+- widgets.tsx 与 plan.tsx 需要共用保险日历存储时，存储实现放 widgets（被 App/规划页双向引用），plan.tsx 只做 re-export；反过来放会制造 widgets→plan→widgets 循环导入（Vite/TS 不报运行时错但打包顺序有隐患）
+- 总览固定支出面板与规划页必须共用同一套数据源（collectRegularExpenses + 同一保险日历 localStorage），否则两处数字口径漂移用户必然追问；historyEndKey 统一为「上完整月」保证当月数据不误入历史窗口
+- 「已支/剩/超」三态用同一进度条表达：width=min(实际/预计,100%)，超支时 .bar.over 变红并把「剩 ¥X」替换为「超 ¥X」——一个组件覆盖常态与异常态，无需两个模板
