@@ -55,12 +55,22 @@ export interface AnalysisNote extends LedgerEntity {
   content: string;
 }
 
+/** 计划购买（想买清单）：当日预算余额可覆盖时提醒，买完后标记完成 */
+export interface PlannedPurchase extends LedgerEntity {
+  name: string;
+  amountCents: number;
+  note?: string | null;
+  /** 完成时间（ISO），未完成时为 null/缺省 */
+  completedAt?: string | null;
+}
+
 export interface LedgerSnapshot {
   accounts: Account[];
   categories: Category[];
   transactions: Transaction[];
   budgets: Budget[];
   analysisNotes: AnalysisNote[];
+  plannedPurchases: PlannedPurchase[];
   serverVersion: number;
 }
 
@@ -70,6 +80,7 @@ export interface SyncPayload {
   transactions: Transaction[];
   budgets: Budget[];
   analysisNotes: AnalysisNote[];
+  plannedPurchases: PlannedPurchase[];
 }
 
 export const DEFAULT_CATEGORIES: Omit<Category, keyof LedgerEntity>[] = [

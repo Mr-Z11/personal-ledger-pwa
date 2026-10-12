@@ -14,7 +14,7 @@ import {
   startReminderScheduler
 } from "./notifications.js";
 import { prisma } from "./prisma.js";
-import { serializeAccount, serializeAnalysisNote, serializeBudget, serializeCategory, serializeSnapshot, serializeTransaction } from "./serializers.js";
+import { serializeAccount, serializeAnalysisNote, serializeBudget, serializeCategory, serializePlannedPurchase, serializeSnapshot, serializeTransaction } from "./serializers.js";
 
 type ExportFormat = "ledger" | "portable" | "suishouji" | "qianji";
 
@@ -95,15 +95,16 @@ async function touchLedger(ledgerId: string) {
 }
 
 async function loadSnapshot(ledgerId: string) {
-  const [ledger, accounts, categories, transactions, budgets, analysisNotes] = await Promise.all([
+  const [ledger, accounts, categories, transactions, budgets, analysisNotes, plannedPurchases] = await Promise.all([
     prisma.ledger.findUniqueOrThrow({ where: { id: ledgerId }, select: { serverVersion: true } }),
     prisma.account.findMany({ where: { ledgerId }, orderBy: { createdAt: "asc" } }),
     prisma.category.findMany({ where: { ledgerId }, orderBy: { createdAt: "asc" } }),
     prisma.transaction.findMany({ where: { ledgerId }, orderBy: { occurredAt: "desc" } }),
     prisma.budget.findMany({ where: { ledgerId }, orderBy: { month: "desc" } }),
-    prisma.analysisNote.findMany({ where: { ledgerId }, orderBy: [{ month: "desc" }, { updatedAt: "desc" }] })
+    prisma.analysisNote.findMany({ where: { ledgerId }, orderBy: [{ month: "desc" }, { updatedAt: "desc" }] }),
+    prisma.plannedPurchase.findMany({ where: { ledgerId }, orderBy: { createdAt: "asc" } })
   ]);
-  return serializeSnapshot({ accounts, categories, transactions, budgets, analysisNotes, serverVersion: ledger.serverVersion });
+  return serializeSnapshot({ accounts, categories, transactions, budgets, analysisNotes, plannedPurchases, serverVersion: ledger.serverVersion });
 }
 
 function csvEscape(value: string | number | null | undefined) {
@@ -405,6 +406,18 @@ export async function buildApp(): Promise<FastifyInstance> {
         where: { id },
         create: { id, ...data, ledgerId: ledger.id, deletedAt: deletedAt ? new Date(deletedAt) : null },
         update: { ...data, ledgerId: ledger.id, deletedAt: deletedAt ? new Date(deletedAt) : null, version: { increment: 1 } }
+      });
+    }
+    for (const item of payload.plannedPurchases ?? []) {
+      const { id, updatedAt, deletedAt, version: _version, completedAt, ...data } = item;
+      const dates = {
+        completedAt: completedAt ? new Date(completedAt) : null,
+        deletedAt: deletedAt ? new Date(deletedAt) : null
+      };
+      await prisma.plannedPurchase.upsert({
+        where: { id },
+        create: { id, ...data, ...dates, ledgerId: ledger.id },
+        update: { ...data, ...dates, ledgerId: ledger.id, version: { increment: 1 } }
       });
     }
 

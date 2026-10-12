@@ -1,12 +1,13 @@
-import { centsToYuan, monthKey, yuanToCents, type Account, type Category, type Transaction } from "@ledger/shared";
-import { BellRing, Minus, TrendingDown, TrendingUp, X } from "lucide-react";
-import { useId, useMemo, useState, type CSSProperties } from "react";
+import { centsToYuan, monthKey, yuanToCents, type Account, type Budget, type Category, type PlannedPurchase, type Transaction } from "@ledger/shared";
+import { BellRing, Check, Minus, ShoppingBag, TrendingDown, TrendingUp, X } from "lucide-react";
+import { useEffect, useId, useMemo, useState, type CSSProperties } from "react";
 import {
   beijingDateTimeParts,
   categoryPath,
   dailyExpenseTransactions,
   dateKey,
   daysInMonth,
+  monthBudgetTotal,
   monthLabel,
   offsetMonthKey,
   percentDelta,
@@ -1014,7 +1015,7 @@ export function FixedExpenseOverview({ transactions, categories }: {
         </div>
         <div className="fixed-expense-total-progress">
           <div className="bar"><i style={{ width: `${Math.max(2, donePct)}%` }} /></div>
-          <em>已完成 {donePct}%</em>
+          <em>已支出 {donePct}%</em>
         </div>
       </div>
       <div className="fixed-expense-list">
@@ -1042,6 +1043,387 @@ export function FixedExpenseOverview({ transactions, categories }: {
           );
         })}
       </div>
+    </section>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/* 当日限额提醒：达到日限额（含误差线）时全屏红色警告 + 本地通知            */
+/* ------------------------------------------------------------------ */
+
+export type DailyLimitAlertSettings = {
+  enabled: boolean;
+  /** 误差金额（分）：当日消费达到「日限额 − 误差」即触发提醒 */
+  toleranceCents: number;
+  notify: boolean;
+};
+
+const DAILY_LIMIT_ALERT_KEY = "ledger-daily-limit-alert";
+const DAILY_LIMIT_DISMISS_KEY = "ledger-daily-limit-dismissed";
+const DAILY_LIMIT_NOTIFY_KEY = "ledger-daily-limit-notified";
+
+export const DEFAULT_DAILY_LIMIT_ALERT: DailyLimitAlertSettings = {
+  enabled: true,
+  toleranceCents: 2000,
+  notify: true
+};
+
+export function loadDailyLimitAlertSettings(): DailyLimitAlertSettings {
+  try {
+    const raw = localStorage.getItem(DAILY_LIMIT_ALERT_KEY);
+    if (!raw) return DEFAULT_DAILY_LIMIT_ALERT;
+    const parsed = JSON.parse(raw) as Partial<DailyLimitAlertSettings>;
+    return {
+      enabled: parsed.enabled !== false,
+      toleranceCents: Math.max(0, Math.round(Number(parsed.toleranceCents) || DEFAULT_DAILY_LIMIT_ALERT.toleranceCents)),
+      notify: parsed.notify !== false
+    };
+  } catch {
+    return DEFAULT_DAILY_LIMIT_ALERT;
+  }
+}
+
+export function saveDailyLimitAlertSettings(settings: DailyLimitAlertSettings) {
+  localStorage.setItem(DAILY_LIMIT_ALERT_KEY, JSON.stringify(settings));
+}
+
+/** 当日限额 = 当月日常消费预算 ÷ 当月天数；未设预算返回 0 */
+export function dailyLimitCents(budgets: Budget[], month: string) {
+  const total = monthBudgetTotal(budgets, month);
+  return total > 0 ? Math.round(total / daysInMonth(month)) : 0;
+}
+
+/** 今日日常消费合计（不含贷款/保险/教育等专项） */
+export function todayDailySpentCents(transactions: Transaction[], categories: Category[]) {
+  const today = dateKey(new Date().toISOString());
+  return dailyExpenseTransactions(transactions, categories)
+    .filter((item) => dateKey(item.occurredAt) === today)
+    .reduce((sum, item) => sum + item.amountCents, 0);
+}
+
+/** 是否触发当日限额提醒：今日消费 ≥ 日限额 − 误差金额 */
+export function dailyLimitAlertTriggered(settings: DailyLimitAlertSettings, spentTodayCents: number, limitCents: number) {
+  return settings.enabled && limitCents > 0 && spentTodayCents >= limitCents - settings.toleranceCents;
+}
+
+export function dismissDailyLimitAlertForToday() {
+  localStorage.setItem(DAILY_LIMIT_DISMISS_KEY, dateKey(new Date().toISOString()));
+}
+
+export function dailyLimitAlertDismissedKey() {
+  return localStorage.getItem(DAILY_LIMIT_DISMISS_KEY);
+}
+
+/** 触发时每天发一条系统通知（失败静默降级为应用内全屏警告） */
+export function maybeNotifyDailyLimit(settings: DailyLimitAlertSettings, spentTodayCents: number, limitCents: number) {
+  if (!settings.enabled || !settings.notify) return;
+  if (!dailyLimitAlertTriggered(settings, spentTodayCents, limitCents)) return;
+  const todayKey = dateKey(new Date().toISOString());
+  if (localStorage.getItem(DAILY_LIMIT_NOTIFY_KEY) === todayKey) return;
+  try {
+    if (typeof Notification === "undefined" || Notification.permission !== "granted") return;
+    new Notification("⚠️ 今日消费已达限额", {
+      body: `今天日常消费已花 ¥${centsToYuan(spentTodayCents)}，达到日限额 ¥${centsToYuan(limitCents)}（含 ¥${centsToYuan(settings.toleranceCents)} 误差线）。`
+    });
+    localStorage.setItem(DAILY_LIMIT_NOTIFY_KEY, todayKey);
+  } catch {
+    // 部分平台不支持本地 Notification，忽略
+  }
+}
+
+/** 全屏红色警告遮罩：达到限额时覆盖整个页面，关闭后当天不再弹出 */
+export function DailyLimitOverlay({ spentCents, limitCents, toleranceCents, onDismiss }: {
+  spentCents: number;
+  limitCents: number;
+  toleranceCents: number;
+  onDismiss: () => void;
+}) {
+  const overCents = spentCents - limitCents;
+  useEffect(() => {
+    document.body.classList.add("daily-limit-lock");
+    return () => document.body.classList.remove("daily-limit-lock");
+  }, []);
+  return (
+    <div className="daily-limit-overlay" role="alert" aria-live="assertive">
+      <div className="daily-limit-card">
+        <span className="daily-limit-icon">⚠️</span>
+        <h2>今日消费已达限额</h2>
+        <p className="daily-limit-amount">¥{centsToYuan(spentCents)}</p>
+        <p className="daily-limit-detail">
+          日限额 ¥{centsToYuan(limitCents)}（误差线 ¥{centsToYuan(toleranceCents)}）
+          {overCents > 0 ? ` · 已超出 ¥${centsToYuan(overCents)}` : " · 已到临界，别再花了"}
+        </p>
+        <p className="daily-limit-advice">今天剩下的时间停止非必要消费，想买的东西先加进「计划购买」，等明天有额度再买。</p>
+        <button type="button" className="daily-limit-dismiss" onClick={onDismiss}>知道了，今天不再提醒</button>
+      </div>
+    </div>
+  );
+}
+
+export function LocalDailyLimitAlertPanel({ value, onChange }: {
+  value: DailyLimitAlertSettings;
+  onChange: (settings: DailyLimitAlertSettings) => void;
+}) {
+  const [draft, setDraft] = useState<DailyLimitAlertSettings>(value);
+  const [saved, setSaved] = useState(false);
+  const [permission, setPermission] = useState<NotificationPermission | "unsupported">(
+    typeof Notification === "undefined" ? "unsupported" : Notification.permission
+  );
+  const [toleranceInput, setToleranceInput] = useState(() => centsToYuan(value.toleranceCents));
+  const changed = JSON.stringify(draft) !== JSON.stringify(value) || toleranceInput !== centsToYuan(value.toleranceCents);
+
+  async function toggleNotify(notify: boolean) {
+    if (notify && typeof Notification !== "undefined" && Notification.permission !== "granted") {
+      const result = await Notification.requestPermission();
+      setPermission(result);
+      if (result !== "granted") {
+        setDraft((current) => ({ ...current, notify: false }));
+        return;
+      }
+    }
+    setDraft((current) => ({ ...current, notify }));
+  }
+
+  function save() {
+    let toleranceCents = value.toleranceCents;
+    try {
+      const parsed = yuanToCents(toleranceInput || "20");
+      if (parsed >= 0) toleranceCents = parsed;
+    } catch {
+      // 输入不合法时沿用原值
+    }
+    const next = { ...draft, toleranceCents };
+    onChange(next);
+    setSaved(true);
+    window.setTimeout(() => setSaved(false), 2000);
+  }
+
+  return (
+    <div className="reminder-panel form-stack">
+      <div className={`reminder-status ${value.enabled ? "on" : ""}`}>
+        <BellRing size={16} />
+        <span>{value.enabled ? `已开启：今日消费达到日限额 − ¥${centsToYuan(value.toleranceCents)} 即全屏警告` : "未开启"}</span>
+      </div>
+      <div className="reminder-row">
+        <label>误差金额（元）
+          <input
+            value={toleranceInput}
+            inputMode="decimal"
+            onChange={(event) => setToleranceInput(event.target.value)}
+          />
+        </label>
+        <span className="reminder-hint">今日消费 ≥（月日常预算 ÷ 当月天数）− 误差金额 时触发</span>
+      </div>
+      <label className="reminder-toggle">
+        <input type="checkbox" checked={draft.notify} onChange={(event) => void toggleNotify(event.target.checked)} />
+        同时发送系统通知（每天一条；服务端推送开启后，关闭应用也能收到）
+      </label>
+      <div className="data-actions">
+        {draft.enabled ? (
+          <button type="button" onClick={() => { const next = { ...draft, enabled: false }; setDraft(next); onChange(next); }}>关闭提醒</button>
+        ) : (
+          <button className="primary" type="button" onClick={() => { const next = { ...draft, enabled: true }; setDraft(next); onChange(next); }}>
+            <BellRing size={16} />开启提醒
+          </button>
+        )}
+        <button type="button" disabled={!changed} onClick={save}>{saved ? "已保存" : "保存设置"}</button>
+      </div>
+      {permission === "denied" && <p className="reminder-hint warn">系统通知权限已被拒绝：可在系统设置中允许通知；即使不开通知，应用内全屏警告依然有效。</p>}
+      <p className="reminder-hint">达到限额后打开应用会全屏红色警告，点「知道了」后当天不再弹出；手机端系统通知由服务器每 20 分钟检查一次并推送（每天最多一条）。</p>
+    </div>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/* 计划购买（想买清单）：预算余额够买时提醒，买完点已完成                     */
+/* ------------------------------------------------------------------ */
+
+const PLAN_BUY_NOTIFY_KEY = "ledger-planbuy-notified";
+
+function planBuyNotifiedToday(): { date: string; ids: string[] } {
+  try {
+    const raw = localStorage.getItem(PLAN_BUY_NOTIFY_KEY);
+    if (!raw) return { date: "", ids: [] };
+    const parsed = JSON.parse(raw) as { date?: string; ids?: string[] };
+    return { date: typeof parsed.date === "string" ? parsed.date : "", ids: Array.isArray(parsed.ids) ? parsed.ids : [] };
+  } catch {
+    return { date: "", ids: [] };
+  }
+}
+
+/** 今日预算余额够买某项时发一条本地系统通知（每天每项最多一条） */
+function maybeNotifyPlanBuy(affordable: PlannedPurchase[], remainingCents: number) {
+  if (affordable.length === 0) return;
+  const todayKey = dateKey(new Date().toISOString());
+  const record = planBuyNotifiedToday();
+  const notifiedIds = record.date === todayKey ? record.ids : [];
+  const fresh = affordable.filter((item) => !notifiedIds.includes(item.id));
+  if (fresh.length === 0) return;
+  try {
+    if (typeof Notification === "undefined" || Notification.permission !== "granted") return;
+    const names = fresh.slice(0, 3).map((item) => item.name).join("、");
+    const more = fresh.length > 3 ? ` 等 ${fresh.length} 项` : "";
+    new Notification("今日预算有余额，可以安排计划购买", {
+      body: `今日预算余额 ¥${centsToYuan(remainingCents)}，够买：${names}${more}。`
+    });
+    localStorage.setItem(PLAN_BUY_NOTIFY_KEY, JSON.stringify({ date: todayKey, ids: [...notifiedIds, ...fresh.map((item) => item.id)] }));
+  } catch {
+    // 不支持本地通知时忽略（服务端推送会兜底）
+  }
+}
+
+export function PlannedPurchasePanel({ items, todayRemainingCents, onAdd, onToggleComplete, onDelete }: {
+  items: PlannedPurchase[];
+  /** 今日预算余额（分）；null 表示未设日常预算，无法判断 */
+  todayRemainingCents: number | null;
+  onAdd: (name: string, amountCents: number) => void;
+  onToggleComplete: (item: PlannedPurchase) => void;
+  onDelete: (item: PlannedPurchase) => void;
+}) {
+  const [nameInput, setNameInput] = useState("");
+  const [amountInput, setAmountInput] = useState("");
+  const [permission, setPermission] = useState<NotificationPermission | "unsupported">(
+    typeof Notification === "undefined" ? "unsupported" : Notification.permission
+  );
+
+  const pending = useMemo(
+    () => items.filter((item) => !item.completedAt).sort((left, right) => left.amountCents - right.amountCents),
+    [items]
+  );
+  const completed = useMemo(
+    () => items.filter((item) => item.completedAt).sort((left, right) => String(right.completedAt).localeCompare(String(left.completedAt))),
+    [items]
+  );
+  const pendingTotal = pending.reduce((sum, item) => sum + item.amountCents, 0);
+  const affordable = todayRemainingCents === null ? [] : pending.filter((item) => item.amountCents <= todayRemainingCents);
+
+  useEffect(() => {
+    maybeNotifyPlanBuy(affordable, todayRemainingCents ?? 0);
+  }, [affordable, todayRemainingCents]);
+
+  function addItem() {
+    const name = nameInput.trim();
+    if (!name) return;
+    let amountCents = 0;
+    try {
+      amountCents = yuanToCents(amountInput || "0");
+    } catch {
+      return;
+    }
+    if (amountCents <= 0) return;
+    onAdd(name, amountCents);
+    setNameInput("");
+    setAmountInput("");
+  }
+
+  async function requestNotifyPermission() {
+    if (typeof Notification === "undefined") return;
+    setPermission(await Notification.requestPermission());
+  }
+
+  return (
+    <section className="panel planbuy-panel">
+      <div className="chart-heading">
+        <h2>计划购买</h2>
+        <span>
+          {pending.length > 0
+            ? `${pending.length} 项待买 · 合计 ¥${centsToYuan(pendingTotal)}`
+            : "把想买的东西和预算记在这里，当天有额度时会提醒你"}
+          {todayRemainingCents !== null && pending.length > 0 ? ` · 今日预算余额 ¥${centsToYuan(todayRemainingCents)}` : ""}
+        </span>
+      </div>
+
+      <div className="planbuy-add">
+        <input
+          value={nameInput}
+          placeholder="想买什么（如：冬季床上三件套）"
+          maxLength={40}
+          onChange={(event) => setNameInput(event.target.value)}
+          onKeyDown={(event) => { if (event.key === "Enter") addItem(); }}
+        />
+        <input
+          value={amountInput}
+          placeholder="预算 ¥"
+          inputMode="decimal"
+          className="planbuy-amount"
+          onChange={(event) => setAmountInput(event.target.value)}
+          onKeyDown={(event) => { if (event.key === "Enter") addItem(); }}
+        />
+        <button type="button" className="primary" disabled={!nameInput.trim() || !amountInput.trim()} onClick={addItem}>
+          <ShoppingBag size={16} />加入清单
+        </button>
+      </div>
+
+      {todayRemainingCents === null && pending.length > 0 && (
+        <p className="reminder-hint">未设日常消费预算，无法判断今日余额（设置 → 预算管理）。</p>
+      )}
+      {permission === "default" && pending.length > 0 && (
+        <p className="reminder-hint">
+          想在余额够买时收到手机提醒？
+          <button type="button" className="link-button" onClick={() => void requestNotifyPermission()}>点这里开启通知</button>
+        </p>
+      )}
+
+      {pending.length === 0 && completed.length === 0 ? (
+        <p className="empty">清单是空的。想买但当天超预算的东西记在这里，有额度时优先安排，不再靠脑子记。</p>
+      ) : (
+        <>
+          {pending.length > 0 && (
+            <div className="planbuy-list">
+              {pending.map((item) => {
+                const canBuy = todayRemainingCents !== null && item.amountCents <= todayRemainingCents;
+                const gap = todayRemainingCents !== null ? item.amountCents - todayRemainingCents : 0;
+                return (
+                  <div className={`planbuy-row ${canBuy ? "affordable" : ""}`} key={item.id}>
+                    <div className="planbuy-main">
+                      <strong>{item.name}</strong>
+                      <span className={`planbuy-status ${canBuy ? "ok" : ""}`}>
+                        {todayRemainingCents === null
+                          ? "未设预算"
+                          : canBuy
+                            ? "今日余额可买，安排！"
+                            : `还差 ¥${centsToYuan(gap)}`}
+                      </span>
+                    </div>
+                    <div className="planbuy-side">
+                      <strong>¥{centsToYuan(item.amountCents)}</strong>
+                      <div className="planbuy-actions">
+                        <button type="button" className="planbuy-done" title="已完成购买" onClick={() => onToggleComplete(item)}>
+                          <Check size={15} />已完成
+                        </button>
+                        <button type="button" className="icon-button" title="删除" onClick={() => onDelete(item)}>×</button>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+          {completed.length > 0 && (
+            <details className="planbuy-completed">
+              <summary>已买 {completed.length} 项（点开展开，买错了可撤销）</summary>
+              <div className="planbuy-list">
+                {completed.map((item) => (
+                  <div className="planbuy-row done" key={item.id}>
+                    <div className="planbuy-main">
+                      <strong>{item.name}</strong>
+                      <span className="planbuy-status">{item.completedAt ? `${dateKey(item.completedAt).slice(5)} 完成` : ""}</span>
+                    </div>
+                    <div className="planbuy-side">
+                      <strong>¥{centsToYuan(item.amountCents)}</strong>
+                      <div className="planbuy-actions">
+                        <button type="button" className="link-button" onClick={() => onToggleComplete(item)}>撤销</button>
+                        <button type="button" className="icon-button" title="删除" onClick={() => onDelete(item)}>×</button>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </details>
+          )}
+        </>
+      )}
+      <p className="reminder-hint">清单云端同步，多设备一致；余额够买时应用内高亮 + 手机推送提醒（每天一轮）。</p>
     </section>
   );
 }

@@ -29,6 +29,7 @@ model Ledger {
   transactions  Transaction[]
   budgets       Budget[]
   analysisNotes AnalysisNote[]
+  plannedPurchases PlannedPurchase[]
   auditLogs     AuditLog[]
 
   @@index([ownerId])
@@ -130,6 +131,22 @@ model AnalysisNote {
 
   @@index([ledgerId, month])
   @@unique([ledgerId, month, subjectType, subjectKey])
+}
+
+model PlannedPurchase {
+  id          String    @id @default(uuid())
+  ledgerId    String
+  name        String
+  amountCents BigInt
+  note        String?
+  completedAt DateTime?
+  version     Int       @default(1)
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  deletedAt   DateTime?
+  ledger      Ledger    @relation(fields: [ledgerId], references: [id], onDelete: Cascade)
+
+  @@index([ledgerId])
 }
 
 model ReminderSetting {

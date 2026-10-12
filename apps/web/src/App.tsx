@@ -8,6 +8,7 @@ import {
   type AnalysisNote,
   type Budget,
   type Category,
+  type PlannedPurchase,
   type Transaction,
   type TransactionType
 } from "@ledger/shared";
@@ -75,18 +76,30 @@ import {
 import {
   BigExpensePanel,
   BudgetReservoir,
+  DailyLimitOverlay,
   DailyPaceChart,
   FixedExpenseOverview,
+  LocalDailyLimitAlertPanel,
   LocalSalaryReminderPanel,
+  PlannedPurchasePanel,
   RegularExpensePanel,
   SalaryBanner,
   TrendFocusCards,
+  dailyLimitAlertDismissedKey,
+  dailyLimitAlertTriggered,
+  dailyLimitCents,
+  dismissDailyLimitAlertForToday,
   dismissSalaryBannerForToday,
+  loadDailyLimitAlertSettings,
   loadSalarySettings,
+  maybeNotifyDailyLimit,
   maybeNotifyPayday,
   salaryBannerDismissedKey,
   salaryBannerState,
+  saveDailyLimitAlertSettings,
   saveSalarySettings,
+  todayDailySpentCents,
+  type DailyLimitAlertSettings,
   type SalarySettings
 } from "./widgets";
 import { PlanView } from "./plan";
@@ -581,6 +594,7 @@ export function App() {
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [budgets, setBudgets] = useState<Budget[]>([]);
   const [analysisNotes, setAnalysisNotes] = useState<AnalysisNote[]>([]);
+  const [plannedPurchases, setPlannedPurchases] = useState<PlannedPurchase[]>([]);
   const [outboxCount, setOutboxCount] = useState(0);
   const [lastSync, setLastSync] = useState<string | undefined>();
   const [editingTransaction, setEditingTransaction] = useState<Transaction | null>(null);
@@ -591,14 +605,17 @@ export function App() {
   const [exportFileType, setExportFileType] = useState<ExportFileType>("xlsx");
   const [salarySettings, setSalarySettings] = useState<SalarySettings>(() => loadSalarySettings());
   const [salaryDismissed, setSalaryDismissed] = useState<string | null>(() => salaryBannerDismissedKey());
+  const [dailyLimitSettings, setDailyLimitSettings] = useState<DailyLimitAlertSettings>(() => loadDailyLimitAlertSettings());
+  const [dailyLimitDismissed, setDailyLimitDismissed] = useState<string | null>(() => dailyLimitAlertDismissedKey());
 
   const refreshLocal = useCallback(async () => {
-    const [nextAccounts, nextCategories, nextTransactions, nextBudgets, nextAnalysisNotes, nextOutboxCount, nextLastSync] = await Promise.all([
+    const [nextAccounts, nextCategories, nextTransactions, nextBudgets, nextAnalysisNotes, nextPlannedPurchases, nextOutboxCount, nextLastSync] = await Promise.all([
       db.accounts.toArray(),
       db.categories.toArray(),
       db.transactions.orderBy("occurredAt").reverse().toArray(),
       db.budgets.toArray(),
       db.analysisNotes.toArray(),
+      db.plannedPurchases.toArray(),
       db.outbox.count(),
       db.meta.get("lastSyncAt")
     ]);
@@ -607,6 +624,7 @@ export function App() {
     setTransactions(nextTransactions);
     setBudgets(nextBudgets);
     setAnalysisNotes(nextAnalysisNotes);
+    setPlannedPurchases(nextPlannedPurchases);
     setOutboxCount(nextOutboxCount);
     setLastSync(nextLastSync?.value);
   }, []);
@@ -616,6 +634,7 @@ export function App() {
   const activeTransactions = useMemo(() => activeOnly(transactions), [transactions]);
   const activeBudgets = useMemo(() => activeOnly(budgets), [budgets]);
   const activeAnalysisNotes = useMemo(() => activeOnly(analysisNotes), [analysisNotes]);
+  const activePlannedPurchases = useMemo(() => activeOnly(plannedPurchases), [plannedPurchases]);
   const isLocalPreview = token?.startsWith("local-preview:") ?? false;
   const currentMonth = monthKey();
   const dailyMonthExpenses = useMemo(
@@ -631,10 +650,22 @@ export function App() {
   const currentBudgetCents = useMemo(() => monthBudgetTotal(activeBudgets, currentMonth), [activeBudgets, currentMonth]);
   const currentTotalBudgetCents = useMemo(() => monthTotalBudgetCents(activeBudgets, currentMonth), [activeBudgets, currentMonth]);
   const salaryBanner = useMemo(() => salaryBannerState(salarySettings, salaryDismissed), [salarySettings, salaryDismissed]);
+  const todaySpentCents = useMemo(
+    () => todayDailySpentCents(activeTransactions, activeCategories),
+    [activeTransactions, activeCategories]
+  );
+  const todayLimitCents = useMemo(() => dailyLimitCents(activeBudgets, currentMonth), [activeBudgets, currentMonth]);
+  const todayRemainingCents = todayLimitCents > 0 ? todayLimitCents - todaySpentCents : null;
+  const dailyLimitHit = dailyLimitAlertTriggered(dailyLimitSettings, todaySpentCents, todayLimitCents);
+  const todayKey = dateKey(new Date().toISOString());
 
   useEffect(() => {
     maybeNotifyPayday(salarySettings);
   }, [salarySettings]);
+
+  useEffect(() => {
+    maybeNotifyDailyLimit(dailyLimitSettings, todaySpentCents, todayLimitCents);
+  }, [dailyLimitSettings, todaySpentCents, todayLimitCents]);
 
   async function hydrateFromServer(nextToken = token) {
     if (!nextToken) return;
@@ -729,8 +760,8 @@ export function App() {
   }
 
   async function saveLocalAndQueue(
-    kind: keyof Pick<typeof db, "accounts" | "categories" | "transactions" | "budgets" | "analysisNotes">,
-    item: Account | Category | Transaction | Budget | AnalysisNote
+    kind: keyof Pick<typeof db, "accounts" | "categories" | "transactions" | "budgets" | "analysisNotes" | "plannedPurchases">,
+    item: Account | Category | Transaction | Budget | AnalysisNote | PlannedPurchase
   ) {
     await db[kind].put(item as never);
     await enqueue({ [kind]: [item] });
@@ -835,7 +866,33 @@ export function App() {
         )}
 
         {view === "overview" && (
-          <Overview summary={dailySummary} budgetCents={currentBudgetCents} totalBudgetCents={currentTotalBudgetCents} accounts={activeAccounts} categories={activeCategories} transactions={activeTransactions} />
+          <Overview summary={dailySummary} budgetCents={currentBudgetCents} totalBudgetCents={currentTotalBudgetCents} accounts={activeAccounts} categories={activeCategories} transactions={activeTransactions}
+            plannedPurchases={activePlannedPurchases}
+            todayRemainingCents={todayRemainingCents}
+            onAddPlannedPurchase={async (name, amountCents) => {
+              await saveLocalAndQueue("plannedPurchases", {
+                id: crypto.randomUUID(),
+                name,
+                amountCents,
+                note: null,
+                completedAt: null,
+                version: 1,
+                updatedAt: new Date().toISOString(),
+                deletedAt: null
+              });
+              setToast(`已加入计划购买：${name}`);
+            }}
+            onTogglePlannedPurchase={async (item) => {
+              const next = { ...item, completedAt: item.completedAt ? null : new Date().toISOString(), updatedAt: new Date().toISOString(), version: item.version + 1 };
+              await saveLocalAndQueue("plannedPurchases", next);
+              setToast(next.completedAt ? `已完成购买：${item.name}` : `已撤销完成：${item.name}`);
+            }}
+            onDeletePlannedPurchase={async (item) => {
+              const deleted = { ...item, deletedAt: new Date().toISOString(), updatedAt: new Date().toISOString(), version: item.version + 1 };
+              await saveLocalAndQueue("plannedPurchases", deleted);
+              setToast(`已删除：${item.name}`);
+            }}
+          />
         )}
         {view === "entry" && (
           <EntryForm
@@ -921,6 +978,12 @@ export function App() {
               setSalaryDismissed(salaryBannerDismissedKey());
               setToast("工资日提醒设置已保存");
             }}
+            dailyLimitSettings={dailyLimitSettings}
+            onDailyLimitSettingsChange={(next) => {
+              setDailyLimitSettings(next);
+              saveDailyLimitAlertSettings(next);
+              setToast("当日限额提醒设置已保存");
+            }}
             onSaveCategory={(item) => saveLocalAndQueue("categories", item)}
             onDeleteCategories={(items) => saveManyLocalAndQueue("categories", items)}
           />
@@ -931,6 +994,17 @@ export function App() {
             await saveLocalAndQueue("transactions", restored);
             setToast("流水已恢复");
           }} />
+        )}
+        {dailyLimitHit && dailyLimitDismissed !== todayKey && (
+          <DailyLimitOverlay
+            spentCents={todaySpentCents}
+            limitCents={todayLimitCents}
+            toleranceCents={dailyLimitSettings.toleranceCents}
+            onDismiss={() => {
+              dismissDailyLimitAlertForToday();
+              setDailyLimitDismissed(todayKey);
+            }}
+          />
         )}
         {toast && <div className="save-toast" role="status">{toast}</div>}
         <button className="floating category-fab" onClick={() => setQuickCategoryOpen((value) => !value)} title="快速增加分类"><FolderPlus size={23} /></button>
@@ -994,13 +1068,18 @@ function AuthScreen({ onAuth }: { onAuth: (result: Awaited<ReturnType<typeof api
   );
 }
 
-function Overview({ summary, budgetCents, totalBudgetCents, accounts, categories, transactions }: {
+function Overview({ summary, budgetCents, totalBudgetCents, accounts, categories, transactions, plannedPurchases, todayRemainingCents, onAddPlannedPurchase, onTogglePlannedPurchase, onDeletePlannedPurchase }: {
   summary: { incomeCents: number; expenseCents: number; netCents: number };
   budgetCents: number;
   totalBudgetCents: number;
   accounts: Account[];
   categories: Category[];
   transactions: Transaction[];
+  plannedPurchases: PlannedPurchase[];
+  todayRemainingCents: number | null;
+  onAddPlannedPurchase: (name: string, amountCents: number) => void;
+  onTogglePlannedPurchase: (item: PlannedPurchase) => void;
+  onDeletePlannedPurchase: (item: PlannedPurchase) => void;
 }) {
   const monthTransactions = transactions.filter((item) => item.occurredAt.startsWith(monthKey()));
   const prevMonthKey = offsetMonthKey(monthKey(), -1);
@@ -1060,6 +1139,14 @@ function Overview({ summary, budgetCents, totalBudgetCents, accounts, categories
       </div>
 
       <FixedExpenseOverview transactions={transactions} categories={categories} />
+
+      <PlannedPurchasePanel
+        items={plannedPurchases}
+        todayRemainingCents={todayRemainingCents}
+        onAdd={onAddPlannedPurchase}
+        onToggleComplete={onTogglePlannedPurchase}
+        onDelete={onDeletePlannedPurchase}
+      />
 
       <div className="overview-quick-grid">
         <article className="overview-quick-card">
@@ -2102,7 +2189,9 @@ function SettingsPanel({
   onSaveCategory,
   onDeleteCategories,
   salarySettings,
-  onSalarySettingsChange
+  onSalarySettingsChange,
+  dailyLimitSettings,
+  onDailyLimitSettingsChange
 }: {
   accounts: Account[];
   categories: Category[];
@@ -2124,6 +2213,8 @@ function SettingsPanel({
   onDeleteCategories: (items: Category[]) => Promise<void>;
   salarySettings: SalarySettings;
   onSalarySettingsChange: (settings: SalarySettings) => void;
+  dailyLimitSettings: DailyLimitAlertSettings;
+  onDailyLimitSettingsChange: (settings: DailyLimitAlertSettings) => void;
 }) {
   return (
     <section className="settings-stack">
@@ -2172,6 +2263,9 @@ function SettingsPanel({
       </SettingsSection>
       <SettingsSection title="工资日提醒" description="纯本地提醒，随时可改，离线、无服务器也能正常运作。">
         <LocalSalaryReminderPanel value={salarySettings} onChange={onSalarySettingsChange} />
+      </SettingsSection>
+      <SettingsSection title="当日限额提醒" description="今日消费达到日限额（月日常预算 ÷ 当月天数，含误差线）时全屏红色警告并推送手机提醒。">
+        <LocalDailyLimitAlertPanel value={dailyLimitSettings} onChange={onDailyLimitSettingsChange} />
       </SettingsSection>
       <SettingsSection title="分类维护" description="按一级、二级分类折叠维护。">
         <CategoriesPanel categories={categories} onSave={onSaveCategory} onDelete={onDeleteCategories} />
