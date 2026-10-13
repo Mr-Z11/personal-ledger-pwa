@@ -984,6 +984,8 @@ export function App() {
               saveDailyLimitAlertSettings(next);
               setToast("当日限额提醒设置已保存");
             }}
+            token={token}
+            onToast={setToast}
             onSaveCategory={(item) => saveLocalAndQueue("categories", item)}
             onDeleteCategories={(items) => saveManyLocalAndQueue("categories", items)}
           />
@@ -2191,7 +2193,9 @@ function SettingsPanel({
   salarySettings,
   onSalarySettingsChange,
   dailyLimitSettings,
-  onDailyLimitSettingsChange
+  onDailyLimitSettingsChange,
+  token,
+  onToast
 }: {
   accounts: Account[];
   categories: Category[];
@@ -2215,6 +2219,8 @@ function SettingsPanel({
   onSalarySettingsChange: (settings: SalarySettings) => void;
   dailyLimitSettings: DailyLimitAlertSettings;
   onDailyLimitSettingsChange: (settings: DailyLimitAlertSettings) => void;
+  token: string;
+  onToast: (message: string) => void;
 }) {
   return (
     <section className="settings-stack">
@@ -2266,11 +2272,122 @@ function SettingsPanel({
       </SettingsSection>
       <SettingsSection title="当日限额提醒" description="今日消费达到日限额（月日常预算 ÷ 当月天数，含误差线）时全屏红色警告并推送手机提醒。">
         <LocalDailyLimitAlertPanel value={dailyLimitSettings} onChange={onDailyLimitSettingsChange} />
+        <PushAlertPanel token={token} onToast={onToast} />
       </SettingsSection>
       <SettingsSection title="分类维护" description="按一级、二级分类折叠维护。">
         <CategoriesPanel categories={categories} onSave={onSaveCategory} onDelete={onDeleteCategories} />
       </SettingsSection>
     </section>
+  );
+}
+
+function urlBase64ToUint8Array(base64String: string) {
+  const padding = "=".repeat((4 - (base64String.length % 4)) % 4);
+  const base64 = (base64String + padding).replace(/-/g, "+").replace(/_/g, "/");
+  const rawData = window.atob(base64);
+  const outputArray = new Uint8Array(rawData.length);
+  for (let index = 0; index < rawData.length; index += 1) outputArray[index] = rawData.charCodeAt(index);
+  return outputArray;
+}
+
+/** 手机推送订阅管理：开启后服务端可推送限额警告与计划购买提醒（应用关闭也能收到） */
+function PushAlertPanel({ token, onToast }: { token: string; onToast: (message: string) => void }) {
+  const supported = typeof window !== "undefined" && "serviceWorker" in navigator && "PushManager" in window && typeof Notification !== "undefined";
+  const [subscribed, setSubscribed] = useState<boolean | null>(null);
+  const [busy, setBusy] = useState(false);
+
+  useEffect(() => {
+    if (!supported) return;
+    void navigator.serviceWorker.ready
+      .then((registration) => registration.pushManager.getSubscription())
+      .then((subscription) => setSubscribed(Boolean(subscription))
+      ).catch(() => setSubscribed(false));
+  }, [supported]);
+
+  async function enable() {
+    setBusy(true);
+    try {
+      const permission = await Notification.requestPermission();
+      if (permission !== "granted") {
+        onToast("通知权限被拒绝，无法开启手机推送");
+        return;
+      }
+      const { publicKey } = await api.notificationVapidKey();
+      if (!publicKey) {
+        onToast("服务器未配置推送密钥（VAPID），暂无法开启");
+        return;
+      }
+      const registration = await navigator.serviceWorker.ready;
+      const subscription = await registration.pushManager.subscribe({
+        userVisibleOnly: true,
+        applicationServerKey: urlBase64ToUint8Array(publicKey)
+      });
+      await api.subscribeNotifications(token, subscription.toJSON());
+      setSubscribed(true);
+      onToast("手机推送已开启：限额警告与可购买提醒会推送到这台设备");
+    } catch (error) {
+      onToast(error instanceof Error ? error.message : "开启推送失败");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function disable() {
+    setBusy(true);
+    try {
+      const registration = await navigator.serviceWorker.ready;
+      const subscription = await registration.pushManager.getSubscription();
+      if (subscription) {
+        await api.unsubscribeNotifications(token, subscription.endpoint).catch(() => undefined);
+        await subscription.unsubscribe();
+      }
+      setSubscribed(false);
+      onToast("手机推送已关闭");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function sendTest() {
+    setBusy(true);
+    try {
+      const result = await api.testNotifications(token);
+      onToast(result.delivered ? "测试推送已发送，留意通知栏" : "推送未送达（订阅可能已失效，请重新开启）");
+    } catch (error) {
+      onToast(error instanceof Error ? error.message : "测试推送失败");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  if (!supported) {
+    return (
+      <div className="push-alert-panel">
+        <p className="reminder-hint warn">当前浏览器不支持 Web Push。iPhone 需要 iOS 16.4+，且必须从主屏幕图标打开的 PWA 里开启。</p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="push-alert-panel">
+      <div className={`reminder-status ${subscribed ? "on" : ""}`}>
+        <Bell size={16} />
+        <span>{subscribed === null ? "检测推送状态…" : subscribed ? "手机推送已开启（这台设备）" : "手机推送未开启"}</span>
+      </div>
+      <div className="data-actions">
+        {subscribed ? (
+          <>
+            <button type="button" disabled={busy} onClick={() => void sendTest()}>{busy ? "发送中…" : "发一条测试推送"}</button>
+            <button type="button" disabled={busy} onClick={() => void disable()}>关闭推送</button>
+          </>
+        ) : (
+          <button type="button" className="primary" disabled={busy || subscribed === null} onClick={() => void enable()}>
+            <Bell size={16} />{busy ? "开启中…" : "开启手机推送"}
+          </button>
+        )}
+      </div>
+      <p className="reminder-hint">开启后即使应用已关闭，服务器也会推送：① 今日消费达限额警告 ② 计划购买「今日余额可买」提醒（各每天最多一条）。iPhone 请先把 App 加到主屏幕，再从主屏幕图标打开后开启。</p>
+    </div>
   );
 }
 
