@@ -156,6 +156,12 @@ model ReminderSetting {
   remindHour Int     @default(9)
   content   String   @default("")
   enabled   Boolean  @default(true)
+  /** 当日限额提醒：关闭后不推送（应用内全屏警告仍生效） */
+  dailyLimitEnabled Boolean @default(true)
+  /** 当日限额提醒时间（北京时间小时 0-23）：到点后才推送 */
+  dailyLimitHour Int @default(21)
+  /** 误差金额（分）：今日消费 ≥ 日限额 − 误差即视为达线 */
+  dailyLimitToleranceCents Int @default(2000)
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 }

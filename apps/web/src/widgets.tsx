@@ -1,5 +1,5 @@
 import { centsToYuan, monthKey, yuanToCents, type Account, type Budget, type Category, type PlannedPurchase, type Transaction } from "@ledger/shared";
-import { BellRing, Check, Minus, ShoppingBag, TrendingDown, TrendingUp, X } from "lucide-react";
+import { BellRing, Check, Minus, ShoppingBag, Trash2, TrendingDown, TrendingUp, X } from "lucide-react";
 import { useEffect, useId, useMemo, useState, type CSSProperties } from "react";
 import {
   beijingDateTimeParts,
@@ -1055,6 +1055,8 @@ export type DailyLimitAlertSettings = {
   enabled: boolean;
   /** 误差金额（分）：当日消费达到「日限额 − 误差」即触发提醒 */
   toleranceCents: number;
+  /** 提醒时间（北京时间小时 0-23）：到点后才发手机提醒；应用内全屏警告不受限制 */
+  remindHour: number;
   notify: boolean;
 };
 
@@ -1065,6 +1067,7 @@ const DAILY_LIMIT_NOTIFY_KEY = "ledger-daily-limit-notified";
 export const DEFAULT_DAILY_LIMIT_ALERT: DailyLimitAlertSettings = {
   enabled: true,
   toleranceCents: 2000,
+  remindHour: 21,
   notify: true
 };
 
@@ -1076,6 +1079,7 @@ export function loadDailyLimitAlertSettings(): DailyLimitAlertSettings {
     return {
       enabled: parsed.enabled !== false,
       toleranceCents: Math.max(0, Math.round(Number(parsed.toleranceCents) || DEFAULT_DAILY_LIMIT_ALERT.toleranceCents)),
+      remindHour: Math.min(23, Math.max(0, Math.round(Number(parsed.remindHour ?? DEFAULT_DAILY_LIMIT_ALERT.remindHour)))),
       notify: parsed.notify !== false
     };
   } catch {
@@ -1106,6 +1110,13 @@ export function dailyLimitAlertTriggered(settings: DailyLimitAlertSettings, spen
   return settings.enabled && limitCents > 0 && spentTodayCents >= limitCents - settings.toleranceCents;
 }
 
+/** 手机提醒是否已到点（提醒时间之前不发通知/推送） */
+export function dailyLimitReminderDue(settings: DailyLimitAlertSettings, spentTodayCents: number, limitCents: number) {
+  if (!dailyLimitAlertTriggered(settings, spentTodayCents, limitCents)) return false;
+  const hour = Number(beijingDateTimeParts().hour);
+  return hour >= settings.remindHour;
+}
+
 export function dismissDailyLimitAlertForToday() {
   localStorage.setItem(DAILY_LIMIT_DISMISS_KEY, dateKey(new Date().toISOString()));
 }
@@ -1114,10 +1125,10 @@ export function dailyLimitAlertDismissedKey() {
   return localStorage.getItem(DAILY_LIMIT_DISMISS_KEY);
 }
 
-/** 触发时每天发一条系统通知（失败静默降级为应用内全屏警告） */
+/** 触发后每天在设定时间发一条系统通知（失败静默降级为应用内全屏警告） */
 export function maybeNotifyDailyLimit(settings: DailyLimitAlertSettings, spentTodayCents: number, limitCents: number) {
   if (!settings.enabled || !settings.notify) return;
-  if (!dailyLimitAlertTriggered(settings, spentTodayCents, limitCents)) return;
+  if (!dailyLimitReminderDue(settings, spentTodayCents, limitCents)) return;
   const todayKey = dateKey(new Date().toISOString());
   if (localStorage.getItem(DAILY_LIMIT_NOTIFY_KEY) === todayKey) return;
   try {
@@ -1132,13 +1143,16 @@ export function maybeNotifyDailyLimit(settings: DailyLimitAlertSettings, spentTo
 }
 
 /** 全屏红色警告遮罩：达到限额时覆盖整个页面，关闭后当天不再弹出 */
-export function DailyLimitOverlay({ spentCents, limitCents, toleranceCents, onDismiss }: {
+export function DailyLimitOverlay({ spentCents, limitCents, toleranceCents, remindHour, onDismiss }: {
   spentCents: number;
   limitCents: number;
   toleranceCents: number;
+  remindHour: number;
   onDismiss: () => void;
 }) {
   const overCents = spentCents - limitCents;
+  const currentHour = Number(beijingDateTimeParts().hour);
+  const pendingPush = currentHour < remindHour;
   useEffect(() => {
     document.body.classList.add("daily-limit-lock");
     return () => document.body.classList.remove("daily-limit-lock");
@@ -1154,6 +1168,11 @@ export function DailyLimitOverlay({ spentCents, limitCents, toleranceCents, onDi
           {overCents > 0 ? ` · 已超出 ¥${centsToYuan(overCents)}` : " · 已到临界，别再花了"}
         </p>
         <p className="daily-limit-advice">今天剩下的时间停止非必要消费，想买的东西先加进「计划购买」，等明天有额度再买。</p>
+        <p className="daily-limit-remind">
+          {pendingPush
+            ? `手机提醒时间 ${String(remindHour).padStart(2, "0")}:00，到点后推送一次（设置 → 当日限额提醒 可改时间）`
+            : `已过提醒时间 ${String(remindHour).padStart(2, "0")}:00，开启推送的手机今天会收到一次提醒`}
+        </p>
         <button type="button" className="daily-limit-dismiss" onClick={onDismiss}>知道了，今天不再提醒</button>
       </div>
     </div>
@@ -1198,13 +1217,27 @@ export function LocalDailyLimitAlertPanel({ value, onChange }: {
     window.setTimeout(() => setSaved(false), 2000);
   }
 
+  /** 提醒时间改动即时生效（含服务端推送时间），误差金额与开关走「保存设置」 */
+  function changeRemindHour(hour: number) {
+    const next = { ...draft, remindHour: hour };
+    setDraft(next);
+    onChange(next);
+  }
+
   return (
     <div className="reminder-panel form-stack">
       <div className={`reminder-status ${value.enabled ? "on" : ""}`}>
         <BellRing size={16} />
-        <span>{value.enabled ? `已开启：今日消费达到日限额 − ¥${centsToYuan(value.toleranceCents)} 即全屏警告` : "未开启"}</span>
+        <span>{value.enabled ? `已开启：今日消费达日限额 − ¥${centsToYuan(value.toleranceCents)} 全屏警告，${String(value.remindHour).padStart(2, "0")}:00 推送手机提醒` : "未开启"}</span>
       </div>
       <div className="reminder-row">
+        <label>提醒时间
+          <select value={draft.remindHour} onChange={(event) => changeRemindHour(Number(event.target.value))}>
+            {Array.from({ length: 24 }, (_, index) => index).map((hour) => (
+              <option key={hour} value={hour}>{String(hour).padStart(2, "0")}:00</option>
+            ))}
+          </select>
+        </label>
         <label>误差金额（元）
           <input
             value={toleranceInput}
@@ -1212,8 +1245,8 @@ export function LocalDailyLimitAlertPanel({ value, onChange }: {
             onChange={(event) => setToleranceInput(event.target.value)}
           />
         </label>
-        <span className="reminder-hint">今日消费 ≥（月日常预算 ÷ 当月天数）− 误差金额 时触发</span>
       </div>
+      <span className="reminder-hint">今日消费 ≥（月日常预算 ÷ 当月天数）− 误差金额 时：打开应用立即全屏红色警告；手机推送/系统通知只在提醒时间之后发一次。</span>
       <label className="reminder-toggle">
         <input type="checkbox" checked={draft.notify} onChange={(event) => void toggleNotify(event.target.checked)} />
         同时发送系统通知（每天一条；服务端推送开启后，关闭应用也能收到）
@@ -1229,7 +1262,7 @@ export function LocalDailyLimitAlertPanel({ value, onChange }: {
         <button type="button" disabled={!changed} onClick={save}>{saved ? "已保存" : "保存设置"}</button>
       </div>
       {permission === "denied" && <p className="reminder-hint warn">系统通知权限已被拒绝：可在系统设置中允许通知；即使不开通知，应用内全屏警告依然有效。</p>}
-      <p className="reminder-hint">达到限额后打开应用会全屏红色警告，点「知道了」后当天不再弹出；手机端系统通知由服务器每 20 分钟检查一次并推送（每天最多一条）。</p>
+      <p className="reminder-hint">达到限额后打开应用会全屏红色警告，点「知道了」后当天不再弹出；手机推送由服务器每 20 分钟检查一次，到提醒时间且达线才推（每天最多一条）。</p>
     </div>
   );
 }
@@ -1388,10 +1421,12 @@ export function PlannedPurchasePanel({ items, todayRemainingCents, onAdd, onTogg
                     <div className="planbuy-side">
                       <strong>¥{centsToYuan(item.amountCents)}</strong>
                       <div className="planbuy-actions">
-                        <button type="button" className="planbuy-done" title="已完成购买" onClick={() => onToggleComplete(item)}>
-                          <Check size={15} />已完成
+                        <button type="button" className="planbuy-mark" title="已买到手，移入已买列表" onClick={() => onToggleComplete(item)}>
+                          <Check size={15} />已买到手
                         </button>
-                        <button type="button" className="icon-button" title="删除" onClick={() => onDelete(item)}>×</button>
+                        <button type="button" className="icon-button" title="删除这条计划" aria-label="删除这条计划" onClick={() => onDelete(item)}>
+                          <Trash2 size={15} />
+                        </button>
                       </div>
                     </div>
                   </div>
@@ -1399,21 +1434,28 @@ export function PlannedPurchasePanel({ items, todayRemainingCents, onAdd, onTogg
               })}
             </div>
           )}
+          {pending.length > 0 && (
+            <p className="reminder-hint">「已买到手」= 这一项买好了，移到下方已买列表；右侧垃圾桶才是删除这条计划。</p>
+          )}
           {completed.length > 0 && (
             <details className="planbuy-completed">
-              <summary>已买 {completed.length} 项（点开展开，买错了可撤销）</summary>
+              <summary>已买 {completed.length} 项（点开查看/撤销）</summary>
               <div className="planbuy-list">
                 {completed.map((item) => (
                   <div className="planbuy-row done" key={item.id}>
                     <div className="planbuy-main">
                       <strong>{item.name}</strong>
-                      <span className="planbuy-status">{item.completedAt ? `${dateKey(item.completedAt).slice(5)} 完成` : ""}</span>
+                      <span className="planbuy-status done-badge">
+                        <Check size={12} />已买{item.completedAt ? ` · ${dateKey(item.completedAt).slice(5)}` : ""}
+                      </span>
                     </div>
                     <div className="planbuy-side">
                       <strong>¥{centsToYuan(item.amountCents)}</strong>
                       <div className="planbuy-actions">
-                        <button type="button" className="link-button" onClick={() => onToggleComplete(item)}>撤销</button>
-                        <button type="button" className="icon-button" title="删除" onClick={() => onDelete(item)}>×</button>
+                        <button type="button" className="link-button" title="买错了？移回待买列表" onClick={() => onToggleComplete(item)}>撤销</button>
+                        <button type="button" className="icon-button" title="删除这条计划" aria-label="删除这条计划" onClick={() => onDelete(item)}>
+                          <Trash2 size={15} />
+                        </button>
                       </div>
                     </div>
                   </div>

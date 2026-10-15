@@ -252,7 +252,7 @@ export const api = {
   notificationSettings(token: string) {
     return apiFetch<NotificationSettings>("/notifications/settings", {}, token);
   },
-  saveNotificationSettings(token: string, settings: NotificationSettings) {
+  saveNotificationSettings(token: string, settings: Partial<NotificationSettings>) {
     return apiFetch<NotificationSettings>("/notifications/settings", { method: "PUT", body: JSON.stringify(settings) }, token);
   },
   subscribeNotifications(token: string, subscription: PushSubscriptionJSON) {
@@ -287,4 +287,7 @@ export interface NotificationSettings {
   remindHour: number;
   content: string;
   enabled: boolean;
+  dailyLimitEnabled: boolean;
+  dailyLimitHour: number;
+  dailyLimitToleranceCents: number;
 }

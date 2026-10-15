@@ -66,10 +66,13 @@ const analysisNoteSchema = z.object({
 });
 
 const reminderSettingSchema = z.object({
-  salaryDay: z.number().int().min(1).max(31),
-  remindHour: z.number().int().min(0).max(23),
-  content: z.string().max(1000),
-  enabled: z.boolean()
+  salaryDay: z.number().int().min(1).max(31).optional(),
+  remindHour: z.number().int().min(0).max(23).optional(),
+  content: z.string().max(1000).optional(),
+  enabled: z.boolean().optional(),
+  dailyLimitEnabled: z.boolean().optional(),
+  dailyLimitHour: z.number().int().min(0).max(23).optional(),
+  dailyLimitToleranceCents: z.number().int().min(0).max(1_000_000).optional()
 });
 
 const pushSubscriptionSchema = z.object({
@@ -452,17 +455,40 @@ export async function buildApp(): Promise<FastifyInstance> {
       remindHour: setting?.remindHour ?? 9,
       content: setting?.content ?? DEFAULT_REMINDER_CONTENT,
       enabled: setting?.enabled ?? false,
-      exists: Boolean(setting)
+      exists: Boolean(setting),
+      dailyLimitEnabled: setting?.dailyLimitEnabled ?? true,
+      dailyLimitHour: setting?.dailyLimitHour ?? 21,
+      dailyLimitToleranceCents: setting?.dailyLimitToleranceCents ?? 2000
     };
   });
 
   app.put("/notifications/settings", { preHandler: [app.authenticate] }, async (request) => {
     const input = reminderSettingSchema.parse(request.body);
+    const existing = await prisma.reminderSetting.findUnique({ where: { userId: request.user.sub } });
     const setting = await prisma.reminderSetting.upsert({
       where: { userId: request.user.sub },
-      create: { userId: request.user.sub, ...input },
-      update: input
+      create: {
+        userId: request.user.sub,
+        salaryDay: input.salaryDay ?? 10,
+        remindHour: input.remindHour ?? 9,
+        content: input.content ?? DEFAULT_REMINDER_CONTENT,
+        enabled: input.enabled ?? false,
+        dailyLimitEnabled: input.dailyLimitEnabled ?? true,
+        dailyLimitHour: input.dailyLimitHour ?? 21,
+        dailyLimitToleranceCents: input.dailyLimitToleranceCents ?? 2000
+      },
+      // 只更新本次传入的字段，未传的保持原值（前端可只改限额提醒时间）
+      update: {
+        ...(input.salaryDay !== undefined ? { salaryDay: input.salaryDay } : {}),
+        ...(input.remindHour !== undefined ? { remindHour: input.remindHour } : {}),
+        ...(input.content !== undefined ? { content: input.content } : {}),
+        ...(input.enabled !== undefined ? { enabled: input.enabled } : {}),
+        ...(input.dailyLimitEnabled !== undefined ? { dailyLimitEnabled: input.dailyLimitEnabled } : {}),
+        ...(input.dailyLimitHour !== undefined ? { dailyLimitHour: input.dailyLimitHour } : {}),
+        ...(input.dailyLimitToleranceCents !== undefined ? { dailyLimitToleranceCents: input.dailyLimitToleranceCents } : {})
+      }
     });
+    void existing;
     return setting;
   });
 

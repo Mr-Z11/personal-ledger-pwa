@@ -47,6 +47,8 @@ async function deliver(userId: string, payload: ReminderPayload) {
         delivered += 1;
       } catch (error) {
         const statusCode = (error as { statusCode?: number }).statusCode;
+        // 记录失败原因，便于排查（如 VAPID subject 被 Apple 判为 BadJwtToken）
+        console.error("[push] send failed", statusCode, (error as { body?: string }).body ?? (error as Error).message);
         if (statusCode === 404 || statusCode === 410) {
           await prisma.pushSubscription.delete({ where: { id: subscription.id } }).catch(() => undefined);
         }
@@ -72,10 +74,10 @@ export async function sendTestReminder(userId: string) {
   });
 }
 
-export async function sendDailyLimitReminder(userId: string, spentCents: number, limitCents: number) {
+export async function sendDailyLimitReminder(userId: string, spentCents: number, limitCents: number, toleranceCents = DAILY_LIMIT_TOLERANCE_CENTS) {
   return deliver(userId, {
     title: "⚠️ 今日消费已达限额",
-    body: `今天日常消费已花 ¥${centsToYuan(spentCents)}，达到日限额 ¥${centsToYuan(limitCents)}（含 ¥20 误差线）。剩下的时间悠着点花！`,
+    body: `今天日常消费已花 ¥${centsToYuan(spentCents)}，达到日限额 ¥${centsToYuan(limitCents)}（含 ¥${centsToYuan(toleranceCents)} 误差线）。剩下的时间悠着点花！`,
     url: "/"
   });
 }
@@ -145,7 +147,7 @@ function chinaToday() {
   const dayKey = `${now.year}-${String(now.month).padStart(2, "0")}-${String(now.day).padStart(2, "0")}`;
   const monthKey = `${now.year}-${String(now.month).padStart(2, "0")}`;
   const start = new Date(Date.UTC(now.year, now.month - 1, now.day) - 8 * 3600_000);
-  return { dayKey, monthKey, start, end: new Date(start.getTime() + 24 * 3600_000), days: daysInMonth(now.year, now.month - 1) };
+  return { dayKey, monthKey, hour: now.hour, start, end: new Date(start.getTime() + 24 * 3600_000), days: daysInMonth(now.year, now.month - 1) };
 }
 
 function categoryPathOf(category: { name: string; parentId: string | null } | undefined, byId: Map<string, { name: string; parentId: string | null }>) {
@@ -198,9 +200,17 @@ async function checkSpendingAlerts(log: FastifyBaseLogger) {
         .filter((item) => !NON_DAILY_PATTERN.test(categoryPathOf(item.categoryId ? byId.get(item.categoryId) : undefined, byId)))
         .reduce((sum, item) => sum + Number(item.amountCents), 0);
 
-      if (spentTodayCents >= dailyLimitCents - DAILY_LIMIT_TOLERANCE_CENTS) {
+      const setting = await prisma.reminderSetting.findUnique({ where: { userId: ledger.ownerId } });
+      const dailyLimitEnabled = setting?.dailyLimitEnabled ?? true;
+      const dailyLimitHour = setting?.dailyLimitHour ?? 21;
+      const dailyLimitToleranceCents = setting?.dailyLimitToleranceCents ?? DAILY_LIMIT_TOLERANCE_CENTS;
+      const reached = spentTodayCents >= dailyLimitCents - dailyLimitToleranceCents;
+
+      if (reached) {
+        // 未到设定的提醒时间不发推送（应用内全屏警告不受此限制）
+        if (!dailyLimitEnabled || today.hour < dailyLimitHour) continue;
         if (!(await alreadySentToday(ledger.ownerId, "daily-limit", today.dayKey))) {
-          const delivered = await sendDailyLimitReminder(ledger.ownerId, spentTodayCents, dailyLimitCents);
+          const delivered = await sendDailyLimitReminder(ledger.ownerId, spentTodayCents, dailyLimitCents, dailyLimitToleranceCents);
           if (delivered) await markSentToday(ledger.ownerId, "daily-limit", today.dayKey);
           log.info({ userId: ledger.ownerId, spentTodayCents, dailyLimitCents, delivered }, "daily limit alert dispatched");
         }

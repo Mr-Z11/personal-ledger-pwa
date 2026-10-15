@@ -6299,6 +6299,27 @@ body.daily-limit-lock {
   font-weight: 800;
 }
 
+.planbuy-status.done-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.2rem;
+  align-self: flex-start;
+  padding: 0.1rem 0.45rem;
+  border-radius: 999px;
+  font-size: 0.72rem;
+  font-weight: 800;
+  color: #2f7a59;
+  background: rgba(47, 122, 89, 0.14);
+}
+
+.planbuy-actions .icon-button {
+  color: rgba(36, 49, 39, 0.45);
+}
+
+.planbuy-actions .icon-button:hover {
+  color: #b3541e;
+}
+
 .planbuy-side {
   display: flex;
   flex-direction: column;
@@ -6317,7 +6338,14 @@ body.daily-limit-lock {
   gap: 0.35rem;
 }
 
-.planbuy-done {
+.daily-limit-remind {
+  margin: -0.6rem 0 1.2rem;
+  font-size: 0.78rem;
+  color: rgba(255, 236, 228, 0.78);
+}
+
+.planbuy-done,
+.planbuy-mark {
   display: inline-flex;
   align-items: center;
   gap: 0.25rem;

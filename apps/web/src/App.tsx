@@ -667,6 +667,28 @@ export function App() {
     maybeNotifyDailyLimit(dailyLimitSettings, todaySpentCents, todayLimitCents);
   }, [dailyLimitSettings, todaySpentCents, todayLimitCents]);
 
+  // 应用一直开着也要能到点提醒：每 10 分钟重查一次
+  useEffect(() => {
+    const timer = window.setInterval(() => {
+      maybeNotifyDailyLimit(dailyLimitSettings, todaySpentCents, todayLimitCents);
+    }, 10 * 60 * 1000);
+    return () => window.clearInterval(timer);
+  }, [dailyLimitSettings, todaySpentCents, todayLimitCents]);
+
+  /** 限额提醒设置同步到服务端：推送时间/开关/误差由服务器读取（离线时静默失败，本机设置照常生效） */
+  const syncDailyLimitSettings = useCallback(async (next: DailyLimitAlertSettings) => {
+    if (!token || isLocalPreview) return;
+    try {
+      await api.saveNotificationSettings(token, {
+        dailyLimitEnabled: next.enabled,
+        dailyLimitHour: next.remindHour,
+        dailyLimitToleranceCents: next.toleranceCents
+      });
+    } catch {
+      // 离线或服务端旧版本：忽略，本机提醒仍生效
+    }
+  }, [token, isLocalPreview]);
+
   async function hydrateFromServer(nextToken = token) {
     if (!nextToken) return;
     if (nextToken.startsWith("local-preview:")) {
@@ -982,7 +1004,8 @@ export function App() {
             onDailyLimitSettingsChange={(next) => {
               setDailyLimitSettings(next);
               saveDailyLimitAlertSettings(next);
-              setToast("当日限额提醒设置已保存");
+              void syncDailyLimitSettings(next);
+              setToast(`当日限额提醒设置已保存（提醒时间 ${String(next.remindHour).padStart(2, "0")}:00）`);
             }}
             token={token}
             onToast={setToast}
@@ -1002,6 +1025,7 @@ export function App() {
             spentCents={todaySpentCents}
             limitCents={todayLimitCents}
             toleranceCents={dailyLimitSettings.toleranceCents}
+            remindHour={dailyLimitSettings.remindHour}
             onDismiss={() => {
               dismissDailyLimitAlertForToday();
               setDailyLimitDismissed(todayKey);
