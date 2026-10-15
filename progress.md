@@ -470,3 +470,31 @@ typecheck ✓ vitest 11/11 ✓ build ✓ → caddy force-recreate → 200；待�
 
 ### 交接状态
 - 四件套 + 项目记忆同步；待用户手机实测：总览固定支出面板观感与数字口径
+
+## 会话记录（2026-10-12，Phase 25）
+
+### 需求（3 项）
+1. 总览「本月固定支出」进度文案「已完成」→「已支出」
+2. 当天消费达到限额（含误差金额）→ 手机提醒 + 全屏红色警告
+3. 截图「想要但当日超预算的事情」→ App 内置「计划购买」清单：录入名称+预算 → 总览展示 → 当天预算余额够买时手机提醒 → 买完点「已完成」，主动安排消费
+
+### 实施（commit 3a2a115，9 文件，+938/−19）
+- widgets.tsx：文案修改 + 新增当日限额模块（settings/helpers/DailyLimitOverlay/LocalDailyLimitAlertPanel）+ PlannedPurchasePanel（添加/高亮可买/完成/删除/已买折叠）
+- App.tsx：plannedPurchases 状态接入 refreshLocal/saveLocalAndQueue；今日消费/日限额/余额 useMemo；限额触发渲染全屏遮罩 + 本地通知 effect；Overview 传参渲染计划购买面板；SettingsPanel 加「当日限额提醒」区
+- shared：PlannedPurchase 类型 + SyncPayload/LedgerSnapshot；db.ts：Dexie v3 新表 + 快照/重置/outbox 合并
+- API：Prisma PlannedPurchase model、serializers、loadSnapshot、/sync/push upsert；notifications.ts 新增 checkSpendingAlerts（限额推送 daily-limit + 可购买推送 planbuy，ReminderLog 按天去重，仅送达才写日志）
+- styles.css：.daily-limit-*（红色全屏遮罩 + 锁滚动）+ .planbuy-* + .link-button + ≤640px 适配
+- 验证：typecheck ✓ vitest 13/13 ✓ build ✓ → 推送 → CI success → caddy force-recreate → localhost:8443 200 + API health ok → 迁移前备份 3516 条
+
+### 运维插曲
+- docker pull 报 `lookup ghcr.io on [::1]:53 connection refused`：colima VM（运行 12 天）daemon DNS 故障，`colima stop && colima start` 修复
+
+### 交接状态
+- 四件套 + 项目记忆同步；待用户手机实测：全屏红警告观感、计划购买录入/提醒、推送是否到达
+
+## 会话记录（2026-10-13，Phase 25b）
+
+### 补充发现
+- Phase 25 的服务端推送缺最后一环：前端自旧版工资推送面板移除后没有任何 web push 订阅入口，PushSubscription 表为空，checkSpendingAlerts 推不出去
+- 实施（commit a836ba3）：App.tsx PushAlertPanel（订阅/退订/测试推送）；compose 透传 VAPID_*；密钥 web-push generate-vapid-keys 生成写入 .env.local
+- 部署：前端 caddy force-recreate 200（特征串 4/4 在线）；compose 因 env 变化顺带重建 api-local（暂仍旧镜像，等 pull 完成切新）

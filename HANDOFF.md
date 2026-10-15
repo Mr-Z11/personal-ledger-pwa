@@ -6,10 +6,12 @@
 
 ## 2. 已完成并部署的变更（2026-10-01 最新）
 
-最新 commit `d71d13d` 已推送 GitHub main；前端已构建并部署到**本地 Mac 栈**（云端服务器仍失效，见第 3 节）。
+最新 commit `a836ba3` 已推送 GitHub main；前端已构建并部署到**本地 Mac 栈**（云端服务器仍失效，见第 3 节）。
 
 | Commit | 描述 | 关键文件 | 状态 |
 |--------|------|---------|------|
+| `a836ba3` | **手机推送订阅打通：设置→当日限额提醒区内新增 PushAlertPanel（订阅/退订/测试推送）；compose 透传 VAPID_*；**旧版工资推送面板移除后前端无订阅入口，服务端 daily-limit/planbuy 推送原本送不出去** | App.tsx, styles.css, docker-compose.local.yml, .env.local.example | 已部署 |
+| `3a2a115` | **当日限额警告 + 计划购买清单**：固定支出文案「已完成」→「已支出」；新同步实体 PlannedPurchase（shared/Prisma/API/Dexie v3/outbox）；总览「计划购买」面板（录入/余额够买高亮/已完成/删除）；日限额（月日常预算÷天数，误差线 ¥20 可配）达线→全屏红色遮罩 + 本地通知；服务端 checkSpendingAlerts 推送 daily-limit / planbuy（ReminderLog 按天去重，只送达才写日志） | shared/src/index.ts, schema.prisma, api/index.ts, notifications.ts, serializers.ts, db.ts, App.tsx, widgets.tsx, styles.css | 已部署 |
 | `d71d13d` | **总览页「本月固定支出」面板：逐项已支/剩/超进度条 + 合计三卡（固定项合计/已实现支出/待支出额度）；数据源与规划页一致（常规项 + 保险日历）；保险日历存储迁移 widgets.tsx（plan.tsx re-export）** | widgets.tsx, plan.tsx, App.tsx, styles.css, widgets.smoke.test.tsx | 已部署 |
 | `294b00c` | 主要支出项保险按日历精确计入：配置日历后保险类从频率常规项剔除，无保费月份不再出现保险 | plan.tsx, styles.css, widgets.smoke.test.tsx | 已部署 |
 | `c972ed0` | 规划锚点月选择器（默认本月）+ 回测（过去月份显示实际总支出对照） | plan.tsx, styles.css | 已部署 |
@@ -225,7 +227,8 @@
 - 不要删 known_hosts 硬连 47.74.3.104（host key 已变，IP 可能已分配给他人）
 - 不要卸载/重装手机端 PWA（会清空 IndexedDB，丢失未同步数据）
 - 不要把"无分类预算"直接当日常预算用；Budget 有 scope 字段，查询必须过滤 `scope ?? "daily"`，否则总开支预算会串进日常统计
-- 不要试图恢复旧版 Web Push 工资提醒面板（前端已移除）；工资提醒是纯本地 localStorage 方案，后端 notifications.ts 保留但未被前端调用
+- 不要恢复旧版 Web Push 工资提醒面板（前端已移除，工资提醒改纯本地 localStorage）；但**不要删后端 notifications.ts / push-sw.js**：自 3a2a115 起它负责当日限额与计划购买的服务端推送
+- 服务器端推送要生效必须三件事齐备：api-local 注入 VAPID_*（写在 .env.local，不提交；compose 已透传）+ 手机 PWA 内点过「开启手机推送」（PushSubscription 有记录）+ API 镜像含 checkSpendingAlerts（3a2a115 之后）
 - 不要在沙箱里直接 vite build 而不处理 dist 清空拦截（safe-delete shim）；先 `mv apps/web/dist /tmp/...` 再 build
 - **不要忘了：改 dist 后必须 `docker compose -f docker-compose.local.yml --env-file .env.local up -d --force-recreate caddy-local`**，否则 caddy 挂载悬空 → 页面 403，手机看不到任何更新（配置未变时普通 `up -d` 不重建容器）
 - 不要在"总开支预算"存在时把它当日常预算用；`monthBudgetTotal` 已按 `scope ?? "daily"` 过滤，勿改回 `find(!categoryId)`

@@ -244,3 +244,20 @@ Phase 15
 - [x] 样式：.fixed-expense-total（3 stat 卡+进度）/.fixed-expense-row/.fixed-expense-numbers + 手机适配
 - [x] 验证：typecheck ✓ vitest 13/13 ✓（+2 用例）→ build ✓ → caddy force-recreate → localhost/mDNS 200 + bundle 含「本月固定支出」「待支出额度」
 - **Status:** complete（已推送 main + 部署本地栈；待手机实测）
+
+### Phase 25: 当日限额警告 + 计划购买清单 (2026-10-12, commit 3a2a115)
+- [x] 总览「本月固定支出」进度文案：已完成 → 已支出
+- [x] 新同步实体 PlannedPurchase（shared 类型 / Prisma model / API snapshot+sync/push / serializers / Dexie v3 plannedPurchases 表 / outbox 合并）
+- [x] 总览新增「计划购买」面板（widgets.tsx PlannedPurchasePanel）：添加（名称+预算金额）、待买列表按金额升序、今日预算余额可覆盖时绿色高亮「今日余额可买」、点「已完成」标记（可撤销）、删除；已买项折叠展示
+- [x] 当日限额警告（widgets.tsx）：日限额 = 月日常预算 ÷ 当月天数，触发线 = 限额 − 误差金额（默认 ¥20，设置页可配）；触发后全屏红色遮罩（DailyLimitOverlay，点「知道了」当天不再弹）+ 本地系统通知每天一条
+- [x] 服务端推送（notifications.ts checkSpendingAlerts，每 20 分钟随调度器跑）：复用前端分类关键词口径计算当日日常消费；达限额推「⚠️ 今日消费已达限额」（ReminderLog kind=daily-limit，month=日期键，每天一次）；余额够买计划项推「今日预算有余额」（kind=planbuy，每天一次）；仅推送成功才写日志
+- [x] 设置页新增「当日限额提醒」区（LocalDailyLimitAlertPanel）：开关 / 误差金额 / 系统通知授权
+- [x] 验证：typecheck ✓ vitest 13/13 ✓ build ✓ → commit 3a2a115 推送 → CI success → caddy force-recreate 200 → 备份 ledger-local-20261012-190749.sql（3516 条）→ colima DNS 故障重启修复 → pull amd64 镜像 → api-local 重建（自动 db push 建 PlannedPurchase 表）
+- **Status:** complete（已推送 main + 部署本地栈；待手机实测全屏警告与推送）
+
+### Phase 25b: 手机推送订阅打通 (2026-10-13, commit a836ba3)
+- [x] 缺口：旧版工资推送面板移除后前端不再注册 web push，服务端新推送（daily-limit/planbuy）无订阅可送达
+- [x] App.tsx 新增 PushAlertPanel（设置→当日限额提醒区内）：开启/关闭订阅（Notification 权限 + VAPID key + pushManager.subscribe + /notifications/subscribe）+ 测试推送
+- [x] docker-compose.local.yml api-local 透传 VAPID_* 环境变量；密钥生成后写入 .env.local（不提交）；.env.local.example 补文档
+- [x] 验证：typecheck ✓ vitest 13/13 ✓ build ✓ → push a836ba3 → caddy force-recreate 200 + bundle 含「计划购买/开启手机推送/今日消费已达限额/已支出」
+- **Status:** complete（待镜像拉取后 up -d api-local 切新镜像 + 手机实测订阅）

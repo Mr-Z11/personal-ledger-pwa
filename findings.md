@@ -370,3 +370,13 @@ docker logs personal-ledger-pwa-api-local-1 | tail     # 确认 prisma db push �
 - widgets.tsx 与 plan.tsx 需要共用保险日历存储时，存储实现放 widgets（被 App/规划页双向引用），plan.tsx 只做 re-export；反过来放会制造 widgets→plan→widgets 循环导入（Vite/TS 不报运行时错但打包顺序有隐患）
 - 总览固定支出面板与规划页必须共用同一套数据源（collectRegularExpenses + 同一保险日历 localStorage），否则两处数字口径漂移用户必然追问；historyEndKey 统一为「上完整月」保证当月数据不误入历史窗口
 - 「已支/剩/超」三态用同一进度条表达：width=min(实际/预计,100%)，超支时 .bar.over 变红并把「剩 ¥X」替换为「超 ¥X」——一个组件覆盖常态与异常态，无需两个模板
+
+## Phase 25 新发现（2026-10-12）
+
+- 新增同步实体的完整链路共 9 处：shared 类型 + SyncPayload/LedgerSnapshot、Prisma model + Ledger 关系、serializers（serialize + serializeSnapshot）、API loadSnapshot + /sync/push upsert（Date 字段需 new Date 转换）、Dexie version 升级（版本号 +1 且必须保留全部历史版本定义）、saveSnapshot/resetLocalData/readOutboxPayload、App saveLocalAndQueue 的 kind 联合类型。漏任何一处都会静默丢数据或 typecheck 报错，按此清单逐项核对最稳
+- 服务端复用前端业务口径（如"日常消费"分类过滤）时，在 notifications.ts 复制关键词正则与 categoryPath 逻辑，并加注释「与前端 utils.ts 保持一致」；比抽共享包给 API 用更轻量（API 不依赖前端代码）
+- ReminderLog 的 [userId, kind, month] 唯一键可以当月级以外的去重用：month 列直接存日期键（2026-10-12），kind 区分场景（daily-limit / planbuy），无需改表结构
+- colima VM 运行 12 天后 Docker daemon DNS 会坏（pull 报 lookup ghcr.io on [::1]:53 connection refused），`colima stop && colima start` 即修复；容器随 compose up -d 恢复，无需重装 binfmt
+- 全屏警告遮罩用 position:fixed inset:0 + body.daily-limit-lock{overflow:hidden} 锁滚动；useEffect 里加/删 body class，组件卸载自动还原
+- docker pull 失败分两类诊断：`lookup ghcr.io on [::1]:53` = colima VM DNS 坏（/etc/resolv.conf 是指向 systemd-resolved 的悬空符号链接，先 `sudo rm` 再写公共 DNS）；`proxyconnect tcp: 192.168.5.2:xxxxx connection refused` = daemon 继承了失效代理（colima stop 后 `env -u HTTP_PROXY -u HTTPS_PROXY ... colima start`）。两个故障可能叠加，需逐个排除
+- 服务端推送链路要端到端验证：VAPID 环境变量（容器注入）→ /api/notifications/vapid-key 能返回公钥 → 前端订阅写入 PushSubscription → 调度器送达；只改后端不动订阅入口等于没做（本次第一版就是漏了订阅入口）
