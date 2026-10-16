@@ -380,3 +380,12 @@ docker logs personal-ledger-pwa-api-local-1 | tail     # 确认 prisma db push �
 - 全屏警告遮罩用 position:fixed inset:0 + body.daily-limit-lock{overflow:hidden} 锁滚动；useEffect 里加/删 body class，组件卸载自动还原
 - docker pull 失败分两类诊断：`lookup ghcr.io on [::1]:53` = colima VM DNS 坏（/etc/resolv.conf 是指向 systemd-resolved 的悬空符号链接，先 `sudo rm` 再写公共 DNS）；`proxyconnect tcp: 192.168.5.2:xxxxx connection refused` = daemon 继承了失效代理（colima stop 后 `env -u HTTP_PROXY -u HTTPS_PROXY ... colima start`）。两个故障可能叠加，需逐个排除
 - 服务端推送链路要端到端验证：VAPID 环境变量（容器注入）→ /api/notifications/vapid-key 能返回公钥 → 前端订阅写入 PushSubscription → 调度器送达；只改后端不动订阅入口等于没做（本次第一版就是漏了订阅入口）
+
+## Phase 25c 新发现（2026-10-17）
+
+- Apple Web Push 对 VAPID subject 挑剔：`mailto:user@localhost` 会被判 403 BadJwtToken（无 TLD 的域名不合法）；必须是 `mailto:真实域名` 或 https URL。症状表现为"订阅存在但所有推送 delivered=false"，极易误判成订阅失效
+- 排查 Web Push 最快的办法：把 DB 里的 endpoint/p256dh/auth 导出，用本机 node + web-push 直接 sendNotification，看 statusCode/body（比翻日志快）；记得顺手给生产代码的 catch 加上 statusCode+body 日志
+- 提醒类功能的语义要分层：应用内警告=即时（用户主动打开就该看到），手机推送=按用户设定时间（避免白天被打扰）；混为一谈会让"设了时间还被推"或"设了时间却不警告"
+- 动作按钮不要用状态词命名（"已完成"看起来像状态而非动作）；用「已买到手」这类动词短语，并把破坏性操作（删除）用图标+hover 变红与它区分
+- 沙箱代理 502 时 git push 不通：可用 GitHub git data API（blobs→tree→commit→update ref）推提交；`gh api` 读 stdin 必须加 `--input -`
+- GHCR 镜像下载在本机只有 8~30 KB/s（换 DNS 无效），一个 100+MB 镜像耗时 6.5 小时；后端更新要提前启动 pull，别卡在最后一步

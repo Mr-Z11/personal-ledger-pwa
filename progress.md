@@ -498,3 +498,27 @@ typecheck ✓ vitest 11/11 ✓ build ✓ → caddy force-recreate → 200；待�
 - Phase 25 的服务端推送缺最后一环：前端自旧版工资推送面板移除后没有任何 web push 订阅入口，PushSubscription 表为空，checkSpendingAlerts 推不出去
 - 实施（commit a836ba3）：App.tsx PushAlertPanel（订阅/退订/测试推送）；compose 透传 VAPID_*；密钥 web-push generate-vapid-keys 生成写入 .env.local
 - 部署：前端 caddy force-recreate 200（特征串 4/4 在线）；compose 因 env 变化顺带重建 api-local（暂仍旧镜像，等 pull 完成切新）
+
+## 会话记录（2026-10-15/16，Phase 25c）
+
+### 用户反馈
+1. 限额提醒设置失效：测试推送提示"订阅可能已失效"
+2. 希望限额提醒可设每天固定几点发出
+3. 「计划购买」行的「已完成」和「×」混淆，乍看以为已经完成了
+
+### 排查与修复（commit 71a3038 / 远端 964dfe4）
+- 推送失败根因：VAPID_SUBJECT=mailto:...@localhost 被 Apple 判 403 BadJwtToken；换成合法域（mailto:ledger-box@example.com）后直连 web-push 返回 201 已送达。诊断方法：把 DB 里 endpoint/p256dh/auth 导出，用本机 node + web-push 直接 sendNotification 看真实错误（比猜快得多）
+- 顺带：deliver() 失败时 console.error 记录 statusCode/body，以后不用再盲猜
+- 提醒时间：ReminderSetting 新增 dailyLimitEnabled / dailyLimitHour(默认21) / dailyLimitToleranceCents；/notifications/settings 改支持部分字段更新（PUT 只更新传入字段）；checkSpendingAlerts 到点才推送；前端设置页加「提醒时间」下拉，改动即时同步到服务端（离线静默失败）
+- 语义分层：应用内全屏红色警告保持即时；手机推送/本地通知只在提醒时间之后发一次
+- 计划购买行：动作按钮「已完成」→「已买到手」（明确是动作），删除改成垃圾桶图标按钮；已买行加绿色「已买 · 日期」徽章 + 撤销；列表下方加一行说明
+
+### 运维
+- 沙箱代理 502 时 git push 失败 → 改用 GitHub REST API（git data API：blob→tree→commit→update ref）推提交，脚本 /tmp/ghpush.py 思路；注意 `gh api` 读 stdin 必须加 `--input -`
+- 本地 HEAD(71a3038) 与远端(964dfe4) 内容相同 sha 不同，网络恢复后需 `git fetch && git reset --soft origin/main` 对齐
+- GHCR 镜像在本机下载被限速到 8~30 KB/s（主机同样慢），一个 100+MB 镜像要 1 小时以上；已尝试换 DNS（223.5.5.5/192.168.3.1）无改善
+
+### 部署状态
+- 前端已部署（新 UI 含提醒时间 + 已买到手按钮）
+- api-local 已用新 VAPID subject 重启（推送可用），但仍是旧镜像 → 服务端尚未按提醒时间门控推送；待镜像下载完成后执行：
+  `docker pull --platform linux/amd64 ghcr.io/mr-z11/personal-ledger-pwa-api:main && docker compose -f docker-compose.local.yml --env-file .env.local up -d api-local`

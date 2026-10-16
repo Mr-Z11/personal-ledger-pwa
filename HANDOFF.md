@@ -10,7 +10,7 @@
 
 | Commit | 描述 | 关键文件 | 状态 |
 |--------|------|---------|------|
-| `a836ba3` | **手机推送订阅打通：设置→当日限额提醒区内新增 PushAlertPanel（订阅/退订/测试推送）；compose 透传 VAPID_*；**旧版工资推送面板移除后前端无订阅入口，服务端 daily-limit/planbuy 推送原本送不出去** | App.tsx, styles.css, docker-compose.local.yml, .env.local.example | 已部署 |
+| `964dfe4` | **推送修复 + 限额提醒时间 + 计划购买按钮语义**：VAPID subject 改合法域（Apple 曾判 403 BadJwtToken）；ReminderSetting 加 dailyLimitEnabled/Hour(21)/ToleranceCents，到点才推送；计划购买「已完成」→「已买到手」+ 垃圾桶删除 + 已买徽章 | schema.prisma, api/index.ts, notifications.ts, App.tsx, api.ts, widgets.tsx, styles.css | 已部署 |：设置→当日限额提醒区内新增 PushAlertPanel（订阅/退订/测试推送）；compose 透传 VAPID_*；**旧版工资推送面板移除后前端无订阅入口，服务端 daily-limit/planbuy 推送原本送不出去** | App.tsx, styles.css, docker-compose.local.yml, .env.local.example | 已部署 |
 | `3a2a115` | **当日限额警告 + 计划购买清单**：固定支出文案「已完成」→「已支出」；新同步实体 PlannedPurchase（shared/Prisma/API/Dexie v3/outbox）；总览「计划购买」面板（录入/余额够买高亮/已完成/删除）；日限额（月日常预算÷天数，误差线 ¥20 可配）达线→全屏红色遮罩 + 本地通知；服务端 checkSpendingAlerts 推送 daily-limit / planbuy（ReminderLog 按天去重，只送达才写日志） | shared/src/index.ts, schema.prisma, api/index.ts, notifications.ts, serializers.ts, db.ts, App.tsx, widgets.tsx, styles.css | 已部署 |
 | `d71d13d` | **总览页「本月固定支出」面板：逐项已支/剩/超进度条 + 合计三卡（固定项合计/已实现支出/待支出额度）；数据源与规划页一致（常规项 + 保险日历）；保险日历存储迁移 widgets.tsx（plan.tsx re-export）** | widgets.tsx, plan.tsx, App.tsx, styles.css, widgets.smoke.test.tsx | 已部署 |
 | `294b00c` | 主要支出项保险按日历精确计入：配置日历后保险类从频率常规项剔除，无保费月份不再出现保险 | plan.tsx, styles.css, widgets.smoke.test.tsx | 已部署 |

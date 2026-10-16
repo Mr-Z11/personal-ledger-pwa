@@ -261,3 +261,10 @@ Phase 15
 - [x] docker-compose.local.yml api-local 透传 VAPID_* 环境变量；密钥生成后写入 .env.local（不提交）；.env.local.example 补文档
 - [x] 验证：typecheck ✓ vitest 13/13 ✓ build ✓ → push a836ba3 → caddy force-recreate 200 + bundle 含「计划购买/开启手机推送/今日消费已达限额/已支出」
 - **Status:** complete（待镜像拉取后 up -d api-local 切新镜像 + 手机实测订阅）
+
+### Phase 25c: 推送修复 + 提醒时间 + 计划购买按钮语义 (2026-10-15/17, commit 71a3038 → 远端 964dfe4)
+- [x] 推送失效根因：VAPID_SUBJECT=mailto:...@localhost 被 Apple 403 BadJwtToken → 改 mailto:ledger-box@example.com；deliver() 失败打印 statusCode/body
+- [x] 提醒时间：ReminderSetting + dailyLimitEnabled/dailyLimitHour(21)/dailyLimitToleranceCents(2000)；PUT /notifications/settings 支持部分字段；checkSpendingAlerts 未到点不推；前端「提醒时间」下拉即时同步服务端（离线静默失败）；全屏警告保持即时
+- [x] 计划购买行：动作按钮「已完成」→「已买到手」，删除改垃圾桶图标；已买行绿色「已买 · 日期」徽章 + 撤销；列表下方加说明行
+- [x] 部署：前端 caddy force-recreate 200（bundle 含「已买到手/提醒时间/已支出」）；api-local 切新镜像（2026-10-15T10:04 构建），ReminderSetting 三列已迁移；服务端 JWT 触发 /notifications/test 返回 delivered:true
+- **Status:** complete（手机实测：设置页改提醒时间、测试推送、计划购买按钮观感）
