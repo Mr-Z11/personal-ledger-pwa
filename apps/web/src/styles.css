@@ -6590,21 +6590,24 @@ body.daily-limit-lock {
   gap: 0.35rem;
 }
 
-.planbuy-done,
 .planbuy-mark {
   display: inline-flex;
   align-items: center;
   gap: 0.25rem;
-  border: 1px solid rgba(47, 122, 89, 0.45);
+  border: 1px solid rgba(31, 95, 116, 0.4);
   border-radius: 999px;
   padding: 0.28rem 0.7rem;
   font-size: 0.78rem;
   font-weight: 800;
-  color: #2f7a59;
-  background: rgba(47, 122, 89, 0.1);
+  color: #1f5f74;
+  background: rgba(31, 95, 116, 0.08);
 }
 
-.planbuy-done:active {
+.planbuy-mark:hover {
+  background: rgba(31, 95, 116, 0.16);
+}
+
+.planbuy-mark:active {
   transform: translateY(1px);
 }
 
