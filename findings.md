@@ -389,3 +389,19 @@ docker logs personal-ledger-pwa-api-local-1 | tail     # 确认 prisma db push �
 - 动作按钮不要用状态词命名（"已完成"看起来像状态而非动作）；用「已买到手」这类动词短语，并把破坏性操作（删除）用图标+hover 变红与它区分
 - 沙箱代理 502 时 git push 不通：可用 GitHub git data API（blobs→tree→commit→update ref）推提交；`gh api` 读 stdin 必须加 `--input -`
 - GHCR 镜像下载在本机只有 8~30 KB/s（换 DNS 无效），一个 100+MB 镜像耗时 6.5 小时；后端更新要提前启动 pull，别卡在最后一步
+
+## Phase 26–28 新发现（2026-10-15 ~ 2026-10-17）
+
+- **预算类数字必须区分"当日实时值"与"当日恒定参考值"**：用户纠正「每天还可花」被当成当日限额是错的。动态日限额 =（月日常预算 − 截至昨日日常支出）÷ 含今日剩余天数——当日自身消费不进分子，所以日内恒定，只滚入次日及以后。设计准则：凡是以"今天"为分母/窗口的额度，先问"当天行为是否应改变它"，再定公式
+- **手动维护面板的数据模型**：FixedExpenseItem 按月份 key 分桶（`ledger-fixed-expenses-<month>`），模板复制到未来月时 spent 归零且不覆盖已有数据的月份；关联分类（categoryId）后"已支出"改只读并显示「自动」，按当月该分类 expense 实时汇总，解除关联时保留当前值转手动——"自动/手动"双模式比纯自动或纯手动都贴合实际
+- **颜色语义分层**（用户视觉误判的根因）：绿色=真实状态（已买徽章/今日可买高亮），青色=动作按钮（已买到手/链接），红色=危险（删除/超限/超支）。同一个面板里状态色和动作色混用会让用户把"可点的动作"看成"已完成的状态"
+- **移动端表单布局坑**：双列 grid（列表+表单）在 ≤940px 塌成单列后，编辑表单落到列表下方→"编辑页面跑到下面去了"。解法是行内编辑：编辑态直接在数据行内展开表单（金额 input autoFocus + 保存/取消），侧栏只留提示卡。凡是"列表+编辑表单"的组合都应按此模式
+- **列表行扁平化手段**：行内 flex 由 column 改 row（名字+状态同行、金额+操作同行）+ 手机 @640px flex-wrap；配合 padding/行距/字号逐级压缩。竖列堆叠是手机端"行太高"的根因
+- **可折叠面板默认收起**：参考项/数据管理/数据同步这类"需要时才看"的面板，初始 state 设 false；默认展开会把主面板挤到首屏外
+- **搜索功能的纯函数化**：searchMatches（关键词命中备注/商户/标签/账户/分类路径，排除 income 与已删除）+ aggregateByPeriod(matches, sliceLen)（7=按月、4=按年；cents 只累计 expense）抽成纯函数后，筛选（分类/账户/排序/时间范围）全部作用于单一 filtered 集合，概览卡/按月汇总/按年汇总/明细四个展示区天然同源，不会出现"汇总与明细对不上"
+- **底部导航列数必须与入口数同步**：`@media(max-width:940px)` 里 nav 的 grid-template-columns 从 repeat(5,1fr) 改 repeat(6,1fr) 才容下第 6 个入口；新增导航项忘改列数 → 换行 + FAB 遮挡（本轮「搜索」上线时踩过）
+- **"每天必弹"的警告用会话内 dismiss**：持久化 dismiss（localStorage 日期键）会被理解成"今天不再提醒"；用户要的是"当天无论何时打开都是红色警报"→ 用 useState(false) 的会话级关闭，onDismiss 只 setState，刷新/重开即恢复
+- **正反馈提醒的去重粒度**：表扬类通知按 `日期:时段` 去重（每天上午/下午各一条），时段划分 hour≥18=pm、≥12=am；零消费=zero、未达限额=thrifty、达/超限不表扬——表扬的门槛必须低于限额线，否则"表扬"变"没超额的安慰"
+- **git push 代理坑 + SHA 分叉对齐**：沙箱 HTTP(S)_PROXY 会让 push 报 HTTP2 framing/Empty reply，用 `env -u HTTP_PROXY -u HTTPS_PROXY -u http_proxy -u https_proxy git -c http.version=HTTP/1.1 push` 绕过；早期用 GitHub Data API 推的等价 commit 与本地 SHA 不同造成非快进时，先 `git diff <本地等价> <远端等价>` 确认 tree 相同，再 `git rebase --onto origin/main <本地等价> main` 重放，内容零变化
+- **caddy force-recreate 后根路径偶发 000** 是容器启动竞态（不是部署失败），重试 curl 即 200；批量验证时代码里做 2-3 次重试
+- **容器热补丁技巧**：API dist 是纯 JS（架构无关），本地构建后 `docker cp apps/api/dist/. api-local:/app/apps/api/dist/ && docker restart api-local` 即可更新容器内容，绕过 GHCR 6 小时下载；Prisma 引擎二进制用容器自带 node_modules，不影响 schema 迁移

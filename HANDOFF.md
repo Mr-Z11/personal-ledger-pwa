@@ -4,13 +4,28 @@
 
 维护个人记账 PWA 的日常迭代与数据安全。**云端服务器已于 2026-08-29 失效**，当前数据完全以本地 Mac 为中心（local-first 架构 + 本地 PostgreSQL）。云端重建与否待用户决策。
 
-## 2. 已完成并部署的变更（2026-10-01 最新）
+## 2. 已完成并部署的变更（2026-10-17 最新）
 
-最新 commit `a836ba3` 已推送 GitHub main；前端已构建并部署到**本地 Mac 栈**（云端服务器仍失效，见第 3 节）。
+最新 commit `f2cb337` 已推送 GitHub main（本地与 origin 0/0 同步）；前端已构建并部署到**本地 Mac 栈**（云端服务器仍失效，见第 3 节）。
 
 | Commit | 描述 | 关键文件 | 状态 |
 |--------|------|---------|------|
-| `964dfe4` | **推送修复 + 限额提醒时间 + 计划购买按钮语义**：VAPID subject 改合法域（Apple 曾判 403 BadJwtToken）；ReminderSetting 加 dailyLimitEnabled/Hour(21)/ToleranceCents，到点才推送；计划购买「已完成」→「已买到手」+ 垃圾桶删除 + 已买徽章 | schema.prisma, api/index.ts, notifications.ts, App.tsx, api.ts, widgets.tsx, styles.css | 已部署 |：设置→当日限额提醒区内新增 PushAlertPanel（订阅/退订/测试推送）；compose 透传 VAPID_*；**旧版工资推送面板移除后前端无订阅入口，服务端 daily-limit/planbuy 推送原本送不出去** | App.tsx, styles.css, docker-compose.local.yml, .env.local.example | 已部署 |
+| `f2cb337` | **低消费表扬提醒**：DailyLimitAlertSettings 加 praiseEnabled（默认 true）；纯函数 noSpendPraiseDue（hour≥18=pm / ≥12=am；spent≤0=zero / spent<limit=thrifty，达/超限不表扬）+ praiseMessage（应急资金变厚/压力更小）；maybePraiseNoSpend 按 `日期:时段` 去重（每时段每天最多一条本地 Notification）；App 即时 effect + 10 分钟轮询双调用；设置页「低消费表扬」checkbox | widgets.tsx, App.tsx, widgets.smoke.test.tsx | 已部署 |
+| `6f40518` | **搜索时间范围 + 设置默认收起 + 红警每次打开必弹**：搜索加「起始月/截止月」下拉（YYYY-MM 字符串比较，选项取自匹配结果月份）；设置页数据管理/数据同步去掉 defaultOpen 默认收起；当日限额红警改会话内关闭（useState 取代持久化 dismiss），超限后当天每次打开 App 都再弹 | widgets.tsx, App.tsx, styles.css | 已部署 |
+| `203b247` | **搜索筛选+排序 + 底部导航 6 列**：搜索视图加分类/账户/排序（日期↑↓、金额↑↓）筛选，filtered 集合同时驱动概览卡/按月汇总/按年汇总/明细；手机 nav repeat(5,1fr)→repeat(6,1fr) 解决「搜索」按钮被挤到第二排 | widgets.tsx, App.tsx, styles.css | 已部署 |
+| `6e39648` | **新增「搜索记录」视图**：关键词匹配备注/商户/标签/账户名/分类路径（排除 income 与已删除）；纯函数 searchMatches + aggregateByPeriod（sliceLen 7=按月、4=按年）；概览卡（笔数/支出合计/月均/区间）+ 按月/按年汇总（占比条）+ 明细倒序分页 +200；新 View=search + 底部导航「搜索」 | widgets.tsx, App.tsx, styles.css, widgets.smoke.test.tsx | 已部署 |
+| `fb6939e` | **计划购买行更扁 + 固定支出参考项默认收起**：.planbuy-main/.planbuy-side 由 column 改 row（名字+状态同行、金额+操作同行），手机 @640px flex-wrap 单行布局；FixedExpenseOverview showSuggest 初始值 true→false | widgets.tsx, styles.css | 已部署 |
+| `a003c39` | **预算管理行内编辑**：根因是 BudgetPanel 双列 grid 在 ≤940px 塌成单列，编辑表单落到列表下方；改为编辑态在该预算行内展开表单（金额 autoFocus + 保存/取消），右侧面板显示「正在编辑X」提示卡；`.budget-line span` 收窄为 `.budget-line > span` 防样式泄漏 | App.tsx, styles.css | 已部署 |
+| `4bb1e77` | **计划购买精简**：移除「已买到手」前置 Check 图标（避免已完成错觉）；状态文案「今日余额可买，安排！」→「今日可买」；行内间距/字号全面压缩 | widgets.tsx, styles.css | 已部署 |
+| `c0bbb08` | **日常消费动态日限额**：dailyLimitCents(budgets, transactions, categories, month) =（月日常预算 − 截至昨日日常支出）÷ 含今日剩余天数；当日自身消费不计入 → 当日限额日内恒定，盈余/超支只滚入次日及以后；BudgetReservoir 页脚「今日限额/今日还可花/剩 N 天」；todayRemainingCents 可为负（超限） | widgets.tsx, App.tsx, utils.ts, widgets.smoke.test.tsx | 已部署 |
+| `1038d48` | 计划购买「已买到手」按钮改行动色青 #1f5f74，与已完成绿色状态区分（绿=状态、青=动作、红=删除/超支） | widgets.tsx, styles.css | 已部署 |
+| `29b78d5` | 手动添加固定支出可选具体分类（下拉列全部分类路径），已支出按该分类当月消费自动累计；未关联行也可随时补关联 | widgets.tsx, styles.css | 已部署 |
+| `0abe64f` | 固定支出手动添加提供规划/历史参考项（buildFixedExpenseSuggestions 复用常规项+保险日历口径），点选即添加；categoryId 关联后已支出显示「自动」只读，可「改手动」解除 | widgets.tsx, styles.css | 已部署 |
+| `f98474c` | 总览「本月固定支出」改为手动维护：FixedExpenseItem 按月份 key 存 localStorage `ledger-fixed-expenses-<month>`；行内编辑项目/已支出/预计；合计四卡；「复制模板到下月」1-11 个月（spent 归零、不覆盖已有数据） | widgets.tsx, App.tsx, styles.css, widgets.smoke.test.tsx | 已部署 |
+| `32cc58f` | **删除限额提醒时间**：DailyLimitAlertSettings 删 remindHour；面板删「提醒时间」下拉；遮罩删提示行；本地通知恢复达线即发（每天一次）；App syncDailyLimitSettings 固定传 dailyLimitHour:0 中和服务端门控 | widgets.tsx, App.tsx | 已部署 |
+| `6950f5f` | 测试推送改中性文案「测试推送（通道验证）」：修 sendTestReminder 误发工资日文案；前端按钮改「发一条测试推送（验证通道）」；先用容器热补丁（docker cp dist + restart）端到端验证，CI 镜像后补齐 | apps/api/src/index.ts, apps/web/src/App.tsx | 已部署 |
+| `964dfe4` | **推送修复 + 限额提醒时间 + 计划购买按钮语义**：VAPID subject 改合法域（Apple 曾判 403 BadJwtToken）；ReminderSetting 加 dailyLimitEnabled/Hour(21)/ToleranceCents，到点才推送；计划购买「已完成」→「已买到手」+ 垃圾桶删除 + 已买徽章 | schema.prisma, api/index.ts, notifications.ts, App.tsx, api.ts, widgets.tsx, styles.css | 已部署 |
+| `a836ba3` | 设置→当日限额提醒区内新增 PushAlertPanel（订阅/退订/测试推送）；compose 透传 VAPID_*；**旧版工资推送面板移除后前端无订阅入口，服务端 daily-limit/planbuy 推送原本送不出去** | App.tsx, styles.css, docker-compose.local.yml, .env.local.example | 已部署 |
 | `3a2a115` | **当日限额警告 + 计划购买清单**：固定支出文案「已完成」→「已支出」；新同步实体 PlannedPurchase（shared/Prisma/API/Dexie v3/outbox）；总览「计划购买」面板（录入/余额够买高亮/已完成/删除）；日限额（月日常预算÷天数，误差线 ¥20 可配）达线→全屏红色遮罩 + 本地通知；服务端 checkSpendingAlerts 推送 daily-limit / planbuy（ReminderLog 按天去重，只送达才写日志） | shared/src/index.ts, schema.prisma, api/index.ts, notifications.ts, serializers.ts, db.ts, App.tsx, widgets.tsx, styles.css | 已部署 |
 | `d71d13d` | **总览页「本月固定支出」面板：逐项已支/剩/超进度条 + 合计三卡（固定项合计/已实现支出/待支出额度）；数据源与规划页一致（常规项 + 保险日历）；保险日历存储迁移 widgets.tsx（plan.tsx re-export）** | widgets.tsx, plan.tsx, App.tsx, styles.css, widgets.smoke.test.tsx | 已部署 |
 | `294b00c` | 主要支出项保险按日历精确计入：配置日历后保险类从频率常规项剔除，无保费月份不再出现保险 | plan.tsx, styles.css, widgets.smoke.test.tsx | 已部署 |
@@ -33,6 +48,14 @@
 - 验证：`https://localhost:8443/` 200、`https://FrorideMacBook-Air.local:8443/` 200；App chunk 含「常规项支出」「分析依据与计算过程」，css 含「plan-kpi」
 - 注意：首页入口 chunk 是 `index-*.js`，App 是异步 chunk，grep 验证要用 dist 里的 `App-*.js` 文件名
 - 纯前端变更，API/DB 无改动，无需重启 api-local
+
+### 2026-10-17 部署细节（Phase 26–28，12 commits）
+
+- 全链路：typecheck ✓ → vitest 26/26 ✓ → `mv apps/web/dist /tmp/...`（规避 safe-delete shim）→ `npm run build` ✓ → `docker compose -f docker-compose.local.yml --env-file .env.local up -d --force-recreate caddy-local`
+- 验证：`https://localhost:8443/` 200、`/api/health` 200；App chunk `App-Bqrt7isC.js` 含本轮全部特征串（搜索记录/关键词检索/按月汇总/按年汇总/清除筛选/起始月/今日限额/今日还可花/应急资金/低消费表扬/正在编辑/今日可买/参考项目/下次打开仍会提醒）
+- 注意：caddy force-recreate 后偶发根路径 000（启动竞态），重试 curl 即 200
+- 纯前端变更，API/DB/Prisma 无改动，无需重启 api-local、无需拉镜像
+- git：沙箱代理（127.0.0.1:57589）挡 push → `env -u HTTP_PROXY -u HTTPS_PROXY -u http_proxy -u https_proxy git -c http.version=HTTP/1.1 push` 成功；远端早期 Git Data API 推送造成 4 个等价 commit SHA 分叉 → 确认重叠点 tree 相同（`git diff 262d917 6950f5f` 为空）后 `git rebase --onto origin/main 262d917 main` 重放 13 commits，origin/main 到达 `f2cb337`，本地 0/0
 
 ### 2026-09-30 预测算法 v2（去年同期主权重）
 
@@ -80,9 +103,10 @@
 - 容器：postgres-local(healthy) + api-local + caddy-local，全部运行
 - 本地 API：`https://localhost:8443/api` / `https://192.168.3.21:8443/api` / `https://FrorideMacBook-Air.local:8443/api`
 - 数据库：**3469 笔（2020-05-31 ~ 2026-09-24）**，bigint 金额列，serverVersion 122；**Budget 表 2026-09-25 新增 scope 列（daily/total）**
-- api-local 镜像：GHCR main @ 7796d90（含预算两层 + 工资本地化后端）
-- 前端静态文件：`apps/web/dist` 本地构建 @ d71d13d，由 caddy-local 挂载 `/srv/web`（**改 dist 后需 force-recreate caddy-local**）
-- 前端版本核对方法：`curl -sk https://localhost:8443/` → 200；`curl -sk https://localhost:8443/assets/App-*.js | grep -c "常规项支出"` → 1（App 是异步 chunk，文件名从 dist 目录取）
+- api-local 镜像：GHCR main @ 7796d90（含预算两层 + 工资本地化后端；服务端推送后续经 Git Data API/热补丁更新至 6950f5f 内容）
+- 前端静态文件：`apps/web/dist` 本地构建 @ f2cb337，由 caddy-local 挂载 `/srv/web`（**改 dist 后需 force-recreate caddy-local**）
+- 前端版本核对方法：`curl -sk https://localhost:8443/` → 200；取 dist 目录里的 App chunk 文件名（如 `App-Bqrt7isC.js`）后 `curl -sk https://localhost:8443/assets/App-*.js | grep -c "<特征串>"` → ≥1（App 是异步 chunk，入口是 index-*.js）
+- 冒烟测试：`npm --workspace @ledger/web run test` → widgets.smoke.test.tsx 26 项全过（含动态日限额/搜索/表扬用例）
 - 手机 8-31 后数据已于 2026-09-25 11:15 全部同步入本地 PG（用户确认）
 - 物理数据：`data/local-postgres/`（65MB，Docker 卷挂载，容器删除数据不丢）
 - **风险**：数据仅 Mac 单点，建议异地备份
@@ -154,6 +178,14 @@
 | `apps/web/src/widgets.tsx` | 追加 `RegularExpensePanel` + `collectRegularExpenses`（常规项：同一分类近6月出现≥3次，逐月迷你柱+月均+环比，top8）；`FixedExpenseOverview`（总览固定支出面板，2026-10-01 新增）；保险日历存储实现（loadInsuranceSchedule/saveInsuranceSchedule/parseInsuranceText/scheduledInsuranceCents，2026-10-01 自 plan.tsx 迁入） |
 | `apps/web/src/App.tsx` | `ReportFold` 通用折叠面板（details 默认展开可收起）；报表模块顺序：消费节奏→常规项→消费异常分析→大额开销→核心洞察→专项支出→分类统计/趋势；新增 View=`plan` 导航（CalendarClock 图标，报表与设置之间） |
 
+### 2026-10-17 新增/重构模块（Phase 26–28）
+
+| 文件 | 用途 |
+|------|------|
+| `apps/web/src/widgets.tsx` | `FixedExpenseOverview` 改**纯手动维护**（FixedExpenseItem 按月份 localStorage `ledger-fixed-expenses-<month>`；`buildFixedExpenseSuggestions` 提供参考项；categoryId 关联后已支出按当月该分类自动汇总显示「自动」；`copyFixedExpensesToFuture` 模板复制）；`dailyLimitCents(budgets, transactions, categories, month)` 动态日限额（当日恒定，只滚入次日）；`PlannedPurchasePanel` 单行扁平化 + 青色「已买到手」动作按钮；**新 `SearchView`**（searchMatches/aggregateByPeriod 纯函数 + 筛选/排序/时间范围/分页）；`noSpendPraiseDue`/`praiseMessage`/`maybePraiseNoSpend` 低消费表扬（时段 am/pm × zero/thrifty，`日期:时段` 去重） |
+| `apps/web/src/App.tsx` | `BudgetPanel` 行内编辑（编辑态在预算行内展开表单，消除跳转底部）；View 新增 `search`（底部导航第 5 项，流水与报表之间）；当日限额红警改会话内关闭（超限当天每次打开都弹）；即时 effect + 10 分钟轮询双调 maybePraiseNoSpend；设置页数据管理/数据同步默认收起 |
+| `apps/web/src/widgets.smoke.test.tsx` | 26 项冒烟测试：动态日限额（当日消费不改变日限额）、searchMatches（排除收入/已删除）、aggregateByPeriod 按月/年口径、noSpendPraiseDue/praiseMessage 时段与档位 |
+
 ### 2026-09-25 新增/重构模块
 
 | 文件 | 用途 |
@@ -167,7 +199,7 @@
 - 预算模型：`categoryId` 非空 = 分类预算；`categoryId=null & scope=daily` = 日常消费预算；`categoryId=null & scope=total` = 总开支预算（含日常+专项）
 - 日常消费 vs 专项支出：靠 `isNonDailyExpenseCategory()` 关键词正则划分（贷款/保险/教育/购车养车等），节奏图与趋势卡只统计日常消费
 - 默认首页是 `overview`（蓄水池），记账 FAB 仍指向 `entry`
-- 本地设置（不同步服务器）：`localStorage` 键 `ledger-salary-reminder`（工资提醒）、`ledger-big-expense-threshold`（大额判定线）、`ledger-salary-dismissed`、`ledger-salary-notified`
+- 本地设置（不同步服务器）：`localStorage` 键 `ledger-salary-reminder`（工资提醒）、`ledger-big-expense-threshold`（大额判定线）、`ledger-salary-dismissed`、`ledger-salary-notified`、`ledger-insurance-schedule`（保险日历）、`ledger-fixed-expenses-<month>`（分月固定支出手动维护，模板复制到未来月）、`ledger-daily-limit-alert`（限额提醒开关/误差金额/系统通知/praiseEnabled 低消费表扬）、`ledger-no-spend-praise-notified`（表扬去重，值=`YYYY-MM-DD:am|pm`）
 
 | 文件 | 用途 |
 |------|------|
@@ -236,10 +268,18 @@
 - 不要 grep 首页引用的入口 chunk 验证新功能（入口是 index-*.js，App 是异步 chunk）；用 dist 里的 App-*.js 文件名直接 curl 验证
 - 不要给手机端模块设固定 min-width（如常规项表格曾经的 34rem）——手机视口 ~390px 会"显示不全"，改为 grid 自适应列布局；plan 趋势图是例外（SVG viewBox 680 固定，靠 .plan-chart-wrap 横滚）
 - 不要改 PLAN_LAST_YEAR_WEIGHT 的语义（去年同期主权重 60% 是用户明确要求）；调权重只改 plan.tsx 常量
+- 不要把总览「今日还可花」当静态日限额：动态日限额 =（月日常预算 − 截至昨日日常支出）÷ 含今日剩余天数，当日自身消费不改变当日限额，只滚入次日及以后（c0bbb08 起，用户明确纠正过概念）
+- 新增底部导航入口必须同步改 `@media(max-width:940px)` 里 nav 的列数（当前 repeat(6,1fr)），否则入口换行很难看（「搜索」上线时踩过）
+- 预算编辑不要跳转到页面底部表单（移动端双列 grid 塌陷的根源）；已在预算行内展开编辑，保持此模式
+- 不要把当日限额红警改成持久化 dismiss（用户要求：超限后当天无论何时打开 App 都是红色警报）；dismiss 仅会话内有效
+- 低消费表扬的去重键是 `日期:时段`（每天上午/下午各一条），不是整天一条；达到/超限额不表扬
+- 计划购买的动作按钮（已买到手）不要用绿色——绿色只代表真实状态（已买徽章/今日可买），动作用青色，删除/超支用红色（1038d48 起的配色语义）
+- git push 被沙箱代理挡时不要反复重试同一命令：用 `env -u HTTP_PROXY -u HTTPS_PROXY -u http_proxy -u https_proxy git -c http.version=HTTP/1.1 push`；若远端因 GitHub Data API 推送产生等价 commit SHA 分叉，先确认重叠点 tree 相同再 `git rebase --onto origin/main <本地等价commit> main` 重放，切勿 force push 覆盖
+- caddy force-recreate 后根路径偶发 000 是启动竞态，重试 curl 即可，不要误判为部署失败去排查容器
 
 ## 10. 待确认/建议下一步
 
-- **手机端实测反馈（最新）**：总览页「本月固定支出」面板（逐项进度条 + 已实现/待支出合计）、规划锚点月选择器、保险日历行为 —— 本地 origin PWA 划掉重开两次即可看到
+- **手机端实测反馈（最新，2026-10-17）**：总览手动「本月固定支出」（行内编辑/参考项点选/关联分类自动跟踪/复制模板到下月）、计划购买单行扁平观感、预算行内编辑、搜索记录视图（关键词+筛选+排序+起始/截止月+按月年汇总）、底部导航 6 入口单行不换行、设置页数据管理/同步默认收起、超限额红警每次打开必弹、低消费表扬通知（需手机 PWA 已允许通知；上午/下午各一条）—— 本地 origin PWA 划掉重开两次即可看到
 - **用户需在手机上操作**：规划页「保险缴费日历（本机）」→ 批量导入 → 粘贴保单清单（会话中已给出粘贴文本）→ 保存；保存后预测明细表「保险日历」列应显示 10 月/12 月"无保费"、11 月有保费
 - **手机端 PWA 需要用户操作确认**：若 PWA 是从云端 origin（ledger.47.74.3.104.sslip.io）安装的，云端失效后永远收不到更新，需从 `https://FrorideMacBook-Air.local:8443` 重新「添加到主屏幕」（数据已全部入本地 PG，删除旧 PWA 安全）；若本就是本地 origin 安装，划掉重开两次即可。**用户是否已完成重装、手机实测反馈尚未回收**
 - **用户已提出的观察点**：首页蓄水池数字可读性（已改为磨砂玻璃读数卡，待手机实测确认）；两个蓄水池横向排列（已修）

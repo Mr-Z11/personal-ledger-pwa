@@ -4,7 +4,7 @@
 Eliminate the 2–10 second blank screen during iPhone home-screen PWA cold starts by rendering an immediate static shell, showing local data first, and keeping cloud synchronization off the critical rendering path; verify, push main, and deploy production.
 
 ## Current Phase
-Phase 15
+Phase 28
 
 ## Phases
 
@@ -268,3 +268,34 @@ Phase 15
 - [x] 计划购买行：动作按钮「已完成」→「已买到手」，删除改垃圾桶图标；已买行绿色「已买 · 日期」徽章 + 撤销；列表下方加说明行
 - [x] 部署：前端 caddy force-recreate 200（bundle 含「已买到手/提醒时间/已支出」）；api-local 切新镜像（2026-10-15T10:04 构建），ReminderSetting 三列已迁移；服务端 JWT 触发 /notifications/test 返回 delivered:true
 - **Status:** complete（手机实测：设置页改提醒时间、测试推送、计划购买按钮观感）
+
+### Phase 25d: 删除限额提醒时间 + 测试推送语义修正 (2026-10-17, 远端 32cc58f / 6950f5f)
+- [x] DailyLimitAlertSettings 删 remindHour；面板删「提醒时间」下拉；遮罩删提示行；本地通知恢复达线即发（每天一次）
+- [x] App syncDailyLimitSettings 固定传 dailyLimitHour:0 中和服务端门控（达线即推），启动时同步一次
+- [x] sendTestReminder 改中性文案「测试推送（通道验证）」；前端按钮改「发一条测试推送（验证通道）」；容器热补丁（docker cp dist + restart）先行端到端验证，CI 镜像后补齐
+- **Status:** complete（已推送 main + 部署本地栈）
+
+### Phase 26: 总览「本月固定支出」手动维护 + 参考项 + 分类关联 + 计划购买配色 (2026-10-15~17, f98474c/0abe64f/29b78d5/1038d48)
+- [x] 移除自动推导改纯手动：FixedExpenseItem（id/name/predictedCents/spentCents/categoryId?）按月份 key 存 localStorage `ledger-fixed-expenses-<month>`；行内编辑 + 合计四卡
+- [x] 「复制模板到下月」1-11 个月：spent 归零、已有数据的月份不覆盖
+- [x] buildFixedExpenseSuggestions 参考项面板（常规项+保险日历口径，默认收起）；关联分类后已支出只读「自动」，按当月该分类消费汇总；可「改手动」解除
+- [x] 添加表单/未关联行均可选具体分类关联
+- [x] 计划购买「已买到手」按钮改青色行动色：绿=状态（已买徽章/今日可买）、青=动作、红=删除/超支
+- **Status:** complete（已推送 main + 部署本地栈）
+
+### Phase 27: 日常消费动态日限额 (2026-10-17, c0bbb08)
+- [x] dailyLimitCents(budgets, transactions, categories, month) =（月日常预算 − 截至昨日日常支出）÷ 含今日剩余天数（剩0天按1天兜底）
+- [x] 当日自身消费不计入分子 → 当日限额日内恒定；盈余/超支滚入后续天数（用户明确纠正的概念）
+- [x] BudgetReservoir 页脚「今日限额/今日还可花/剩 N 天」，超支显示「今日已超限额」；todayRemainingCents 可为负（超限）/ null（无预算）
+- [x] DailyLimitOverlay/LocalDailyLimitAlertPanel/PlannedPurchasePanel 文案同步解释公式与「当日花多少只影响明天及以后」
+- **Status:** complete（已推送 main + 部署本地栈；+1 冒烟测试）
+
+### Phase 28: 总览/预算/搜索/导航/设置/提醒 UI 迭代 (2026-10-17, 4bb1e77/a003c39/fb6939e/6e39648/203b247/6f40518/f2cb337)
+- [x] 计划购买精简：移除「已买到手」前置 Check 图标（避免已完成错觉）+ 行距字号压缩（4bb1e77）；进一步扁平为单行布局（fb6939e）
+- [x] 预算管理行内编辑：编辑态在预算行内展开表单（autoFocus+保存/取消），消除移动端跳转底部（a003c39）
+- [x] 新增「搜索记录」视图 SearchView：关键词匹配备注/商户/标签/账户/分类路径；概览卡（笔数/支出合计/月均/区间）+ 按月/按年汇总（占比条）+ 明细倒序分页；纯函数 searchMatches/aggregateByPeriod（6e39648）
+- [x] 搜索加筛选（分类/账户）+ 排序（日期↑↓、金额↑↓）+「起始月/截止月」时间范围 + 清除筛选；底部导航 6 列单行（203b247 / 6f40518）
+- [x] 设置页数据管理/数据同步默认收起；当日限额红警改会话内关闭——超限后当天每次打开 App 都弹（6f40518）
+- [x] 低消费表扬：noSpendPraiseDue（am/pm × zero/thrifty）+ praiseMessage；maybePraiseNoSpend 按 `日期:时段` 去重；即时 effect + 10 分钟轮询；设置页「低消费表扬」checkbox（f2cb337）
+- [x] git push 代理绕过 + rebase 对齐远端等价 commit，origin/main 到达 f2cb337（本地 0/0）
+- **Status:** complete（已推送 main + 部署本地栈；vitest 26/26；待手机实测 8 项新功能）
