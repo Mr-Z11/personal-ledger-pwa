@@ -1165,7 +1165,7 @@ export function FixedExpenseOverview({ transactions = [], categories = [] }: {
   const [categoryInput, setCategoryInput] = useState("");
   const [copyMonths, setCopyMonths] = useState(1);
   const [copiedMsg, setCopiedMsg] = useState(false);
-  const [showSuggest, setShowSuggest] = useState(true);
+  const [showSuggest, setShowSuggest] = useState(false);
 
   useEffect(() => {
     setItems(loadFixedExpenses(currentKey));
