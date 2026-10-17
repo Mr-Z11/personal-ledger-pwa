@@ -228,12 +228,15 @@ export function LocalSalaryReminderPanel({ value, onChange }: {
 const WAVE_PATH_A = "M -200 8 Q -175 -2 -150 8 T -100 8 T -50 8 T 0 8 T 50 8 T 100 8 T 150 8 T 200 8 L 200 260 L -200 260 Z";
 const WAVE_PATH_B = "M -200 10 Q -180 0 -160 10 T -120 10 T -80 10 T -40 10 T 0 10 T 40 10 T 80 10 T 120 10 T 160 10 T 200 10 L 200 260 L -200 260 Z";
 
-export function BudgetReservoir({ title, note, spentCents, budgetCents, accent }: {
+export function BudgetReservoir({ title, note, spentCents, budgetCents, accent, todayLimitCents, todaySpentCents }: {
   title: string;
   note?: string;
   spentCents: number;
   budgetCents: number;
   accent: string;
+  /** 今日动态限额（日常消费预算专用）：传入后在页脚显示「今日限额 / 今日还可花」 */
+  todayLimitCents?: number;
+  todaySpentCents?: number;
 }) {
   const clipId = useId();
   const ratio = budgetCents > 0 ? spentCents / budgetCents : 0;
@@ -302,7 +305,15 @@ export function BudgetReservoir({ title, note, spentCents, budgetCents, accent }
       </div>
       <footer className="reservoir-foot">
         {over ? (
-          <span>已超支，剩余 {daysLeft} 天需零消费才能回到线内</span>
+          <span>已超支，剩余 {daysLeft} 天需控制消费才能回到线内</span>
+        ) : todayLimitCents != null && todaySpentCents != null && todayLimitCents > 0 ? (
+          <span>
+            今日限额 ¥{centsToYuan(todayLimitCents)} ·{" "}
+            {todaySpentCents > todayLimitCents
+              ? `今日已超限额 ¥${centsToYuan(todaySpentCents - todayLimitCents)}`
+              : `今日还可花 ¥${centsToYuan(todayLimitCents - todaySpentCents)}`}{" "}
+            · 剩 {daysLeft} 天
+          </span>
         ) : (
           <span>剩余 ¥{centsToYuan(remainingCents)} · {daysLeft} 天 · 每天还可花 ¥{centsToYuan(allowanceCents)}</span>
         )}
@@ -1410,10 +1421,23 @@ export function saveDailyLimitAlertSettings(settings: DailyLimitAlertSettings) {
   localStorage.setItem(DAILY_LIMIT_ALERT_KEY, JSON.stringify(settings));
 }
 
-/** 当日限额 = 当月日常消费预算 ÷ 当月天数；未设预算返回 0 */
-export function dailyLimitCents(budgets: Budget[], month: string) {
-  const total = monthBudgetTotal(budgets, month);
-  return total > 0 ? Math.round(total / daysInMonth(month)) : 0;
+/** 今日动态日限额：当月日常预算减去「截至昨日」的累计支出，再除以「含今日在内的剩余天数」。
+ * 当日消费不影响当日限额（只影响次日及以后），多花/少花自动滚动到后面天数。未设预算返回 0。 */
+export function dailyLimitCents(budgets: Budget[], transactions: Transaction[], categories: Category[], month: string): number {
+  const monthBudget = monthBudgetTotal(budgets, month);
+  if (monthBudget <= 0) return 0;
+  const today = Number(beijingDateTimeParts().day);
+  const totalDays = daysInMonth(month);
+  const daysLeft = Math.max(1, totalDays - today + 1);
+  const spentThroughYesterday = dailyExpenseTransactions(transactions, categories)
+    .filter((item) => {
+      const key = dateKey(item.occurredAt);
+      if (!key.startsWith(month)) return false;
+      return Number(key.slice(8, 10)) < today;
+    })
+    .reduce((sum, item) => sum + item.amountCents, 0);
+  const remaining = Math.max(0, monthBudget - spentThroughYesterday);
+  return Math.round(remaining / daysLeft);
 }
 
 /** 今日日常消费合计（不含贷款/保险/教育等专项） */
@@ -1473,10 +1497,10 @@ export function DailyLimitOverlay({ spentCents, limitCents, toleranceCents, onDi
         <h2>今日消费已达限额</h2>
         <p className="daily-limit-amount">¥{centsToYuan(spentCents)}</p>
         <p className="daily-limit-detail">
-          日限额 ¥{centsToYuan(limitCents)}（误差线 ¥{centsToYuan(toleranceCents)}）
+          今日动态限额 ¥{centsToYuan(limitCents)}（误差线 ¥{centsToYuan(toleranceCents)}）
           {overCents > 0 ? ` · 已超出 ¥${centsToYuan(overCents)}` : " · 已到临界，别再花了"}
         </p>
-        <p className="daily-limit-advice">今天剩下的时间停止非必要消费，想买的东西先加进「计划购买」，等明天有额度再买。</p>
+        <p className="daily-limit-advice">今天花的每一笔都会滚入明天的动态限额——少花明天更宽裕，多花后面几天自动收紧。想买的东西先加进「计划购买」，等额度够时再买。</p>
         <button type="button" className="daily-limit-dismiss" onClick={onDismiss}>知道了，今天不再提醒</button>
       </div>
     </div>
@@ -1535,7 +1559,7 @@ export function LocalDailyLimitAlertPanel({ value, onChange }: {
           onChange={(event) => setToleranceInput(event.target.value)}
         />
       </label>
-      <span className="reminder-hint">今日消费 ≥（月日常预算 ÷ 当月天数）− 误差金额 时：打开应用立即全屏红色警告，同时推送手机提醒（每天一条）。</span>
+      <span className="reminder-hint">今日动态限额 =（月日常预算 − 截至昨日累计支出）÷ 含今日的剩余天数。今日消费 ≥ 今日动态限额 − 误差金额 时：打开应用立即全屏红色警告，同时推送手机提醒（每天一条）。当日花多少只影响明天及以后的限额，不改变今天自己的限额。</span>
       <label className="reminder-toggle">
         <input type="checkbox" checked={draft.notify} onChange={(event) => void toggleNotify(event.target.checked)} />
         同时发送系统通知（每天一条；服务端推送开启后，关闭应用也能收到）
@@ -1651,7 +1675,11 @@ export function PlannedPurchasePanel({ items, todayRemainingCents, onAdd, onTogg
           {pending.length > 0
             ? `${pending.length} 项待买 · 合计 ¥${centsToYuan(pendingTotal)}`
             : "把想买的东西和预算记在这里，当天有额度时会提醒你"}
-          {todayRemainingCents !== null && pending.length > 0 ? ` · 今日预算余额 ¥${centsToYuan(todayRemainingCents)}` : ""}
+          {todayRemainingCents !== null && pending.length > 0
+            ? todayRemainingCents >= 0
+              ? ` · 今日还可花 ¥${centsToYuan(todayRemainingCents)}`
+              : ` · 今日已超限额 ¥${centsToYuan(-todayRemainingCents)}`
+            : ""}
         </span>
       </div>
 

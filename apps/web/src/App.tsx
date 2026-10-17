@@ -654,8 +654,12 @@ export function App() {
     () => todayDailySpentCents(activeTransactions, activeCategories),
     [activeTransactions, activeCategories]
   );
-  const todayLimitCents = useMemo(() => dailyLimitCents(activeBudgets, currentMonth), [activeBudgets, currentMonth]);
-  const todayRemainingCents = todayLimitCents > 0 ? todayLimitCents - todaySpentCents : null;
+  const monthBudgetCents = useMemo(() => monthBudgetTotal(activeBudgets, currentMonth), [activeBudgets, currentMonth]);
+  const todayLimitCents = useMemo(
+    () => dailyLimitCents(activeBudgets, activeTransactions, activeCategories, currentMonth),
+    [activeBudgets, activeTransactions, activeCategories, currentMonth]
+  );
+  const todayRemainingCents = monthBudgetCents > 0 ? todayLimitCents - todaySpentCents : null;
   const dailyLimitHit = dailyLimitAlertTriggered(dailyLimitSettings, todaySpentCents, todayLimitCents);
   const todayKey = dateKey(new Date().toISOString());
 
@@ -920,6 +924,8 @@ export function App() {
               await saveLocalAndQueue("plannedPurchases", deleted);
               setToast(`已删除：${item.name}`);
             }}
+            todayLimitCents={todayLimitCents}
+            todaySpentCents={todaySpentCents}
           />
         )}
         {view === "entry" && (
@@ -1099,7 +1105,7 @@ function AuthScreen({ onAuth }: { onAuth: (result: Awaited<ReturnType<typeof api
   );
 }
 
-function Overview({ summary, budgetCents, totalBudgetCents, accounts, categories, transactions, plannedPurchases, todayRemainingCents, onAddPlannedPurchase, onTogglePlannedPurchase, onDeletePlannedPurchase }: {
+function Overview({ summary, budgetCents, totalBudgetCents, accounts, categories, transactions, plannedPurchases, todayRemainingCents, todayLimitCents, todaySpentCents, onAddPlannedPurchase, onTogglePlannedPurchase, onDeletePlannedPurchase }: {
   summary: { incomeCents: number; expenseCents: number; netCents: number };
   budgetCents: number;
   totalBudgetCents: number;
@@ -1108,6 +1114,8 @@ function Overview({ summary, budgetCents, totalBudgetCents, accounts, categories
   transactions: Transaction[];
   plannedPurchases: PlannedPurchase[];
   todayRemainingCents: number | null;
+  todayLimitCents: number;
+  todaySpentCents: number;
   onAddPlannedPurchase: (name: string, amountCents: number) => void;
   onTogglePlannedPurchase: (item: PlannedPurchase) => void;
   onDeletePlannedPurchase: (item: PlannedPurchase) => void;
@@ -1159,6 +1167,8 @@ function Overview({ summary, budgetCents, totalBudgetCents, accounts, categories
           spentCents={summary.expenseCents}
           budgetCents={budgetCents}
           accent="#1f5f74"
+          todayLimitCents={todayLimitCents}
+          todaySpentCents={todaySpentCents}
         />
         <BudgetReservoir
           title="总开支额度"

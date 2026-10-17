@@ -12,6 +12,7 @@ import {
   TrendFocusCards,
   DEFAULT_SALARY_SETTINGS,
   buildFixedExpenseSuggestions,
+  dailyLimitCents,
   loadSalarySettings,
   salaryBannerState,
   saveFixedExpenses,
@@ -223,5 +224,29 @@ describe("常规项支出与规划页", () => {
     // 分类选择器列出账本里的分类（路径中的 > 在 HTML 中被转义，这里只校验分类名片段）
     expect(html).toContain("三餐");
     expect(html).toContain("贷款本金");
+  });
+
+  it("dailyLimitCents 为动态限额：当日消费不影响当日限额，昨日消费才计入", () => {
+    const month = monthKey();
+    const budgets: Budget[] = [{ ...stamp, id: "b-daily", month, categoryId: null, amountCents: yuanToCents(3000), scope: "daily" }];
+    const todayKeyStr = new Date().toISOString().slice(0, 10);
+    const [yy, mm, dd] = todayKeyStr.split("-").map(Number);
+    const yDate = new Date(yy, mm - 1, dd);
+    yDate.setDate(yDate.getDate() - 1);
+    const yesterdayKeyStr = `${yDate.getFullYear()}-${String(yDate.getMonth() + 1).padStart(2, "0")}-${String(yDate.getDate()).padStart(2, "0")}`;
+    const mkTx = (day: string, amountYuan: number) => ({
+      ...stamp, id: `t-${day}-${amountYuan}`, type: "expense" as const, accountId: "acc-1",
+      categoryId: "cat-food", amountCents: yuanToCents(amountYuan), occurredAt: `${day}T12:00:00.000+08:00`,
+      merchant: null, note: null, tags: []
+    });
+    const limitNoSpend = dailyLimitCents(budgets, [], categories, month);
+    const limitWithTodaySpend = dailyLimitCents(budgets, [mkTx(todayKeyStr, 500)], categories, month);
+    // 当日消费不改变当日限额
+    expect(limitWithTodaySpend).toBe(limitNoSpend);
+    if (yesterdayKeyStr.slice(0, 7) === month) {
+      const limitWithYesterdaySpend = dailyLimitCents(budgets, [mkTx(yesterdayKeyStr, 500)], categories, month);
+      // 昨日消费计入剩余预算，限额变小
+      expect(limitWithYesterdaySpend).toBeLessThan(limitNoSpend);
+    }
   });
 });
