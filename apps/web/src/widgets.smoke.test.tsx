@@ -14,6 +14,8 @@ import {
   buildFixedExpenseSuggestions,
   dailyLimitCents,
   loadSalarySettings,
+  aggregateByPeriod,
+  searchMatches,
   salaryBannerState,
   saveFixedExpenses,
   saveSalarySettings
@@ -248,5 +250,38 @@ describe("常规项支出与规划页", () => {
       // 昨日消费计入剩余预算，限额变小
       expect(limitWithYesterdaySpend).toBeLessThan(limitNoSpend);
     }
+  });
+});
+
+describe("搜索记录：关键词匹配与按月/年汇总", () => {
+  const searchTxs: Transaction[] = [
+    tx("s1", 200, "2026-03-05T10:00:00.000+08:00", "cat-food", "加油 中石化"),
+    tx("s2", 300, "2026-03-20T10:00:00.000+08:00", "cat-food", "加油站"),
+    tx("s3", 100, "2026-04-11T10:00:00.000+08:00", "cat-loan", "吃饭"),
+    tx("s4", 500, "2025-12-02T10:00:00.000+08:00", "cat-food", "加油"),
+    { ...tx("s5", 999, "2026-03-08T10:00:00.000+08:00", "cat-food", "加油"), type: "income" as const }
+  ];
+
+  it("按关键词匹配消费记录，排除收入", () => {
+    const hits = searchMatches("加油", searchTxs, accounts, categories);
+    expect(hits.map((item) => item.id).sort()).toEqual(["s1", "s2", "s4"]);
+  });
+
+  it("按月份汇总支出（含笔数与金额）", () => {
+    const hits = searchMatches("加油", searchTxs, accounts, categories);
+    const byMonth = aggregateByPeriod(hits, 7);
+    expect(byMonth).toEqual([
+      { key: "2026-03", count: 2, cents: yuanToCents(500) },
+      { key: "2025-12", count: 1, cents: yuanToCents(500) }
+    ]);
+  });
+
+  it("按年份汇总支出", () => {
+    const hits = searchMatches("加油", searchTxs, accounts, categories);
+    const byYear = aggregateByPeriod(hits, 4);
+    expect(byYear).toEqual([
+      { key: "2026", count: 2, cents: yuanToCents(500) },
+      { key: "2025", count: 1, cents: yuanToCents(500) }
+    ]);
   });
 });

@@ -84,6 +84,7 @@ import {
   PlannedPurchasePanel,
   RegularExpensePanel,
   SalaryBanner,
+  SearchView,
   TrendFocusCards,
   dailyLimitAlertDismissedKey,
   dailyLimitAlertTriggered,
@@ -104,7 +105,7 @@ import {
 } from "./widgets";
 import { PlanView } from "./plan";
 
-type View = "overview" | "entry" | "transactions" | "reports" | "plan" | "settings" | "trash";
+type View = "overview" | "entry" | "transactions" | "reports" | "plan" | "search" | "settings" | "trash";
 type LedgerGroupMode = "day" | "month" | "year";
 type ReportPeriod = "month" | "year";
 type ExportFormat = "ledger" | "portable" | "suishouji" | "qianji";
@@ -113,6 +114,7 @@ type ExportFileType = "csv" | "xlsx";
 const navItems: { id: View; label: string; icon: typeof Home }[] = [
   { id: "overview", label: "总览", icon: Home },
   { id: "transactions", label: "流水", icon: ListFilter },
+  { id: "search", label: "搜索", icon: Search },
   { id: "reports", label: "报表", icon: PieChartIcon },
   { id: "plan", label: "规划", icon: CalendarClock },
   { id: "settings", label: "设置", icon: Settings2 }
@@ -386,6 +388,7 @@ const viewHeadingMap: Record<View, { strong: string; span: string; icon: typeof 
   overview: { strong: "本月概览", span: "额度水位、消费趋势一览", icon: Home },
   entry: { strong: "快速记账", span: "日常消费、收入、转账", icon: Plus },
   transactions: { strong: "流水明细", span: "搜索、筛选、批量管理", icon: ListFilter },
+  search: { strong: "搜索记录", span: "关键词检索，按月/年汇总", icon: Search },
   reports: { strong: "消费分析", span: "趋势、预算、支出结构", icon: PieChartIcon },
   plan: { strong: "支出规划", span: "未来消费与总支出预测（去年同期为主）", icon: CalendarClock },
   settings: { strong: "账户设置", span: "账户、分类、预算、数据", icon: Settings2 },
@@ -955,6 +958,9 @@ export function App() {
             await saveManyLocalAndQueue("transactions", items);
             setToast(`已批量更新 ${items.length} 笔流水`);
           }} onSaveCategory={(item) => saveLocalAndQueue("categories", item)} />
+        )}
+        {view === "search" && (
+          <SearchView transactions={activeTransactions} accounts={activeAccounts} categories={activeCategories} />
         )}
         {view === "reports" && (
           <Reports

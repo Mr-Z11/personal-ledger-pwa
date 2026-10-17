@@ -6556,7 +6556,7 @@ body.daily-limit-lock {
   align-items: center;
   justify-content: space-between;
   gap: 0.5rem;
-  padding: 0.32rem 0.7rem;
+  padding: 0.3rem 0.7rem;
   border-radius: 0.6rem;
   background: rgba(49, 71, 58, 0.05);
   border: 1px solid rgba(49, 71, 58, 0.08);
@@ -6578,14 +6578,17 @@ body.daily-limit-lock {
 
 .planbuy-main {
   display: flex;
-  flex-direction: column;
-  gap: 0.02rem;
+  flex-direction: row;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 0.04rem 0.5rem;
   min-width: 0;
-  line-height: 1.14;
 }
 
 .planbuy-main strong {
   font-size: 0.86rem;
+  flex: 1 1 auto;
+  min-width: 0;
   overflow-wrap: anywhere;
 }
 
@@ -6623,9 +6626,9 @@ body.daily-limit-lock {
 
 .planbuy-side {
   display: flex;
-  flex-direction: column;
-  align-items: flex-end;
-  gap: 0.18rem;
+  flex-direction: row;
+  align-items: center;
+  gap: 0.5rem;
   flex-shrink: 0;
 }
 
@@ -6687,18 +6690,242 @@ body.daily-limit-lock {
   }
 
   .planbuy-row {
-    flex-direction: column;
-    align-items: stretch;
+    flex-wrap: wrap;
+    gap: 0.25rem 0.5rem;
+  }
+
+  .planbuy-main {
+    flex: 1 1 60%;
   }
 
   .planbuy-side {
-    flex-direction: row;
-    justify-content: space-between;
-    align-items: center;
+    flex: 1 1 auto;
+    justify-content: flex-end;
   }
 }
 
-/* 手机推送订阅管理（当日限额提醒设置区内） */
+/* ------------------------------------------------------------------ */
+/* 搜索记录视图                                                         */
+/* ------------------------------------------------------------------ */
+
+.search-big input {
+  font-size: 0.95rem;
+  padding-top: 0.7rem;
+  padding-bottom: 0.7rem;
+}
+
+.search-clear {
+  position: absolute;
+  right: 0.6rem;
+  top: 0.62rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.6rem;
+  height: 1.6rem;
+  border: none;
+  border-radius: 999px;
+  background: rgba(49, 71, 58, 0.1);
+  color: rgba(36, 49, 39, 0.6);
+  cursor: pointer;
+}
+
+.search-clear:hover {
+  background: rgba(49, 71, 58, 0.18);
+}
+
+.search-summary {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.6rem;
+  margin: 0.9rem 0;
+}
+
+.search-summary > div {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  padding: 0.6rem 0.7rem;
+  border-radius: 0.7rem;
+  background: rgba(49, 71, 58, 0.05);
+  border: 1px solid rgba(49, 71, 58, 0.08);
+}
+
+.search-summary span {
+  font-size: 0.72rem;
+  color: rgba(36, 49, 39, 0.55);
+}
+
+.search-summary strong {
+  font-size: 1.05rem;
+}
+
+.search-summary strong.expense {
+  color: #c0392b;
+}
+
+.search-summary-range {
+  grid-column: 1 / -1;
+  flex-direction: row !important;
+  align-items: baseline;
+  gap: 0.5rem;
+}
+
+.search-summary-range em {
+  font-style: normal;
+  font-size: 0.82rem;
+  color: rgba(36, 49, 39, 0.7);
+}
+
+.search-breakdown {
+  margin-top: 0.9rem;
+}
+
+.search-breakdown h3,
+.search-detail h3 {
+  margin: 0 0 0.5rem;
+  font-size: 0.9rem;
+  color: rgba(36, 49, 39, 0.72);
+}
+
+.search-breakdown ul {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.search-breakdown li {
+  display: grid;
+  grid-template-columns: 5.6rem minmax(0, 1fr) 3rem auto;
+  align-items: center;
+  gap: 0.6rem;
+}
+
+.bd-label {
+  font-size: 0.82rem;
+  font-weight: 700;
+  color: rgba(36, 49, 39, 0.78);
+}
+
+.bd-bar {
+  display: block;
+  height: 0.5rem;
+  border-radius: 999px;
+  background: rgba(49, 71, 58, 0.1);
+  overflow: hidden;
+}
+
+.bd-bar i {
+  display: block;
+  height: 100%;
+  background: #d6b25e;
+}
+
+.bd-count {
+  font-size: 0.72rem;
+  color: rgba(36, 49, 39, 0.55);
+}
+
+.bd-amount {
+  font-size: 0.9rem;
+  text-align: right;
+  min-width: 4.5rem;
+}
+
+.search-detail {
+  margin-top: 1.1rem;
+}
+
+.search-detail-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.34rem;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.search-detail-list li {
+  display: grid;
+  grid-template-columns: 5.6rem minmax(0, 1.1fr) minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 0.55rem;
+  padding: 0.4rem 0.6rem;
+  border-radius: 0.55rem;
+  background: rgba(49, 71, 58, 0.05);
+}
+
+.sd-date {
+  font-size: 0.76rem;
+  color: rgba(36, 49, 39, 0.6);
+  font-variant-numeric: tabular-nums;
+}
+
+.sd-cat {
+  font-size: 0.8rem;
+  color: rgba(36, 49, 39, 0.78);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sd-note {
+  font-size: 0.78rem;
+  color: rgba(36, 49, 39, 0.6);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sd-amount {
+  font-size: 0.88rem;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.sd-amount.expense {
+  color: #c0392b;
+}
+
+.sd-amount.income {
+  color: #2f7a59;
+}
+
+.sd-amount.transfer {
+  color: #1f5f74;
+}
+
+@media (max-width: 640px) {
+  .search-summary {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 0.4rem;
+  }
+
+  .search-summary strong {
+    font-size: 0.95rem;
+  }
+
+  .search-breakdown li {
+    grid-template-columns: 4.6rem minmax(0, 1fr) 2.6rem auto;
+    gap: 0.45rem;
+  }
+
+  .search-detail-list li {
+    grid-template-columns: 4.6rem minmax(0, 1fr) auto;
+  }
+
+  .sd-cat {
+    display: none;
+  }
+
+  .bd-amount,
+  .sd-amount {
+    min-width: 3.8rem;
+  }
+}
 .push-alert-panel {
   margin-top: 0.9rem;
   padding-top: 0.9rem;

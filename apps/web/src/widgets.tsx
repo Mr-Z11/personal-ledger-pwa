@@ -1,5 +1,5 @@
 import { centsToYuan, monthKey, yuanToCents, type Account, type Budget, type Category, type PlannedPurchase, type Transaction } from "@ledger/shared";
-import { BellRing, Check, Minus, Plus, ShoppingBag, Trash2, TrendingDown, TrendingUp, X } from "lucide-react";
+import { BellRing, Check, Minus, Plus, Search, ShoppingBag, Trash2, TrendingDown, TrendingUp, X } from "lucide-react";
 import { useEffect, useId, useMemo, useState, type CSSProperties } from "react";
 import {
   beijingDateTimeParts,
@@ -12,7 +12,8 @@ import {
   offsetMonthKey,
   percentDelta,
   previousMonthKeys,
-  shortMonthLabel
+  shortMonthLabel,
+  yearLabel
 } from "./utils";
 
 /* ------------------------------------------------------------------ */
@@ -1783,6 +1784,166 @@ export function PlannedPurchasePanel({ items, todayRemainingCents, onAdd, onTogg
         </>
       )}
       <p className="reminder-hint">清单云端同步，多设备一致；余额够买时应用内高亮 + 手机推送提醒（每天一轮）。</p>
+    </section>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/* 搜索历史记录（关键词 + 按月/年汇总）                                  */
+/* ------------------------------------------------------------------ */
+
+/** 关键词匹配消费记录（排除收入/已删除），匹配备注、商户、标签、账户名、分类名。 */
+export function searchMatches(needle: string, transactions: Transaction[], accounts: Account[], categories: Category[]): Transaction[] {
+  const q = needle.trim().toLowerCase();
+  if (!q) return [];
+  return transactions
+    .filter((item) => item.type !== "income" && !item.deletedAt)
+    .filter((item) => {
+      const category = categories.find((entry) => entry.id === item.categoryId);
+      const haystack = [
+        item.note ?? "",
+        item.merchant ?? "",
+        (item.tags ?? []).join(" "),
+        accounts.find((entry) => entry.id === item.accountId)?.name ?? "",
+        category?.name ?? "",
+        categoryPath(category, categories)
+      ].join(" ").toLowerCase();
+      return haystack.includes(q);
+    })
+    .sort((left, right) => right.occurredAt.localeCompare(left.occurredAt));
+}
+
+/** 按时间段汇总支出：sliceLen=7 按月、4 按年。 */
+export function aggregateByPeriod(matches: Transaction[], sliceLen: number): { key: string; count: number; cents: number }[] {
+  const groups = new Map<string, { count: number; cents: number }>();
+  matches.forEach((item) => {
+    const key = item.occurredAt.slice(0, sliceLen);
+    const group = groups.get(key) ?? { count: 0, cents: 0 };
+    group.count += 1;
+    if (item.type === "expense") group.cents += item.amountCents;
+    groups.set(key, group);
+  });
+  return Array.from(groups.entries())
+    .map(([key, value]) => ({ key, ...value }))
+    .sort((left, right) => right.key.localeCompare(left.key));
+}
+
+export function SearchView({ transactions, accounts, categories }: {
+  transactions: Transaction[];
+  accounts: Account[];
+  categories: Category[];
+}) {
+  const [query, setQuery] = useState("");
+  const [visibleLimit, setVisibleLimit] = useState(200);
+  const needle = query.trim();
+
+  const matched = useMemo(() => searchMatches(needle, transactions, accounts, categories), [transactions, accounts, categories, needle]);
+  const monthly = useMemo(() => aggregateByPeriod(matched, 7), [matched]);
+  const yearly = useMemo(() => aggregateByPeriod(matched, 4), [matched]);
+
+  const expenseTotal = matched.reduce((sum, item) => sum + (item.type === "expense" ? item.amountCents : 0), 0);
+  const count = matched.length;
+  const monthlyAvg = monthly.length > 0 ? Math.round(expenseTotal / monthly.length) : 0;
+  const dateRange = count > 0
+    ? `${matched[count - 1].occurredAt.slice(0, 10)} ~ ${matched[0].occurredAt.slice(0, 10)}`
+    : "";
+
+  const maxMonthly = monthly.reduce((max, item) => Math.max(max, item.cents), 0);
+  const maxYearly = yearly.reduce((max, item) => Math.max(max, item.cents), 0);
+  const visible = matched.slice(0, visibleLimit);
+
+  return (
+    <section className="panel search-view">
+      <div className="chart-heading">
+        <h2>搜索记录</h2>
+        <span>{needle ? `匹配 ${count} 笔消费` : "输入关键词，查看明细与按月/年汇总"}</span>
+      </div>
+
+      <label className="search search-big">
+        <Search size={18} />
+        <input
+          value={query}
+          onChange={(event) => { setQuery(event.target.value); setVisibleLimit(200); }}
+          placeholder="搜索消费记录，如：加油、餐饮、物业费…"
+          autoFocus
+        />
+        {query && (
+          <button type="button" className="search-clear" onClick={() => setQuery("")} aria-label="清除">
+            <X size={16} />
+          </button>
+        )}
+      </label>
+
+      {!needle ? (
+        <p className="empty">输入关键词（备注、商户、分类或标签均可），即可列出匹配的消费明细，并按月、按年汇总其总体状况。</p>
+      ) : count === 0 ? (
+        <p className="empty">没有找到包含「{query}」的消费记录。</p>
+      ) : (
+        <>
+          <div className="search-summary">
+            <div><span>笔数</span><strong>{count}</strong></div>
+            <div><span>支出合计</span><strong className="expense">¥{centsToYuan(expenseTotal)}</strong></div>
+            <div><span>月均</span><strong>¥{centsToYuan(monthlyAvg)}</strong></div>
+            <div className="search-summary-range"><span>区间</span><em>{dateRange}</em></div>
+          </div>
+
+          {monthly.length > 0 && (
+            <div className="search-breakdown">
+              <h3>按月汇总</h3>
+              <ul>
+                {monthly.map((item) => (
+                  <li key={item.key}>
+                    <span className="bd-label">{monthLabel(item.key)}</span>
+                    <span className="bd-bar"><i style={{ width: `${maxMonthly > 0 ? Math.round((item.cents / maxMonthly) * 100) : 0}%` }} /></span>
+                    <span className="bd-count">{item.count}笔</span>
+                    <strong className="bd-amount">¥{centsToYuan(item.cents)}</strong>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+
+          {yearly.length > 0 && (
+            <div className="search-breakdown">
+              <h3>按年汇总</h3>
+              <ul>
+                {yearly.map((item) => (
+                  <li key={item.key}>
+                    <span className="bd-label">{yearLabel(item.key)}</span>
+                    <span className="bd-bar"><i style={{ width: `${maxYearly > 0 ? Math.round((item.cents / maxYearly) * 100) : 0}%` }} /></span>
+                    <span className="bd-count">{item.count}笔</span>
+                    <strong className="bd-amount">¥{centsToYuan(item.cents)}</strong>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+
+          <div className="search-detail">
+            <h3>明细（{count} 笔）</h3>
+            <ul className="search-detail-list">
+              {visible.map((item) => {
+                const category = categories.find((entry) => entry.id === item.categoryId);
+                return (
+                  <li key={item.id}>
+                    <span className="sd-date">{item.occurredAt.slice(0, 10)}</span>
+                    <span className="sd-cat">{categoryPath(category, categories) || (item.type === "transfer" ? "转账" : "未分类")}</span>
+                    <span className="sd-note">{item.merchant || item.note || ""}</span>
+                    <strong className={`sd-amount ${item.type === "income" ? "income" : item.type === "expense" ? "expense" : "transfer"}`}>
+                      {item.type === "income" ? "+" : item.type === "expense" ? "-" : ""}¥{centsToYuan(item.amountCents)}
+                    </strong>
+                  </li>
+                );
+              })}
+            </ul>
+            {matched.length > visibleLimit && (
+              <button type="button" className="ghost" onClick={() => setVisibleLimit((value) => value + 200)}>
+                加载更多（还有 {matched.length - visibleLimit} 笔）
+              </button>
+            )}
+          </div>
+        </>
+      )}
     </section>
   );
 }
