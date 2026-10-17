@@ -1391,16 +1391,20 @@ export type DailyLimitAlertSettings = {
   /** 误差金额（分）：当日消费达到「日限额 − 误差」即触发提醒 */
   toleranceCents: number;
   notify: boolean;
+  /** 低消费表扬：早上/下午没过度消费就发鼓励推送 */
+  praiseEnabled: boolean;
 };
 
 const DAILY_LIMIT_ALERT_KEY = "ledger-daily-limit-alert";
 const DAILY_LIMIT_DISMISS_KEY = "ledger-daily-limit-dismissed";
 const DAILY_LIMIT_NOTIFY_KEY = "ledger-daily-limit-notified";
+const PRAISE_NOTIFY_KEY = "ledger-no-spend-praise-notified";
 
 export const DEFAULT_DAILY_LIMIT_ALERT: DailyLimitAlertSettings = {
   enabled: true,
   toleranceCents: 2000,
-  notify: true
+  notify: true,
+  praiseEnabled: true
 };
 
 export function loadDailyLimitAlertSettings(): DailyLimitAlertSettings {
@@ -1411,7 +1415,8 @@ export function loadDailyLimitAlertSettings(): DailyLimitAlertSettings {
     return {
       enabled: parsed.enabled !== false,
       toleranceCents: Math.max(0, Math.round(Number(parsed.toleranceCents) || DEFAULT_DAILY_LIMIT_ALERT.toleranceCents)),
-      notify: parsed.notify !== false
+      notify: parsed.notify !== false,
+      praiseEnabled: parsed.praiseEnabled !== false
     };
   } catch {
     return DEFAULT_DAILY_LIMIT_ALERT;
@@ -1479,7 +1484,47 @@ export function maybeNotifyDailyLimit(settings: DailyLimitAlertSettings, spentTo
   }
 }
 
-/** 全屏红色警告遮罩：达到限额时覆盖整个页面，关闭后当天不再弹出 */
+/** 低消费表扬是否到期：中午起评「上午」、傍晚起评「下午」。
+ * 条件：今天完全没花（zero），或设有日限额且今日消费低于限额、没有过度消费（thrifty）。 */
+export function noSpendPraiseDue(hour: number, spentTodayCents: number, limitCents: number): { period: "am" | "pm"; kind: "zero" | "thrifty" } | null {
+  const period = hour >= 18 ? "pm" : hour >= 12 ? "am" : null;
+  if (!period) return null;
+  if (spentTodayCents <= 0) return { period, kind: "zero" };
+  if (limitCents > 0 && spentTodayCents < limitCents) return { period, kind: "thrifty" };
+  return null;
+}
+
+/** 表扬文案：正向鼓励，强调应急资金变厚、压力变小。 */
+export function praiseMessage(period: "am" | "pm", kind: "zero" | "thrifty"): string {
+  if (kind === "zero") {
+    return period === "am"
+      ? "上午一分钱没花，太赞了！守住钱包，应急资金越来越厚，压力也越来越小。"
+      : "到下午都还没花钱，克制得漂亮！存款在悄悄变厚，心里更踏实、选择更多。";
+  }
+  return period === "am"
+    ? "上午消费很节制，没有超支。保持这个节奏，月底更从容，应急资金也在增加。"
+    : "下午依然花得很稳，没有过度消费。省钱的日子，选择更多、压力更小。";
+}
+
+/** 低消费表扬：早上/下午没怎么花就发一条鼓励推送（每个时段每天最多一条） */
+export function maybePraiseNoSpend(settings: DailyLimitAlertSettings, spentTodayCents: number, limitCents: number) {
+  if (!settings.enabled || !settings.notify || settings.praiseEnabled === false) return;
+  const due = noSpendPraiseDue(Number(beijingDateTimeParts().hour), spentTodayCents, limitCents);
+  if (!due) return;
+  const stamp = `${dateKey(new Date().toISOString())}:${due.period}`;
+  if (localStorage.getItem(PRAISE_NOTIFY_KEY) === stamp) return;
+  try {
+    if (typeof Notification === "undefined" || Notification.permission !== "granted") return;
+    new Notification(due.kind === "zero" ? "🌱 表扬：今天很会守住钱" : "👏 表扬：今天消费很节制", {
+      body: praiseMessage(due.period, due.kind)
+    });
+    localStorage.setItem(PRAISE_NOTIFY_KEY, stamp);
+  } catch {
+    // 不支持本地通知时忽略
+  }
+}
+
+/** 全屏红色警告遮罩：达到限额时覆盖整个页面，关闭后仅本次会话不再弹出（下次打开仍会提醒） */
 export function DailyLimitOverlay({ spentCents, limitCents, toleranceCents, onDismiss }: {
   spentCents: number;
   limitCents: number;
@@ -1502,7 +1547,7 @@ export function DailyLimitOverlay({ spentCents, limitCents, toleranceCents, onDi
           {overCents > 0 ? ` · 已超出 ¥${centsToYuan(overCents)}` : " · 已到临界，别再花了"}
         </p>
         <p className="daily-limit-advice">今天花的每一笔都会滚入明天的动态限额——少花明天更宽裕，多花后面几天自动收紧。想买的东西先加进「计划购买」，等额度够时再买。</p>
-        <button type="button" className="daily-limit-dismiss" onClick={onDismiss}>知道了，今天不再提醒</button>
+        <button type="button" className="daily-limit-dismiss" onClick={onDismiss}>知道了（下次打开仍会提醒）</button>
       </div>
     </div>
   );
@@ -1564,6 +1609,10 @@ export function LocalDailyLimitAlertPanel({ value, onChange }: {
       <label className="reminder-toggle">
         <input type="checkbox" checked={draft.notify} onChange={(event) => void toggleNotify(event.target.checked)} />
         同时发送系统通知（每天一条；服务端推送开启后，关闭应用也能收到）
+      </label>
+      <label className="reminder-toggle">
+        <input type="checkbox" checked={draft.praiseEnabled} onChange={(event) => setDraft((current) => ({ ...current, praiseEnabled: event.target.checked }))} />
+        低消费表扬：早上/下午没怎么花，就推送鼓励（应急资金越来越多、压力更小）
       </label>
       <div className="data-actions">
         {draft.enabled ? (

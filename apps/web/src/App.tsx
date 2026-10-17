@@ -93,6 +93,7 @@ import {
   loadSalarySettings,
   maybeNotifyDailyLimit,
   maybeNotifyPayday,
+  maybePraiseNoSpend,
   salaryBannerDismissedKey,
   salaryBannerState,
   saveDailyLimitAlertSettings,
@@ -670,12 +671,14 @@ export function App() {
 
   useEffect(() => {
     maybeNotifyDailyLimit(dailyLimitSettings, todaySpentCents, todayLimitCents);
+    maybePraiseNoSpend(dailyLimitSettings, todaySpentCents, todayLimitCents);
   }, [dailyLimitSettings, todaySpentCents, todayLimitCents]);
 
   // 应用一直开着也要能到点提醒：每 10 分钟重查一次
   useEffect(() => {
     const timer = window.setInterval(() => {
       maybeNotifyDailyLimit(dailyLimitSettings, todaySpentCents, todayLimitCents);
+      maybePraiseNoSpend(dailyLimitSettings, todaySpentCents, todayLimitCents);
     }, 10 * 60 * 1000);
     return () => window.clearInterval(timer);
   }, [dailyLimitSettings, todaySpentCents, todayLimitCents]);

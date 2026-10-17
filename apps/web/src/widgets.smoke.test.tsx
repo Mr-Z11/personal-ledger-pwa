@@ -16,6 +16,8 @@ import {
   loadSalarySettings,
   aggregateByPeriod,
   searchMatches,
+  noSpendPraiseDue,
+  praiseMessage,
   salaryBannerState,
   saveFixedExpenses,
   saveSalarySettings
@@ -283,5 +285,33 @@ describe("搜索记录：关键词匹配与按月/年汇总", () => {
       { key: "2026", count: 2, cents: yuanToCents(500) },
       { key: "2025", count: 1, cents: yuanToCents(500) }
     ]);
+  });
+});
+
+describe("低消费表扬：时段判定与文案", () => {
+  it("上午（12-17点）没花钱 → 表扬 zero", () => {
+    expect(noSpendPraiseDue(13, 0, 5000)).toEqual({ period: "am", kind: "zero" });
+  });
+
+  it("下午（≥18点）没花钱 → 表扬 zero", () => {
+    expect(noSpendPraiseDue(20, 0, 5000)).toEqual({ period: "pm", kind: "zero" });
+  });
+
+  it("低于日限额（未过度消费）→ 表扬 thrifty", () => {
+    expect(noSpendPraiseDue(14, 3000, 5000)).toEqual({ period: "am", kind: "thrifty" });
+  });
+
+  it("达到/超过日限额 → 不表扬", () => {
+    expect(noSpendPraiseDue(14, 5000, 5000)).toBeNull();
+    expect(noSpendPraiseDue(14, 6000, 5000)).toBeNull();
+  });
+
+  it("中午之前不触发", () => {
+    expect(noSpendPraiseDue(9, 0, 5000)).toBeNull();
+  });
+
+  it("文案包含正向鼓励关键词", () => {
+    expect(praiseMessage("am", "zero")).toContain("应急资金");
+    expect(praiseMessage("pm", "thrifty")).toContain("压力");
   });
 });
