@@ -2860,15 +2860,48 @@ function BudgetPanel({ budgets, categories, transactions, onSave, onDelete }: {
     const spent = spentFor(budget);
     const ratio = Math.min(100, Math.round((spent / budget.amountCents) * 100));
     const over = spent > budget.amountCents;
+    const isEditing = editing?.id === budget.id;
     return (
-      <div className={editing?.id === budget.id ? "budget-line editing" : "budget-line"} key={budget.id}>
-        <span>{budgetLabel(budget)}</span>
-        <strong>¥{centsToYuan(spent)} / ¥{centsToYuan(budget.amountCents)}</strong>
-        <div className={over ? "bar over" : "bar"}><i style={{ width: `${ratio}%` }} /></div>
-        <div className="budget-line-actions">
-          <button className="text-action" onClick={() => editBudget(budget)} type="button"><Pencil size={15} />编辑</button>
-          <button className="text-action danger" onClick={() => void deleteBudget(budget)} type="button"><Trash2 size={15} />删除</button>
-        </div>
+      <div className={isEditing ? "budget-line editing" : "budget-line"} key={budget.id}>
+        {isEditing ? (
+          <form className="budget-inline" onSubmit={submit}>
+            <div className="budget-inline-head">
+              <span className="budget-inline-title">编辑 · {budgetLabel(budget)}</span>
+              <span className="budget-inline-spent">已花 ¥{centsToYuan(spent)} / 预算 ¥{centsToYuan(budget.amountCents)}</span>
+            </div>
+            <div className="budget-inline-fields">
+              <MonthField value={month} onChange={setMonth} label="预算月份" />
+              <label>预算类型
+                <select value={budgetKind} onChange={(event) => setBudgetKind(event.target.value as "daily" | "total" | "category")}>
+                  <option value="daily">日常消费总预算</option>
+                  <option value="total">总开支预算（含日常消费）</option>
+                  <option value="category">分类预算（归入日常消费）</option>
+                </select>
+              </label>
+              {budgetKind === "category" && (
+                <select value={categoryId} onChange={(event) => setCategoryId(event.target.value)} required>
+                  <option value="" disabled>选择分类</option>
+                  {expenseCategories.map((category) => <option key={category.id} value={category.id}>{category.name}</option>)}
+                </select>
+              )}
+              <input value={amount} onChange={(event) => setAmount(event.target.value)} placeholder="预算金额" inputMode="decimal" required autoFocus />
+            </div>
+            <div className="budget-inline-actions">
+              <button className="primary" type="submit">保存修改</button>
+              <button type="button" className="ghost" onClick={resetForm}>取消</button>
+            </div>
+          </form>
+        ) : (
+          <>
+            <span>{budgetLabel(budget)}</span>
+            <strong>¥{centsToYuan(spent)} / ¥{centsToYuan(budget.amountCents)}</strong>
+            <div className={over ? "bar over" : "bar"}><i style={{ width: `${ratio}%` }} /></div>
+            <div className="budget-line-actions">
+              <button className="text-action" onClick={() => editBudget(budget)} type="button"><Pencil size={15} />编辑</button>
+              <button className="text-action danger" onClick={() => void deleteBudget(budget)} type="button"><Trash2 size={15} />删除</button>
+            </div>
+          </>
+        )}
       </div>
     );
   }
@@ -2892,26 +2925,32 @@ function BudgetPanel({ budgets, categories, transactions, onSave, onDelete }: {
           </div>
         </div>
       </div>
-      <form className="panel form-stack" onSubmit={submit}>
-        <h2>{editing ? "编辑预算" : "新增预算"}</h2>
-        <MonthField value={month} onChange={setMonth} label="预算月份" />
-        <label>预算类型
-          <select value={budgetKind} onChange={(event) => setBudgetKind(event.target.value as "daily" | "total" | "category")}>
-            <option value="daily">日常消费总预算</option>
-            <option value="total">总开支预算（含日常消费）</option>
-            <option value="category">分类预算（归入日常消费）</option>
-          </select>
-        </label>
-        {budgetKind === "category" && (
-          <select value={categoryId} onChange={(event) => setCategoryId(event.target.value)} required>
-            <option value="" disabled>选择分类</option>
-            {expenseCategories.map((category) => <option key={category.id} value={category.id}>{category.name}</option>)}
-          </select>
-        )}
-        <input value={amount} onChange={(event) => setAmount(event.target.value)} placeholder="预算金额" inputMode="decimal" required />
-        <button className="primary">{editing ? "保存修改" : "保存预算"}</button>
-        {editing && <button type="button" className="ghost" onClick={resetForm}>取消编辑</button>}
-      </form>
+      {editing ? (
+        <div className="panel budget-add-hint">
+          <p>正在编辑「{budgetLabel(editing)}」——直接在上方对应预算行内修改并保存。</p>
+          <button type="button" className="ghost" onClick={resetForm}>+ 新增预算</button>
+        </div>
+      ) : (
+        <form className="panel form-stack" onSubmit={submit}>
+          <h2>新增预算</h2>
+          <MonthField value={month} onChange={setMonth} label="预算月份" />
+          <label>预算类型
+            <select value={budgetKind} onChange={(event) => setBudgetKind(event.target.value as "daily" | "total" | "category")}>
+              <option value="daily">日常消费总预算</option>
+              <option value="total">总开支预算（含日常消费）</option>
+              <option value="category">分类预算（归入日常消费）</option>
+            </select>
+          </label>
+          {budgetKind === "category" && (
+            <select value={categoryId} onChange={(event) => setCategoryId(event.target.value)} required>
+              <option value="" disabled>选择分类</option>
+              {expenseCategories.map((category) => <option key={category.id} value={category.id}>{category.name}</option>)}
+            </select>
+          )}
+          <input value={amount} onChange={(event) => setAmount(event.target.value)} placeholder="预算金额" inputMode="decimal" required />
+          <button className="primary">保存预算</button>
+        </form>
+      )}
     </section>
   );
 }

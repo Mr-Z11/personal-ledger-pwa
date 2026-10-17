@@ -2351,6 +2351,53 @@ input[type="month"],
   background: rgba(47, 125, 79, 0.1);
 }
 
+.budget-inline {
+  display: grid;
+  gap: 0.55rem;
+}
+
+.budget-inline-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.budget-inline-title {
+  font-size: 0.9rem;
+  font-weight: 800;
+  color: #2f7d4f;
+}
+
+.budget-inline-spent {
+  font-size: 0.74rem;
+  color: rgba(36, 49, 39, 0.6);
+}
+
+.budget-inline-fields {
+  display: grid;
+  gap: 0.45rem;
+}
+
+.budget-inline-actions {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.budget-add-hint {
+  display: grid;
+  gap: 0.6rem;
+  align-content: start;
+}
+
+.budget-add-hint p {
+  margin: 0;
+  font-size: 0.82rem;
+  color: rgba(36, 49, 39, 0.62);
+  line-height: 1.5;
+}
+
 .budget-line-actions {
   display: flex;
   justify-content: flex-end;
@@ -2361,7 +2408,7 @@ input[type="month"],
   font-size: 0.9rem;
 }
 
-.budget-line span {
+.budget-line > span {
   display: inline-flex;
   align-items: center;
   gap: 0.45rem;
