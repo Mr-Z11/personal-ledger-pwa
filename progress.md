@@ -522,3 +522,15 @@ typecheck ✓ vitest 11/11 ✓ build ✓ → caddy force-recreate → 200；待�
 - 前端已部署（新 UI 含提醒时间 + 已买到手按钮）
 - api-local 已用新 VAPID subject 重启（推送可用），但仍是旧镜像 → 服务端尚未按提醒时间门控推送；待镜像下载完成后执行：
   `docker pull --platform linux/amd64 ghcr.io/mr-z11/personal-ledger-pwa-api:main && docker compose -f docker-compose.local.yml --env-file .env.local up -d api-local`
+
+## 会话记录（2026-10-17，Phase 25d）
+
+### 需求
+删除限额提醒的「提醒时间」设置，保留达线后打开 app 的全屏红色警告。
+
+### 实施（远端 commit 32cc58f4）
+- widgets.tsx：DailyLimitAlertSettings 删 remindHour；面板删「提醒时间」下拉；遮罩删提示行；本地通知恢复达线即发（每天一次）
+- App.tsx：syncDailyLimitSettings 固定传 dailyLimitHour: 0（中和服务端门控，达线即推），启动时同步一次确保服务端不吃默认 21 点；遮罩去掉 remindHour
+- 无 API 代码改动，无需更新镜像
+- 验证：typecheck ✓ vitest 13/13 ✓ build ✓ → caddy force-recreate → 200，bundle 中「提醒时间」0 次、「已买到手/已支出」在
+- 推送：沙箱代理仍 502，走 GitHub API 推送（32cc58f4）
