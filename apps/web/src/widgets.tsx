@@ -1,5 +1,5 @@
 import { centsToYuan, monthKey, yuanToCents, type Account, type Budget, type Category, type PlannedPurchase, type Transaction } from "@ledger/shared";
-import { BellRing, Check, Minus, ShoppingBag, Trash2, TrendingDown, TrendingUp, X } from "lucide-react";
+import { BellRing, Check, Minus, Plus, ShoppingBag, Trash2, TrendingDown, TrendingUp, X } from "lucide-react";
 import { useEffect, useId, useMemo, useState, type CSSProperties } from "react";
 import {
   beijingDateTimeParts,
@@ -941,53 +941,182 @@ export function parseInsuranceText(text: string): InsuranceItem[] {
 }
 
 /* ------------------------------------------------------------------ */
-/* 总览：当月固定支出（数据源与规划板块一致）                              */
+/* 总览：当月固定支出（手动维护，可复制为后续月份模板）                    */
 /* ------------------------------------------------------------------ */
 
-const FIXED_MAX_ITEMS = 8;
+export type FixedExpenseItem = {
+  id: string;
+  name: string;
+  /** 预计（分） */
+  predictedCents: number;
+  /** 已支出（分），随实际花费手动更新 */
+  spentCents: number;
+};
 
-export function FixedExpenseOverview({ transactions, categories }: {
-  transactions: Transaction[];
-  categories: Category[];
+const FIXED_EXPENSES_PREFIX = "ledger-fixed-expenses-";
+
+export function loadFixedExpenses(monthKeyValue: string): FixedExpenseItem[] {
+  try {
+    const raw = localStorage.getItem(FIXED_EXPENSES_PREFIX + monthKeyValue);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw) as Partial<FixedExpenseItem>[];
+    return parsed
+      .filter((item) => item && typeof item.name === "string")
+      .map((item, index) => ({
+        id: typeof item.id === "string" ? item.id : `fx-${monthKeyValue}-${index}`,
+        name: item.name as string,
+        predictedCents: Math.max(0, Math.round(Number(item.predictedCents) || 0)),
+        spentCents: Math.max(0, Math.round(Number(item.spentCents) || 0))
+      }));
+  } catch {
+    return [];
+  }
+}
+
+export function saveFixedExpenses(monthKeyValue: string, items: FixedExpenseItem[]) {
+  localStorage.setItem(FIXED_EXPENSES_PREFIX + monthKeyValue, JSON.stringify(items));
+}
+
+/** 把 sourceMonth 的项目作为模板复制到其后 count 个月：已支出归零，预计保留；已有数据的月份不覆盖。返回实际复制的月份数。 */
+export function copyFixedExpensesToFuture(sourceMonth: string, count: number): number {
+  const items = loadFixedExpenses(sourceMonth);
+  if (items.length === 0) return 0;
+  let copied = 0;
+  for (let offset = 1; offset <= count; offset += 1) {
+    const target = offsetMonthKey(sourceMonth, offset);
+    if (loadFixedExpenses(target).length > 0) continue;
+    const cloned: FixedExpenseItem[] = items.map((item) => ({
+      id: `fx-${target}-${Math.random().toString(36).slice(2, 9)}`,
+      name: item.name,
+      predictedCents: item.predictedCents,
+      spentCents: 0
+    }));
+    saveFixedExpenses(target, cloned);
+    copied += 1;
+  }
+  return copied;
+}
+
+function FixedExpenseRow({ item, onChange, onDelete }: {
+  item: FixedExpenseItem;
+  onChange: (patch: Partial<FixedExpenseItem>) => void;
+  onDelete: () => void;
 }) {
+  const [name, setName] = useState(item.name);
+  const [spent, setSpent] = useState(() => centsToYuan(item.spentCents));
+  const [predicted, setPredicted] = useState(() => centsToYuan(item.predictedCents));
+
+  const remaining = Math.max(0, item.predictedCents - item.spentCents);
+  const pct = item.predictedCents > 0 ? Math.min(100, Math.round((item.spentCents / item.predictedCents) * 100)) : 0;
+  const over = item.predictedCents > 0 && item.spentCents > item.predictedCents;
+
+  return (
+    <div className="fixed-expense-row manual">
+      <input
+        className="fe-name"
+        value={name}
+        maxLength={20}
+        placeholder="项目名"
+        onChange={(event) => {
+          setName(event.target.value);
+          onChange({ name: event.target.value });
+        }}
+      />
+      <div className="fe-fields">
+        <label className="fe-field">
+          <span>已支出</span>
+          <input
+            className="fe-amount"
+            inputMode="decimal"
+            value={spent}
+            onChange={(event) => {
+              setSpent(event.target.value);
+              try {
+                onChange({ spentCents: yuanToCents(event.target.value || "0") });
+              } catch {
+                onChange({ spentCents: 0 });
+              }
+            }}
+          />
+        </label>
+        <label className="fe-field">
+          <span>预计</span>
+          <input
+            className="fe-amount"
+            inputMode="decimal"
+            value={predicted}
+            onChange={(event) => {
+              setPredicted(event.target.value);
+              try {
+                onChange({ predictedCents: yuanToCents(event.target.value || "0") });
+              } catch {
+                onChange({ predictedCents: 0 });
+              }
+            }}
+          />
+        </label>
+      </div>
+      <div className="fe-right">
+        <span className={`fe-remaining ${over ? "over" : ""}`}>
+          {over ? `超 ¥${centsToYuan(item.spentCents - item.predictedCents)}` : `剩 ¥${centsToYuan(remaining)}`}
+        </span>
+        <div className="fe-bar"><i style={{ width: `${item.spentCents > 0 ? Math.max(3, pct) : 0}%` }} /></div>
+        <button type="button" className="icon-button" title="删除这项" aria-label="删除这项" onClick={onDelete}>
+          <Trash2 size={15} />
+        </button>
+      </div>
+    </div>
+  );
+}
+
+export function FixedExpenseOverview() {
   const currentKey = monthKey();
-  const schedule = useMemo(() => loadInsuranceSchedule(), []);
-  const configured = schedule.length > 0;
+  const [items, setItems] = useState<FixedExpenseItem[]>(() => loadFixedExpenses(currentKey));
+  const [nameInput, setNameInput] = useState("");
+  const [predictedInput, setPredictedInput] = useState("");
+  const [copyMonths, setCopyMonths] = useState(1);
+  const [copiedMsg, setCopiedMsg] = useState(false);
 
-  const items = useMemo(() => {
-    // 与规划板块同口径：常规项窗口截至上月（完整月）
-    const historyEndKey = offsetMonthKey(currentKey, -1);
-    const { rows } = collectRegularExpenses(transactions, categories, historyEndKey);
-    const realized = new Map<string, number>();
-    let insuranceSpent = 0;
-    transactions.forEach((item) => {
-      if (item.type !== "expense" || !dateKey(item.occurredAt).startsWith(currentKey)) return;
-      const category = categories.find((entry) => entry.id === item.categoryId);
-      const path = categoryPath(category, categories) || "未分类";
-      realized.set(path, (realized.get(path) ?? 0) + item.amountCents);
-      if (/保险/.test(path)) insuranceSpent += item.amountCents;
-    });
-    const regular = rows
-      .filter((row) => !(configured && /保险/.test(row.name)))
-      .map((row) => {
-        const total = row.monthly.reduce((sum, value) => sum + value, 0);
-        return {
-          name: row.name,
-          predictedCents: Math.round(total / row.monthsHit),
-          spentCents: realized.get(row.name) ?? 0,
-          calendar: false
-        };
-      });
-    const scheduledIns = configured ? scheduledInsuranceCents(schedule, currentKey) : 0;
-    return [
-      ...(scheduledIns > 0 ? [{ name: "保险（缴费日历）", predictedCents: scheduledIns, spentCents: insuranceSpent, calendar: true }] : []),
-      ...regular
-    ]
-      .sort((left, right) => right.predictedCents - left.predictedCents)
-      .slice(0, FIXED_MAX_ITEMS);
-  }, [transactions, categories, currentKey, schedule, configured]);
+  useEffect(() => {
+    setItems(loadFixedExpenses(currentKey));
+  }, [currentKey]);
 
-  if (items.length === 0) return null;
+  function persist(next: FixedExpenseItem[]) {
+    setItems(next);
+    saveFixedExpenses(currentKey, next);
+  }
+
+  function addItem() {
+    const name = nameInput.trim();
+    if (!name) return;
+    let predicted = 0;
+    try {
+      predicted = yuanToCents(predictedInput || "0");
+    } catch {
+      return;
+    }
+    if (predicted <= 0) return;
+    persist([
+      ...items,
+      { id: `fx-${currentKey}-${Math.random().toString(36).slice(2, 9)}`, name, predictedCents: predicted, spentCents: 0 }
+    ]);
+    setNameInput("");
+    setPredictedInput("");
+  }
+
+  function updateItem(id: string, patch: Partial<FixedExpenseItem>) {
+    persist(items.map((item) => (item.id === id ? { ...item, ...patch } : item)));
+  }
+
+  function deleteItem(id: string) {
+    persist(items.filter((item) => item.id !== id));
+  }
+
+  function copyTemplate() {
+    copyFixedExpensesToFuture(currentKey, copyMonths);
+    setCopiedMsg(true);
+    window.setTimeout(() => setCopiedMsg(false), 2600);
+  }
 
   const totalPredicted = items.reduce((sum, item) => sum + item.predictedCents, 0);
   const totalSpent = items.reduce((sum, item) => sum + item.spentCents, 0);
@@ -998,7 +1127,7 @@ export function FixedExpenseOverview({ transactions, categories }: {
     <section className="panel fixed-expense-overview">
       <div className="chart-heading">
         <h2>本月固定支出</h2>
-        <span>{monthLabel(currentKey)} · {items.length} 项 · 数据同规划板块</span>
+        <span>{monthLabel(currentKey)} · {items.length} 项 · 手动维护</span>
       </div>
       <div className="fixed-expense-total">
         <div>
@@ -1006,7 +1135,7 @@ export function FixedExpenseOverview({ transactions, categories }: {
           <strong>¥{centsToYuan(totalPredicted)}</strong>
         </div>
         <div>
-          <span>已实现支出</span>
+          <span>已支出合计</span>
           <strong>¥{centsToYuan(totalSpent)}</strong>
         </div>
         <div>
@@ -1018,31 +1147,68 @@ export function FixedExpenseOverview({ transactions, categories }: {
           <em>已支出 {donePct}%</em>
         </div>
       </div>
+
+      {items.length > 0 && (
+        <div className="fixed-expense-colhead">
+          <span>项目</span>
+          <span>已支出</span>
+          <span>预计</span>
+          <span>剩余</span>
+        </div>
+      )}
+
       <div className="fixed-expense-list">
-        {items.map((item) => {
-          const pct = item.predictedCents > 0 ? Math.min(100, Math.round((item.spentCents / item.predictedCents) * 100)) : 0;
-          const over = item.predictedCents > 0 && item.spentCents > item.predictedCents;
-          const remaining = Math.max(0, item.predictedCents - item.spentCents);
-          return (
-            <div className="fixed-expense-row" key={item.name}>
-              <div className="fixed-expense-info">
-                <strong>{item.name}</strong>
-                <span>{item.calendar ? "缴费日历" : "常规项"}</span>
-              </div>
-              <div className="fixed-expense-progress">
-                <div className="fixed-expense-numbers">
-                  <span>已支 ¥{centsToYuan(item.spentCents)}</span>
-                  <span className={over ? "over" : ""}>{over ? `超 ¥${centsToYuan(item.spentCents - item.predictedCents)}` : `剩 ¥${centsToYuan(remaining)}`}</span>
-                  <span>预计 ¥{centsToYuan(item.predictedCents)}</span>
-                </div>
-                <div className={`bar ${over ? "over" : ""}`}>
-                  <i style={{ width: `${item.spentCents > 0 ? Math.max(3, pct) : 0}%` }} />
-                </div>
-              </div>
-            </div>
-          );
-        })}
+        {items.length === 0 ? (
+          <p className="empty">还没有固定支出项。在下方添加项目与预计金额，已支出随实际花费手动更新；也能一键复制成后续月份的模板。</p>
+        ) : (
+          items.map((item) => (
+            <FixedExpenseRow
+              key={item.id}
+              item={item}
+              onChange={(patch) => updateItem(item.id, patch)}
+              onDelete={() => deleteItem(item.id)}
+            />
+          ))
+        )}
       </div>
+
+      <div className="fixed-expense-add">
+        <input
+          className="fe-name"
+          value={nameInput}
+          placeholder="新项目（如：房租）"
+          maxLength={20}
+          onChange={(event) => setNameInput(event.target.value)}
+          onKeyDown={(event) => { if (event.key === "Enter") addItem(); }}
+        />
+        <input
+          className="fe-amount fe-add-amount"
+          inputMode="decimal"
+          value={predictedInput}
+          placeholder="预计 ¥"
+          onChange={(event) => setPredictedInput(event.target.value)}
+          onKeyDown={(event) => { if (event.key === "Enter") addItem(); }}
+        />
+        <button type="button" className="primary" disabled={!nameInput.trim() || !predictedInput.trim()} onClick={addItem}>
+          <Plus size={16} />添加
+        </button>
+      </div>
+
+      <div className="fixed-expense-template">
+        <span>把当前 {items.length} 项作为模板复制到下月：</span>
+        <select value={copyMonths} onChange={(event) => setCopyMonths(Number(event.target.value))}>
+          {Array.from({ length: 11 }, (_, index) => index + 1).map((months) => (
+            <option key={months} value={months}>{months} 个月</option>
+          ))}
+        </select>
+        <button type="button" className="ghost" disabled={items.length === 0} onClick={copyTemplate}>
+          复制模板
+        </button>
+        {copiedMsg && <em className="copied-hint">已复制到后续月份（已有数据的月份不会被覆盖）</em>}
+      </div>
+      <p className="reminder-hint">
+        手动维护，不依赖交易记录；导入 AI 后可由消费记录自动生成，此处改为只读对照。已支出随你实际花费填写，剩余 = 预计 − 已支出。
+      </p>
     </section>
   );
 }

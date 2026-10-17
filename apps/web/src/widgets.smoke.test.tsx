@@ -13,6 +13,7 @@ import {
   DEFAULT_SALARY_SETTINGS,
   loadSalarySettings,
   salaryBannerState,
+  saveFixedExpenses,
   saveSalarySettings
 } from "./widgets";
 import { PlanView, loadInsuranceSchedule, parseInsuranceText, saveInsuranceSchedule } from "./plan";
@@ -170,16 +171,25 @@ describe("常规项支出与规划页", () => {
     saveInsuranceSchedule([]);
   });
 
-  it("FixedExpenseOverview 展示固定项合计/已实现/待支出", () => {
-    const html = renderToString(<FixedExpenseOverview transactions={regularTransactions} categories={categories} />);
+  it("FixedExpenseOverview 手动模式渲染关键标签与空状态", () => {
+    const html = renderToString(<FixedExpenseOverview />);
     expect(html).toContain("本月固定支出");
     expect(html).toContain("固定项合计");
-    expect(html).toContain("已实现支出");
+    expect(html).toContain("已支出合计");
     expect(html).toContain("待支出额度");
-    expect(html).toContain("贷款本金");
+    expect(html).toContain("手动维护");
+    expect(html).toContain("还没有固定支出项");
   });
 
-  it("FixedExpenseOverview 无常规项时不渲染", () => {
-    expect(renderToString(<FixedExpenseOverview transactions={[]} categories={categories} />)).toBe("");
+  it("FixedExpenseOverview 从 localStorage 读取手动项目", () => {
+    saveFixedExpenses(monthKey(), [
+      { id: "fx-test-1", name: "房租", predictedCents: 300000, spentCents: 100000 },
+      { id: "fx-test-2", name: "物业费", predictedCents: 50000, spentCents: 0 }
+    ]);
+    const html = renderToString(<FixedExpenseOverview />);
+    expect(html).toContain("房租");
+    expect(html).toContain("物业费");
+    expect(html).toContain("剩 ¥2000.00");
+    saveFixedExpenses(monthKey(), []);
   });
 });

@@ -6121,6 +6121,162 @@ input[type="month"],
   }
 }
 
+/* 手动维护模式：可编辑行 */
+.fixed-expense-colhead {
+  display: grid;
+  grid-template-columns: minmax(6rem, 1.2fr) minmax(0, 2fr) auto;
+  gap: 0.6rem;
+  padding: 0 0.6rem 0.3rem;
+  font-size: 0.62rem;
+  color: #b09a76;
+  letter-spacing: 0.03em;
+}
+.fixed-expense-colhead span:nth-child(2) {
+  text-align: left;
+}
+.fixed-expense-colhead span:nth-child(3),
+.fixed-expense-colhead span:nth-child(4) {
+  text-align: right;
+}
+
+.fixed-expense-row.manual {
+  grid-template-columns: minmax(6rem, 1.2fr) minmax(0, 2fr) auto;
+  gap: 0.6rem;
+  align-items: center;
+  padding: 0.5rem 0.6rem;
+  border-radius: 0.55rem;
+  background: #fffdf7;
+  border: 1px solid #f0e6d2;
+}
+
+.fe-name,
+.fe-amount {
+  border: 1px solid rgba(49, 71, 58, 0.16);
+  border-radius: 0.5rem;
+  padding: 0.42rem 0.55rem;
+  background: #fffdf7;
+  color: #31473a;
+  font-size: 0.78rem;
+  width: 100%;
+  box-sizing: border-box;
+}
+.fe-name:focus,
+.fe-amount:focus {
+  outline: none;
+  border-color: #1f5f74;
+  box-shadow: 0 0 0 2px rgba(31, 95, 116, 0.12);
+}
+
+.fe-fields {
+  display: flex;
+  gap: 0.55rem;
+}
+.fe-field {
+  flex: 1 1 0;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.16rem;
+}
+.fe-field span {
+  font-size: 0.6rem;
+  color: #8a7154;
+}
+
+.fe-right {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 0.18rem;
+}
+.fe-remaining {
+  font-size: 0.74rem;
+  font-weight: 700;
+  color: #2f7d4f;
+  white-space: nowrap;
+}
+.fe-remaining.over {
+  color: #c0392b;
+}
+.fe-bar {
+  width: 5.2rem;
+  height: 5px;
+  background: #eee2cc;
+  border-radius: 999px;
+  overflow: hidden;
+}
+.fe-bar i {
+  display: block;
+  height: 100%;
+  background: #1f5f74;
+  border-radius: 999px;
+}
+
+.fixed-expense-add {
+  display: grid;
+  grid-template-columns: minmax(0, 1.4fr) 7.5rem auto;
+  gap: 0.6rem;
+  margin-top: 0.7rem;
+}
+
+.fixed-expense-template {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+  margin-top: 0.7rem;
+  font-size: 0.72rem;
+  color: #6b5a41;
+}
+.fixed-expense-template select {
+  border: 1px solid rgba(49, 71, 58, 0.16);
+  border-radius: 0.5rem;
+  padding: 0.35rem 0.5rem;
+  background: #fffdf7;
+  color: #31473a;
+  font-size: 0.74rem;
+}
+.fixed-expense-template button.ghost {
+  border: 1px solid rgba(49, 71, 58, 0.22);
+  background: #fffdf7;
+  color: #1f5f74;
+  border-radius: 0.5rem;
+  padding: 0.4rem 0.8rem;
+  font-size: 0.74rem;
+  font-weight: 700;
+}
+.fixed-expense-template button.ghost:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+.copied-hint {
+  font-style: normal;
+  color: #2f7d4f;
+  font-weight: 700;
+}
+
+@media (max-width: 940px) {
+  .fixed-expense-colhead {
+    display: none;
+  }
+  .fixed-expense-row.manual {
+    grid-template-columns: 1fr;
+    gap: 0.45rem;
+  }
+  .fe-right {
+    flex-direction: row;
+    align-items: center;
+    justify-content: space-between;
+  }
+  .fe-bar {
+    flex: 1;
+    margin: 0 0.6rem;
+  }
+  .fixed-expense-add {
+    grid-template-columns: 1fr;
+  }
+}
+
 /* ------------------------------------------------------------------ */
 /* 当日限额全屏警告                                                      */
 /* ------------------------------------------------------------------ */
