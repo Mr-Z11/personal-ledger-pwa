@@ -216,4 +216,12 @@ describe("常规项支出与规划页", () => {
     expect(html).toContain("1323.50");
     saveFixedExpenses(monthKey(), []);
   });
+
+  it("FixedExpenseOverview 添加表单提供分类选择", () => {
+    const html = renderToString(<FixedExpenseOverview transactions={[]} categories={categories} />);
+    expect(html).toContain("关联分类（可选）");
+    // 分类选择器列出账本里的分类（路径中的 > 在 HTML 中被转义，这里只校验分类名片段）
+    expect(html).toContain("三餐");
+    expect(html).toContain("贷款本金");
+  });
 });

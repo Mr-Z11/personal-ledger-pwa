@@ -1043,10 +1043,11 @@ export function buildFixedExpenseSuggestions(transactions: Transaction[], catego
   return candidates;
 }
 
-function FixedExpenseRow({ item, autoSpent, onChange, onDelete, onUnlink }: {
+function FixedExpenseRow({ item, autoSpent, categories, onChange, onDelete, onUnlink }: {
   item: FixedExpenseItem;
   /** 非 null 表示该固定项已关联分类，已支出由当月该分类消费自动汇总（只读） */
   autoSpent: number | null;
+  categories: Category[];
   onChange: (patch: Partial<FixedExpenseItem>) => void;
   onDelete: () => void;
   onUnlink: () => void;
@@ -1096,6 +1097,20 @@ function FixedExpenseRow({ item, autoSpent, onChange, onDelete, onUnlink }: {
                 }
               }}
             />
+            <select
+              className="fe-cat"
+              value={item.categoryId ?? ""}
+              title="关联分类后，已支出按当月该分类消费自动累计"
+              onChange={(event) => {
+                const value = event.target.value;
+                onChange({ categoryId: value || null, spentCents: 0 });
+              }}
+            >
+              <option value="">关联分类→自动</option>
+              {categories.map((category) => (
+                <option key={category.id} value={category.id}>{categoryPath(category, categories)}</option>
+              ))}
+            </select>
           </label>
         )}
         <label className="fe-field">
@@ -1136,6 +1151,7 @@ export function FixedExpenseOverview({ transactions = [], categories = [] }: {
   const [items, setItems] = useState<FixedExpenseItem[]>(() => loadFixedExpenses(currentKey));
   const [nameInput, setNameInput] = useState("");
   const [predictedInput, setPredictedInput] = useState("");
+  const [categoryInput, setCategoryInput] = useState("");
   const [copyMonths, setCopyMonths] = useState(1);
   const [copiedMsg, setCopiedMsg] = useState(false);
   const [showSuggest, setShowSuggest] = useState(true);
@@ -1178,6 +1194,7 @@ export function FixedExpenseOverview({ transactions = [], categories = [] }: {
     ]);
     setNameInput("");
     setPredictedInput("");
+    setCategoryInput("");
   }
 
   function updateItem(id: string, patch: Partial<FixedExpenseItem>) {
@@ -1270,6 +1287,7 @@ export function FixedExpenseOverview({ transactions = [], categories = [] }: {
                 key={item.id}
                 item={item}
                 autoSpent={auto}
+                categories={categories}
                 onChange={(patch) => updateItem(item.id, patch)}
                 onDelete={() => deleteItem(item.id)}
                 onUnlink={() => unlinkItem(item.id, auto ?? 0)}
@@ -1290,7 +1308,7 @@ export function FixedExpenseOverview({ transactions = [], categories = [] }: {
             if (event.key === "Enter") {
               let predicted = 0;
               try { predicted = yuanToCents(predictedInput || "0"); } catch { return; }
-              addItem(nameInput, predicted);
+              addItem(nameInput, predicted, categoryInput || null);
             }
           }}
         />
@@ -1304,10 +1322,21 @@ export function FixedExpenseOverview({ transactions = [], categories = [] }: {
             if (event.key === "Enter") {
               let predicted = 0;
               try { predicted = yuanToCents(predictedInput || "0"); } catch { return; }
-              addItem(nameInput, predicted);
+              addItem(nameInput, predicted, categoryInput || null);
             }
           }}
         />
+        <select
+          className="fe-cat fe-add-cat"
+          value={categoryInput}
+          title="选择分类后，已支出按当月该分类消费自动累计"
+          onChange={(event) => setCategoryInput(event.target.value)}
+        >
+          <option value="">关联分类（可选）</option>
+          {categories.map((category) => (
+            <option key={category.id} value={category.id}>{categoryPath(category, categories)}</option>
+          ))}
+        </select>
         <button
           type="button"
           className="primary"
@@ -1315,7 +1344,7 @@ export function FixedExpenseOverview({ transactions = [], categories = [] }: {
           onClick={() => {
             let predicted = 0;
             try { predicted = yuanToCents(predictedInput || "0"); } catch { return; }
-            addItem(nameInput, predicted);
+            addItem(nameInput, predicted, categoryInput || null);
           }}
         >
           <Plus size={16} />添加

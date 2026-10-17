@@ -6214,9 +6214,27 @@ input[type="month"],
 
 .fixed-expense-add {
   display: grid;
-  grid-template-columns: minmax(0, 1.4fr) 7.5rem auto;
+  grid-template-columns: minmax(0, 1.4fr) 7rem 8.5rem auto;
   gap: 0.6rem;
   margin-top: 0.7rem;
+}
+
+.fe-cat {
+  border: 1px solid rgba(49, 71, 58, 0.16);
+  border-radius: 0.5rem;
+  padding: 0.42rem 0.5rem;
+  background: #fffdf7;
+  color: #31473a;
+  font-size: 0.68rem;
+  width: 100%;
+  box-sizing: border-box;
+}
+.fe-field .fe-cat {
+  margin-top: 0.28rem;
+  font-size: 0.6rem;
+}
+.fe-add-cat {
+  min-width: 0;
 }
 
 .fixed-expense-template {
