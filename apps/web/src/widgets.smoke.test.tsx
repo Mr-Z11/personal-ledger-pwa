@@ -11,6 +11,7 @@ import {
   SalaryBanner,
   TrendFocusCards,
   DEFAULT_SALARY_SETTINGS,
+  buildFixedExpenseSuggestions,
   loadSalarySettings,
   salaryBannerState,
   saveFixedExpenses,
@@ -190,6 +191,29 @@ describe("常规项支出与规划页", () => {
     expect(html).toContain("房租");
     expect(html).toContain("物业费");
     expect(html).toContain("剩 ¥2000.00");
+    saveFixedExpenses(monthKey(), []);
+  });
+
+  it("buildFixedExpenseSuggestions 参考项来自常规项与保险日历", () => {
+    saveInsuranceSchedule([{ id: "ins1", name: "重疾险", month: Number(thisMonth.slice(5, 7)), amountCents: 470000, note: undefined }]);
+    const list = buildFixedExpenseSuggestions(regularTransactions, categories, thisMonth);
+    const names = list.map((candidate) => candidate.name);
+    expect(names).toContain("其他 > 三餐");
+    expect(names).toContain("其他 > 贷款本金");
+    expect(names.some((name) => name.includes("保险"))).toBe(true);
+    const loan = list.find((candidate) => candidate.name === "其他 > 贷款本金");
+    expect(loan?.categoryId).toBe("cat-loan");
+    saveInsuranceSchedule([]);
+  });
+
+  it("FixedExpenseOverview 关联分类时自动跟踪当月已支出", () => {
+    saveFixedExpenses(monthKey(), [
+      { id: "fx-auto-1", name: "三餐", predictedCents: 20000, spentCents: 0, categoryId: "cat-food" }
+    ]);
+    const html = renderToString(<FixedExpenseOverview transactions={sampleTransactions} categories={categories} />);
+    expect(html).toContain("自动");
+    // sampleTransactions 中 cat-food 当月合计 35.5 + 88 + 1200 = 1323.50 元
+    expect(html).toContain("1323.50");
     saveFixedExpenses(monthKey(), []);
   });
 });

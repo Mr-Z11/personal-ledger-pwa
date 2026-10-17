@@ -1169,7 +1169,7 @@ function Overview({ summary, budgetCents, totalBudgetCents, accounts, categories
         />
       </div>
 
-      <FixedExpenseOverview />
+      <FixedExpenseOverview transactions={transactions} categories={categories} />
 
       <PlannedPurchasePanel
         items={plannedPurchases}
