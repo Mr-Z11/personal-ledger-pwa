@@ -1835,35 +1835,80 @@ export function SearchView({ transactions, accounts, categories }: {
 }) {
   const [query, setQuery] = useState("");
   const [visibleLimit, setVisibleLimit] = useState(200);
+  const [categoryFilter, setCategoryFilter] = useState("");
+  const [accountFilter, setAccountFilter] = useState("");
+  const [sortMode, setSortMode] = useState<"date-desc" | "date-asc" | "amount-desc" | "amount-asc">("date-desc");
   const needle = query.trim();
 
   const matched = useMemo(() => searchMatches(needle, transactions, accounts, categories), [transactions, accounts, categories, needle]);
-  const monthly = useMemo(() => aggregateByPeriod(matched, 7), [matched]);
-  const yearly = useMemo(() => aggregateByPeriod(matched, 4), [matched]);
 
-  const expenseTotal = matched.reduce((sum, item) => sum + (item.type === "expense" ? item.amountCents : 0), 0);
-  const count = matched.length;
+  // 搜索词变化时重置筛选与排序
+  useEffect(() => {
+    setCategoryFilter("");
+    setAccountFilter("");
+    setSortMode("date-desc");
+    setVisibleLimit(200);
+  }, [needle]);
+
+  const categoryOptions = useMemo(() => {
+    const seen = new Map<string, string>();
+    matched.forEach((item) => {
+      if (item.categoryId && !seen.has(item.categoryId)) {
+        seen.set(item.categoryId, categoryPath(categories.find((entry) => entry.id === item.categoryId), categories) || "未分类");
+      }
+    });
+    return Array.from(seen, ([id, name]) => ({ id, name }));
+  }, [matched, categories]);
+
+  const accountOptions = useMemo(() => {
+    const seen = new Map<string, string>();
+    matched.forEach((item) => {
+      if (item.accountId && !seen.has(item.accountId)) {
+        seen.set(item.accountId, accounts.find((entry) => entry.id === item.accountId)?.name ?? "账户");
+      }
+    });
+    return Array.from(seen, ([id, name]) => ({ id, name }));
+  }, [matched, accounts]);
+
+  const filtered = useMemo(() => {
+    let list = matched;
+    if (categoryFilter) list = list.filter((item) => item.categoryId === categoryFilter);
+    if (accountFilter) list = list.filter((item) => item.accountId === accountFilter);
+    return [...list].sort((left, right) => {
+      if (sortMode === "date-asc") return left.occurredAt.localeCompare(right.occurredAt);
+      if (sortMode === "amount-desc") return right.amountCents - left.amountCents;
+      if (sortMode === "amount-asc") return left.amountCents - right.amountCents;
+      return right.occurredAt.localeCompare(left.occurredAt);
+    });
+  }, [matched, categoryFilter, accountFilter, sortMode]);
+
+  const monthly = useMemo(() => aggregateByPeriod(filtered, 7), [filtered]);
+  const yearly = useMemo(() => aggregateByPeriod(filtered, 4), [filtered]);
+
+  const expenseTotal = filtered.reduce((sum, item) => sum + (item.type === "expense" ? item.amountCents : 0), 0);
+  const count = filtered.length;
+  const hasFilters = Boolean(categoryFilter || accountFilter);
   const monthlyAvg = monthly.length > 0 ? Math.round(expenseTotal / monthly.length) : 0;
   const dateRange = count > 0
-    ? `${matched[count - 1].occurredAt.slice(0, 10)} ~ ${matched[0].occurredAt.slice(0, 10)}`
+    ? `${filtered.reduce((min, item) => (item.occurredAt < min ? item.occurredAt : min), filtered[0].occurredAt).slice(0, 10)} ~ ${filtered.reduce((max, item) => (item.occurredAt > max ? item.occurredAt : max), filtered[0].occurredAt).slice(0, 10)}`
     : "";
 
   const maxMonthly = monthly.reduce((max, item) => Math.max(max, item.cents), 0);
   const maxYearly = yearly.reduce((max, item) => Math.max(max, item.cents), 0);
-  const visible = matched.slice(0, visibleLimit);
+  const visible = filtered.slice(0, visibleLimit);
 
   return (
     <section className="panel search-view">
       <div className="chart-heading">
         <h2>搜索记录</h2>
-        <span>{needle ? `匹配 ${count} 笔消费` : "输入关键词，查看明细与按月/年汇总"}</span>
+        <span>{needle ? `匹配 ${matched.length} 笔${hasFilters ? ` · 筛选后 ${count} 笔` : ""}` : "输入关键词，查看明细与按月/年汇总"}</span>
       </div>
 
       <label className="search search-big">
         <Search size={18} />
         <input
           value={query}
-          onChange={(event) => { setQuery(event.target.value); setVisibleLimit(200); }}
+          onChange={(event) => setQuery(event.target.value)}
           placeholder="搜索消费记录，如：加油、餐饮、物业费…"
           autoFocus
         />
@@ -1874,10 +1919,34 @@ export function SearchView({ transactions, accounts, categories }: {
         )}
       </label>
 
+      {needle && matched.length > 0 && (
+        <div className="search-filters">
+          <select value={categoryFilter} onChange={(event) => { setCategoryFilter(event.target.value); setVisibleLimit(200); }} disabled={categoryOptions.length === 0}>
+            <option value="">全部分类</option>
+            {categoryOptions.map((option) => <option key={option.id} value={option.id}>{option.name}</option>)}
+          </select>
+          <select value={accountFilter} onChange={(event) => { setAccountFilter(event.target.value); setVisibleLimit(200); }} disabled={accountOptions.length === 0}>
+            <option value="">全部账户</option>
+            {accountOptions.map((option) => <option key={option.id} value={option.id}>{option.name}</option>)}
+          </select>
+          <select value={sortMode} onChange={(event) => { setSortMode(event.target.value as typeof sortMode); setVisibleLimit(200); }}>
+            <option value="date-desc">日期 ↓</option>
+            <option value="date-asc">日期 ↑</option>
+            <option value="amount-desc">金额 ↓</option>
+            <option value="amount-asc">金额 ↑</option>
+          </select>
+          {hasFilters && (
+            <button type="button" className="search-clear-filters" onClick={() => { setCategoryFilter(""); setAccountFilter(""); setVisibleLimit(200); }}>清除筛选</button>
+          )}
+        </div>
+      )}
+
       {!needle ? (
         <p className="empty">输入关键词（备注、商户、分类或标签均可），即可列出匹配的消费明细，并按月、按年汇总其总体状况。</p>
-      ) : count === 0 ? (
+      ) : matched.length === 0 ? (
         <p className="empty">没有找到包含「{query}」的消费记录。</p>
+      ) : count === 0 ? (
+        <p className="empty">没有符合当前筛选条件的记录。<button type="button" className="link-button" onClick={() => { setCategoryFilter(""); setAccountFilter(""); }}>清除筛选</button></p>
       ) : (
         <>
           <div className="search-summary">
