@@ -86,10 +86,8 @@ import {
   SalaryBanner,
   SearchView,
   TrendFocusCards,
-  dailyLimitAlertDismissedKey,
   dailyLimitAlertTriggered,
   dailyLimitCents,
-  dismissDailyLimitAlertForToday,
   dismissSalaryBannerForToday,
   loadDailyLimitAlertSettings,
   loadSalarySettings,
@@ -609,7 +607,8 @@ export function App() {
   const [salarySettings, setSalarySettings] = useState<SalarySettings>(() => loadSalarySettings());
   const [salaryDismissed, setSalaryDismissed] = useState<string | null>(() => salaryBannerDismissedKey());
   const [dailyLimitSettings, setDailyLimitSettings] = useState<DailyLimitAlertSettings>(() => loadDailyLimitAlertSettings());
-  const [dailyLimitDismissed, setDailyLimitDismissed] = useState<string | null>(() => dailyLimitAlertDismissedKey());
+  // 当日限额红色警报：一旦超限，当天每次打开 App 都会再次弹出；仅在本次会话内可关闭
+  const [dailyLimitOverlayClosed, setDailyLimitOverlayClosed] = useState(false);
 
   const refreshLocal = useCallback(async () => {
     const [nextAccounts, nextCategories, nextTransactions, nextBudgets, nextAnalysisNotes, nextPlannedPurchases, nextOutboxCount, nextLastSync] = await Promise.all([
@@ -664,7 +663,6 @@ export function App() {
   );
   const todayRemainingCents = monthBudgetCents > 0 ? todayLimitCents - todaySpentCents : null;
   const dailyLimitHit = dailyLimitAlertTriggered(dailyLimitSettings, todaySpentCents, todayLimitCents);
-  const todayKey = dateKey(new Date().toISOString());
 
   useEffect(() => {
     maybeNotifyPayday(salarySettings);
@@ -1038,15 +1036,12 @@ export function App() {
             setToast("流水已恢复");
           }} />
         )}
-        {dailyLimitHit && dailyLimitDismissed !== todayKey && (
+        {dailyLimitHit && !dailyLimitOverlayClosed && (
           <DailyLimitOverlay
             spentCents={todaySpentCents}
             limitCents={todayLimitCents}
             toleranceCents={dailyLimitSettings.toleranceCents}
-            onDismiss={() => {
-              dismissDailyLimitAlertForToday();
-              setDailyLimitDismissed(todayKey);
-            }}
+            onDismiss={() => setDailyLimitOverlayClosed(true)}
           />
         )}
         {toast && <div className="save-toast" role="status">{toast}</div>}
@@ -2269,7 +2264,7 @@ function SettingsPanel({
 }) {
   return (
     <section className="settings-stack">
-      <SettingsSection title="数据管理" description="导入、导出和数据统计。" defaultOpen>
+      <SettingsSection title="数据管理" description="导入、导出和数据统计。">
         <div className="form-stack data-tools-panel">
           <label>导出格式
             <select value={exportFormat} onChange={(event) => onExportFormatChange(event.target.value as ExportFormat)}>
@@ -2303,7 +2298,7 @@ function SettingsPanel({
           </div>
         </div>
       </SettingsSection>
-      <SettingsSection title="数据同步" description="切换云端/本地同步地址，服务器到期后用本地电脑保存数据。" defaultOpen>
+      <SettingsSection title="数据同步" description="切换云端/本地同步地址，服务器到期后用本地电脑保存数据。">
         <SyncSettingsPanel />
       </SettingsSection>
       <SettingsSection title="账户管理" description="维护储蓄卡、消费卡和额度。">

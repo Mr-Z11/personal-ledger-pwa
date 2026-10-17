@@ -1837,6 +1837,8 @@ export function SearchView({ transactions, accounts, categories }: {
   const [visibleLimit, setVisibleLimit] = useState(200);
   const [categoryFilter, setCategoryFilter] = useState("");
   const [accountFilter, setAccountFilter] = useState("");
+  const [fromMonth, setFromMonth] = useState("");
+  const [toMonth, setToMonth] = useState("");
   const [sortMode, setSortMode] = useState<"date-desc" | "date-asc" | "amount-desc" | "amount-asc">("date-desc");
   const needle = query.trim();
 
@@ -1846,6 +1848,8 @@ export function SearchView({ transactions, accounts, categories }: {
   useEffect(() => {
     setCategoryFilter("");
     setAccountFilter("");
+    setFromMonth("");
+    setToMonth("");
     setSortMode("date-desc");
     setVisibleLimit(200);
   }, [needle]);
@@ -1870,24 +1874,28 @@ export function SearchView({ transactions, accounts, categories }: {
     return Array.from(seen, ([id, name]) => ({ id, name }));
   }, [matched, accounts]);
 
+  const monthOptions = useMemo(() => Array.from(new Set(matched.map((item) => item.occurredAt.slice(0, 7)))).sort(), [matched]);
+
   const filtered = useMemo(() => {
     let list = matched;
     if (categoryFilter) list = list.filter((item) => item.categoryId === categoryFilter);
     if (accountFilter) list = list.filter((item) => item.accountId === accountFilter);
+    if (fromMonth) list = list.filter((item) => item.occurredAt.slice(0, 7) >= fromMonth);
+    if (toMonth) list = list.filter((item) => item.occurredAt.slice(0, 7) <= toMonth);
     return [...list].sort((left, right) => {
       if (sortMode === "date-asc") return left.occurredAt.localeCompare(right.occurredAt);
       if (sortMode === "amount-desc") return right.amountCents - left.amountCents;
       if (sortMode === "amount-asc") return left.amountCents - right.amountCents;
       return right.occurredAt.localeCompare(left.occurredAt);
     });
-  }, [matched, categoryFilter, accountFilter, sortMode]);
+  }, [matched, categoryFilter, accountFilter, fromMonth, toMonth, sortMode]);
 
   const monthly = useMemo(() => aggregateByPeriod(filtered, 7), [filtered]);
   const yearly = useMemo(() => aggregateByPeriod(filtered, 4), [filtered]);
 
   const expenseTotal = filtered.reduce((sum, item) => sum + (item.type === "expense" ? item.amountCents : 0), 0);
   const count = filtered.length;
-  const hasFilters = Boolean(categoryFilter || accountFilter);
+  const hasFilters = Boolean(categoryFilter || accountFilter || fromMonth || toMonth);
   const monthlyAvg = monthly.length > 0 ? Math.round(expenseTotal / monthly.length) : 0;
   const dateRange = count > 0
     ? `${filtered.reduce((min, item) => (item.occurredAt < min ? item.occurredAt : min), filtered[0].occurredAt).slice(0, 10)} ~ ${filtered.reduce((max, item) => (item.occurredAt > max ? item.occurredAt : max), filtered[0].occurredAt).slice(0, 10)}`
@@ -1929,6 +1937,14 @@ export function SearchView({ transactions, accounts, categories }: {
             <option value="">全部账户</option>
             {accountOptions.map((option) => <option key={option.id} value={option.id}>{option.name}</option>)}
           </select>
+          <select value={fromMonth} onChange={(event) => { setFromMonth(event.target.value); setVisibleLimit(200); }} disabled={monthOptions.length === 0} title="起始月份">
+            <option value="">起始月</option>
+            {monthOptions.map((month) => <option key={`from-${month}`} value={month}>{monthLabel(month)}</option>)}
+          </select>
+          <select value={toMonth} onChange={(event) => { setToMonth(event.target.value); setVisibleLimit(200); }} disabled={monthOptions.length === 0} title="截止月份">
+            <option value="">截止月</option>
+            {monthOptions.map((month) => <option key={`to-${month}`} value={month}>{monthLabel(month)}</option>)}
+          </select>
           <select value={sortMode} onChange={(event) => { setSortMode(event.target.value as typeof sortMode); setVisibleLimit(200); }}>
             <option value="date-desc">日期 ↓</option>
             <option value="date-asc">日期 ↑</option>
@@ -1936,7 +1952,7 @@ export function SearchView({ transactions, accounts, categories }: {
             <option value="amount-asc">金额 ↑</option>
           </select>
           {hasFilters && (
-            <button type="button" className="search-clear-filters" onClick={() => { setCategoryFilter(""); setAccountFilter(""); setVisibleLimit(200); }}>清除筛选</button>
+            <button type="button" className="search-clear-filters" onClick={() => { setCategoryFilter(""); setAccountFilter(""); setFromMonth(""); setToMonth(""); setVisibleLimit(200); }}>清除筛选</button>
           )}
         </div>
       )}
@@ -1946,7 +1962,7 @@ export function SearchView({ transactions, accounts, categories }: {
       ) : matched.length === 0 ? (
         <p className="empty">没有找到包含「{query}」的消费记录。</p>
       ) : count === 0 ? (
-        <p className="empty">没有符合当前筛选条件的记录。<button type="button" className="link-button" onClick={() => { setCategoryFilter(""); setAccountFilter(""); }}>清除筛选</button></p>
+        <p className="empty">没有符合当前筛选条件的记录。<button type="button" className="link-button" onClick={() => { setCategoryFilter(""); setAccountFilter(""); setFromMonth(""); setToMonth(""); }}>清除筛选</button></p>
       ) : (
         <>
           <div className="search-summary">
