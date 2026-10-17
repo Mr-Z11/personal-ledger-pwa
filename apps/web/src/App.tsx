@@ -2406,7 +2406,7 @@ function PushAlertPanel({ token, onToast }: { token: string; onToast: (message: 
       <div className="data-actions">
         {subscribed ? (
           <>
-            <button type="button" disabled={busy} onClick={() => void sendTest()}>{busy ? "发送中…" : "发一条测试推送"}</button>
+            <button type="button" disabled={busy} onClick={() => void sendTest()}>{busy ? "发送中…" : "发一条测试推送（验证通道）"}</button>
             <button type="button" disabled={busy} onClick={() => void disable()}>关闭推送</button>
           </>
         ) : (

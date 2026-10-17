@@ -68,8 +68,8 @@ export async function sendSalaryReminder(userId: string, content: string) {
 
 export async function sendTestReminder(userId: string) {
   return deliver(userId, {
-    title: "测试提醒",
-    body: "恭喜！工资日提醒已开启，到时会像这样提醒你分配资金。",
+    title: "测试推送（通道验证）",
+    body: "推送通道正常！当日限额警告、计划购买提醒都会像这样送到手机。",
     url: "/"
   });
 }
