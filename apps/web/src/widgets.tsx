@@ -1055,8 +1055,6 @@ export type DailyLimitAlertSettings = {
   enabled: boolean;
   /** 误差金额（分）：当日消费达到「日限额 − 误差」即触发提醒 */
   toleranceCents: number;
-  /** 提醒时间（北京时间小时 0-23）：到点后才发手机提醒；应用内全屏警告不受限制 */
-  remindHour: number;
   notify: boolean;
 };
 
@@ -1067,7 +1065,6 @@ const DAILY_LIMIT_NOTIFY_KEY = "ledger-daily-limit-notified";
 export const DEFAULT_DAILY_LIMIT_ALERT: DailyLimitAlertSettings = {
   enabled: true,
   toleranceCents: 2000,
-  remindHour: 21,
   notify: true
 };
 
@@ -1079,7 +1076,6 @@ export function loadDailyLimitAlertSettings(): DailyLimitAlertSettings {
     return {
       enabled: parsed.enabled !== false,
       toleranceCents: Math.max(0, Math.round(Number(parsed.toleranceCents) || DEFAULT_DAILY_LIMIT_ALERT.toleranceCents)),
-      remindHour: Math.min(23, Math.max(0, Math.round(Number(parsed.remindHour ?? DEFAULT_DAILY_LIMIT_ALERT.remindHour)))),
       notify: parsed.notify !== false
     };
   } catch {
@@ -1110,13 +1106,6 @@ export function dailyLimitAlertTriggered(settings: DailyLimitAlertSettings, spen
   return settings.enabled && limitCents > 0 && spentTodayCents >= limitCents - settings.toleranceCents;
 }
 
-/** 手机提醒是否已到点（提醒时间之前不发通知/推送） */
-export function dailyLimitReminderDue(settings: DailyLimitAlertSettings, spentTodayCents: number, limitCents: number) {
-  if (!dailyLimitAlertTriggered(settings, spentTodayCents, limitCents)) return false;
-  const hour = Number(beijingDateTimeParts().hour);
-  return hour >= settings.remindHour;
-}
-
 export function dismissDailyLimitAlertForToday() {
   localStorage.setItem(DAILY_LIMIT_DISMISS_KEY, dateKey(new Date().toISOString()));
 }
@@ -1125,10 +1114,10 @@ export function dailyLimitAlertDismissedKey() {
   return localStorage.getItem(DAILY_LIMIT_DISMISS_KEY);
 }
 
-/** 触发后每天在设定时间发一条系统通知（失败静默降级为应用内全屏警告） */
+/** 触发后每天发一条系统通知（失败静默降级为应用内全屏警告） */
 export function maybeNotifyDailyLimit(settings: DailyLimitAlertSettings, spentTodayCents: number, limitCents: number) {
   if (!settings.enabled || !settings.notify) return;
-  if (!dailyLimitReminderDue(settings, spentTodayCents, limitCents)) return;
+  if (!dailyLimitAlertTriggered(settings, spentTodayCents, limitCents)) return;
   const todayKey = dateKey(new Date().toISOString());
   if (localStorage.getItem(DAILY_LIMIT_NOTIFY_KEY) === todayKey) return;
   try {
@@ -1143,16 +1132,13 @@ export function maybeNotifyDailyLimit(settings: DailyLimitAlertSettings, spentTo
 }
 
 /** 全屏红色警告遮罩：达到限额时覆盖整个页面，关闭后当天不再弹出 */
-export function DailyLimitOverlay({ spentCents, limitCents, toleranceCents, remindHour, onDismiss }: {
+export function DailyLimitOverlay({ spentCents, limitCents, toleranceCents, onDismiss }: {
   spentCents: number;
   limitCents: number;
   toleranceCents: number;
-  remindHour: number;
   onDismiss: () => void;
 }) {
   const overCents = spentCents - limitCents;
-  const currentHour = Number(beijingDateTimeParts().hour);
-  const pendingPush = currentHour < remindHour;
   useEffect(() => {
     document.body.classList.add("daily-limit-lock");
     return () => document.body.classList.remove("daily-limit-lock");
@@ -1168,11 +1154,6 @@ export function DailyLimitOverlay({ spentCents, limitCents, toleranceCents, remi
           {overCents > 0 ? ` · 已超出 ¥${centsToYuan(overCents)}` : " · 已到临界，别再花了"}
         </p>
         <p className="daily-limit-advice">今天剩下的时间停止非必要消费，想买的东西先加进「计划购买」，等明天有额度再买。</p>
-        <p className="daily-limit-remind">
-          {pendingPush
-            ? `手机提醒时间 ${String(remindHour).padStart(2, "0")}:00，到点后推送一次（设置 → 当日限额提醒 可改时间）`
-            : `已过提醒时间 ${String(remindHour).padStart(2, "0")}:00，开启推送的手机今天会收到一次提醒`}
-        </p>
         <button type="button" className="daily-limit-dismiss" onClick={onDismiss}>知道了，今天不再提醒</button>
       </div>
     </div>
@@ -1203,6 +1184,7 @@ export function LocalDailyLimitAlertPanel({ value, onChange }: {
     setDraft((current) => ({ ...current, notify }));
   }
 
+  /** 误差金额改动即时生效（含服务端推送），开关走「保存设置」 */
   function save() {
     let toleranceCents = value.toleranceCents;
     try {
@@ -1217,36 +1199,20 @@ export function LocalDailyLimitAlertPanel({ value, onChange }: {
     window.setTimeout(() => setSaved(false), 2000);
   }
 
-  /** 提醒时间改动即时生效（含服务端推送时间），误差金额与开关走「保存设置」 */
-  function changeRemindHour(hour: number) {
-    const next = { ...draft, remindHour: hour };
-    setDraft(next);
-    onChange(next);
-  }
-
   return (
     <div className="reminder-panel form-stack">
       <div className={`reminder-status ${value.enabled ? "on" : ""}`}>
         <BellRing size={16} />
-        <span>{value.enabled ? `已开启：今日消费达日限额 − ¥${centsToYuan(value.toleranceCents)} 全屏警告，${String(value.remindHour).padStart(2, "0")}:00 推送手机提醒` : "未开启"}</span>
+        <span>{value.enabled ? `已开启：今日消费达日限额 − ¥${centsToYuan(value.toleranceCents)} 即全屏警告并推送手机提醒` : "未开启"}</span>
       </div>
-      <div className="reminder-row">
-        <label>提醒时间
-          <select value={draft.remindHour} onChange={(event) => changeRemindHour(Number(event.target.value))}>
-            {Array.from({ length: 24 }, (_, index) => index).map((hour) => (
-              <option key={hour} value={hour}>{String(hour).padStart(2, "0")}:00</option>
-            ))}
-          </select>
-        </label>
-        <label>误差金额（元）
-          <input
-            value={toleranceInput}
-            inputMode="decimal"
-            onChange={(event) => setToleranceInput(event.target.value)}
-          />
-        </label>
-      </div>
-      <span className="reminder-hint">今日消费 ≥（月日常预算 ÷ 当月天数）− 误差金额 时：打开应用立即全屏红色警告；手机推送/系统通知只在提醒时间之后发一次。</span>
+      <label>误差金额（元）
+        <input
+          value={toleranceInput}
+          inputMode="decimal"
+          onChange={(event) => setToleranceInput(event.target.value)}
+        />
+      </label>
+      <span className="reminder-hint">今日消费 ≥（月日常预算 ÷ 当月天数）− 误差金额 时：打开应用立即全屏红色警告，同时推送手机提醒（每天一条）。</span>
       <label className="reminder-toggle">
         <input type="checkbox" checked={draft.notify} onChange={(event) => void toggleNotify(event.target.checked)} />
         同时发送系统通知（每天一条；服务端推送开启后，关闭应用也能收到）
@@ -1262,7 +1228,7 @@ export function LocalDailyLimitAlertPanel({ value, onChange }: {
         <button type="button" disabled={!changed} onClick={save}>{saved ? "已保存" : "保存设置"}</button>
       </div>
       {permission === "denied" && <p className="reminder-hint warn">系统通知权限已被拒绝：可在系统设置中允许通知；即使不开通知，应用内全屏警告依然有效。</p>}
-      <p className="reminder-hint">达到限额后打开应用会全屏红色警告，点「知道了」后当天不再弹出；手机推送由服务器每 20 分钟检查一次，到提醒时间且达线才推（每天最多一条）。</p>
+      <p className="reminder-hint">达到限额后打开应用会全屏红色警告，点「知道了」后当天不再弹出；手机推送由服务器每 20 分钟检查一次，达线即推（每天最多一条）。</p>
     </div>
   );
 }
