@@ -6501,16 +6501,16 @@ body.daily-limit-lock {
 .planbuy-list {
   display: flex;
   flex-direction: column;
-  gap: 0.5rem;
+  gap: 0.4rem;
 }
 
 .planbuy-row {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 0.8rem;
-  padding: 0.65rem 0.85rem;
-  border-radius: 0.75rem;
+  gap: 0.6rem;
+  padding: 0.5rem 0.8rem;
+  border-radius: 0.7rem;
   background: rgba(49, 71, 58, 0.05);
   border: 1px solid rgba(49, 71, 58, 0.08);
 }
@@ -6532,17 +6532,17 @@ body.daily-limit-lock {
 .planbuy-main {
   display: flex;
   flex-direction: column;
-  gap: 0.15rem;
+  gap: 0.1rem;
   min-width: 0;
 }
 
 .planbuy-main strong {
-  font-size: 0.95rem;
+  font-size: 0.9rem;
   overflow-wrap: anywhere;
 }
 
 .planbuy-status {
-  font-size: 0.76rem;
+  font-size: 0.74rem;
   color: rgba(36, 49, 39, 0.55);
 }
 
@@ -6576,28 +6576,28 @@ body.daily-limit-lock {
   display: flex;
   flex-direction: column;
   align-items: flex-end;
-  gap: 0.3rem;
+  gap: 0.25rem;
   flex-shrink: 0;
 }
 
 .planbuy-side > strong {
-  font-size: 0.98rem;
+  font-size: 0.92rem;
 }
 
 .planbuy-actions {
   display: flex;
   align-items: center;
-  gap: 0.35rem;
+  gap: 0.3rem;
 }
 
 .planbuy-mark {
   display: inline-flex;
   align-items: center;
-  gap: 0.25rem;
+  gap: 0.2rem;
   border: 1px solid rgba(31, 95, 116, 0.4);
   border-radius: 999px;
-  padding: 0.28rem 0.7rem;
-  font-size: 0.78rem;
+  padding: 0.22rem 0.55rem;
+  font-size: 0.74rem;
   font-weight: 800;
   color: #1f5f74;
   background: rgba(31, 95, 116, 0.08);

@@ -1731,15 +1731,15 @@ export function PlannedPurchasePanel({ items, todayRemainingCents, onAdd, onTogg
                         {todayRemainingCents === null
                           ? "未设预算"
                           : canBuy
-                            ? "今日余额可买，安排！"
+                            ? "今日可买"
                             : `还差 ¥${centsToYuan(gap)}`}
                       </span>
                     </div>
                     <div className="planbuy-side">
                       <strong>¥{centsToYuan(item.amountCents)}</strong>
                       <div className="planbuy-actions">
-                        <button type="button" className="planbuy-mark" title="已买到手，移入已买列表" onClick={() => onToggleComplete(item)}>
-                          <Check size={15} />已买到手
+                        <button type="button" className="planbuy-mark" title="标记已买到手，移入已买列表" onClick={() => onToggleComplete(item)}>
+                          已买到手
                         </button>
                         <button type="button" className="icon-button" title="删除这条计划" aria-label="删除这条计划" onClick={() => onDelete(item)}>
                           <Trash2 size={15} />
@@ -1752,7 +1752,7 @@ export function PlannedPurchasePanel({ items, todayRemainingCents, onAdd, onTogg
             </div>
           )}
           {pending.length > 0 && (
-            <p className="reminder-hint">「已买到手」= 这一项买好了，移到下方已买列表；右侧垃圾桶才是删除这条计划。</p>
+            <p className="reminder-hint">「已买到手」移入已买列表；右侧垃圾桶才是删除。</p>
           )}
           {completed.length > 0 && (
             <details className="planbuy-completed">
