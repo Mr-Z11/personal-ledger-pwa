@@ -2443,6 +2443,7 @@ function PushAlertPanel({ token, onToast }: { token: string; onToast: (message: 
       <div className={`reminder-status ${subscribed ? "on" : ""}`}>
         <Bell size={16} />
         <span>{subscribed === null ? "检测推送状态…" : subscribed ? "手机推送已开启（这台设备）" : "手机推送未开启"}</span>
+        <InfoTip text="开启后即使应用已关闭，服务器也会推送：① 今日消费达限额警告 ② 计划购买「今日余额可买」提醒（各每天最多一条）。iPhone 请先把 App 加到主屏幕，再从主屏幕图标打开后开启。" />
       </div>
       <div className="data-actions">
         {subscribed ? (
@@ -2456,7 +2457,6 @@ function PushAlertPanel({ token, onToast }: { token: string; onToast: (message: 
           </button>
         )}
       </div>
-      <InfoTip text="开启后即使应用已关闭，服务器也会推送：① 今日消费达限额警告 ② 计划购买「今日余额可买」提醒（各每天最多一条）。iPhone 请先把 App 加到主屏幕，再从主屏幕图标打开后开启。" />
     </div>
   );
 }
@@ -2968,7 +2968,7 @@ function BudgetPanel({ budgets, categories, transactions, onSave, onDelete }: {
     if (!wasEditing) setShowNewForm(false);
   }
 
-  function renderBudgetLine(budget: Budget) {
+  function renderBudgetLine(budget: Budget, tip?: ReactNode) {
     const spent = spentFor(budget);
     const ratio = Math.min(100, Math.round((spent / budget.amountCents) * 100));
     const over = spent > budget.amountCents;
@@ -3006,7 +3006,7 @@ function BudgetPanel({ budgets, categories, transactions, onSave, onDelete }: {
         ) : (
           <>
             <div className="budget-info">
-              <span className="budget-name">{budgetLabel(budget)}</span>
+              <span className="budget-name">{budgetLabel(budget)}{tip ? <InfoTip text={tip} /> : null}</span>
               <span className="budget-amount">
                 ¥{centsToYuan(spent)} / ¥{centsToYuan(budget.amountCents)}
                 {over && <em className="budget-over">超</em>}
@@ -3028,16 +3028,18 @@ function BudgetPanel({ budgets, categories, transactions, onSave, onDelete }: {
       <div className="budget-columns">
         <div className="panel budget-scope-panel">
           <div className="budget-list">
-            {dailyOverallBudget ? renderBudgetLine(dailyOverallBudget) : <p className="empty">尚未设置日常消费总预算</p>}
-            {categoryBudgets.map(renderBudgetLine)}
+            {dailyOverallBudget
+              ? renderBudgetLine(dailyOverallBudget, <>不含贷款、保险、教育等专项支出</>)
+              : <p className="empty">尚未设置日常消费总预算<InfoTip text="不含贷款、保险、教育等专项支出" /></p>}
+            {categoryBudgets.map((budget) => renderBudgetLine(budget))}
           </div>
-          <InfoTip text={<>不含贷款、保险、教育等专项支出</>} />
         </div>
         <div className="panel budget-scope-panel">
           <div className="budget-list">
-            {totalBudget ? renderBudgetLine(totalBudget) : <p className="empty">尚未设置总开支预算</p>}
+            {totalBudget
+              ? renderBudgetLine(totalBudget, <>包含日常消费 ¥{centsToYuan(monthDailySpent)} + 专项支出 ¥{centsToYuan(monthSpecialSpent)}</>)
+              : <p className="empty">尚未设置总开支预算<InfoTip text={<>包含日常消费 ¥{centsToYuan(monthDailySpent)} + 专项支出 ¥{centsToYuan(monthSpecialSpent)}</>} /></p>}
           </div>
-          <InfoTip text={<>包含日常消费 ¥{centsToYuan(monthDailySpent)} + 专项支出 ¥{centsToYuan(monthSpecialSpent)}</>} />
         </div>
       </div>
       {editing ? (

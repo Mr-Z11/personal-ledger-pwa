@@ -192,7 +192,7 @@ function InsuranceSchedulePanel({ items, futureKeys, onChange }: {
     <details className="panel plan-insurance">
       <summary className="insights-fold-summary">
         <div>
-          <h2>保险缴费日历（本机）</h2>
+          <h2>保险缴费日历（本机）<InfoTip text="只保存在本机（换设备需重新导入）。预测总支出 = 原预测 − 历史保险月均 + 当月日历保费；没有保单的月份（如 10 月、12 月）不会计入保险支出。" /></h2>
           <span>{items.length > 0 ? `${items.length} 项保单 · 未来3个月日历保费 ¥${centsToYuan(futurePremium)} · 点击管理` : "配置后，预测总支出会按缴费月份精确修正（只保存在本机）"}</span>
         </div>
         <em>{items.length > 0 ? "管理" : "去配置"}</em>
@@ -243,7 +243,6 @@ function InsuranceSchedulePanel({ items, futureKeys, onChange }: {
           disabled={!importText.trim()}
           onClick={importAndSave}
         >{saved ? `已保存（共 ${items.length} 项）` : `解析并保存${importText.trim() ? `（${importText.trim().split(/\r?\n/).filter(Boolean).length} 行）` : ""}`}</button>
-        <InfoTip text="只保存在本机（换设备需重新导入）。预测总支出 = 原预测 − 历史保险月均 + 当月日历保费；没有保单的月份（如 10 月、12 月）不会计入保险支出。" />
       </div>
     </details>
   );

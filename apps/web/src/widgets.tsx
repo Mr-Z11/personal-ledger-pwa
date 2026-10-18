@@ -223,6 +223,7 @@ export function LocalSalaryReminderPanel({ value, onChange }: {
       <div className={`reminder-status ${value.enabled ? "on" : ""}`}>
         <BellRing size={16} />
         <span>{value.enabled ? `已开启：每月 ${value.day} 日提醒，提前 ${value.leadDays} 天倒计时` : "未开启"}</span>
+        <InfoTip text="提醒完全保存在本机（离线、无服务器也能用）。打开应用时若到了工资日或倒计时范围内，首页顶部会显示横幅。当月没有 31 日时自动在当月最后一天提醒。" />
       </div>
       <div className="reminder-row">
         <label>工资日
@@ -266,7 +267,6 @@ export function LocalSalaryReminderPanel({ value, onChange }: {
         </button>
       </div>
       {permission === "denied" && <p className="reminder-hint warn">系统通知权限已被拒绝：可在系统设置中允许通知；即使不开通知，应用内横幅提醒依然有效。</p>}
-      <InfoTip text="提醒完全保存在本机（离线、无服务器也能用）。打开应用时若到了工资日或倒计时范围内，首页顶部会显示横幅。当月没有 31 日时自动在当月最后一天提醒。" />
     </div>
   );
 }
@@ -1326,7 +1326,7 @@ export function FixedExpenseOverview({ transactions = [], categories = [] }: {
   return (
     <section className="panel fixed-expense-overview">
       <div className="chart-heading">
-        <h2>本月固定支出</h2>
+        <h2>本月固定支出<InfoTip text="手动维护，不依赖交易记录；从参考项目添加且关联了分类时，已支出会随当月该分类的实际消费自动更新（显示「自动」）。导入 AI 后可由消费记录全自动生成，此处改为只读对照。" /></h2>
         <div className="fe-head-right">
           <span>{monthLabel(currentKey)} · {items.length} 项 · 手动维护</span>
           <button
@@ -1477,7 +1477,6 @@ export function FixedExpenseOverview({ transactions = [], categories = [] }: {
         </button>
         {copiedMsg && <em className="copied-hint">已复制到后续月份（已有数据的月份不会被覆盖）</em>}
       </div>
-      <InfoTip text="手动维护，不依赖交易记录；从参考项目添加且关联了分类时，已支出会随当月该分类的实际消费自动更新（显示「自动」）。导入 AI 后可由消费记录全自动生成，此处改为只读对照。" />
     </section>
   );
 }
@@ -1752,17 +1751,16 @@ export function LocalDailyLimitAlertPanel({ value, onChange }: {
         <BellRing size={16} />
         <span>{value.enabled ? `已开启：今日消费达日限额 − ¥${centsToYuan(value.toleranceCents)} 即全屏警告并推送手机提醒` : "未开启"}</span>
       </div>
-      <label>误差金额（元）
+      <label>误差金额（元）<InfoTip text="今日动态限额 =（月日常预算 − 截至昨日累计支出）÷ 含今日的剩余天数。今日消费 ≥ 今日动态限额 − 误差金额 时：打开应用立即全屏红色警告，同时推送手机提醒（每天一条）。当日花多少只影响明天及以后的限额，不改变今天自己的限额。" />
         <input
           value={toleranceInput}
           inputMode="decimal"
           onChange={(event) => setToleranceInput(event.target.value)}
         />
       </label>
-      <InfoTip text="今日动态限额 =（月日常预算 − 截至昨日累计支出）÷ 含今日的剩余天数。今日消费 ≥ 今日动态限额 − 误差金额 时：打开应用立即全屏红色警告，同时推送手机提醒（每天一条）。当日花多少只影响明天及以后的限额，不改变今天自己的限额。" />
       <label className="reminder-toggle">
         <input type="checkbox" checked={draft.notify} onChange={(event) => void toggleNotify(event.target.checked)} />
-        同时发送系统通知（每天一条；服务端推送开启后，关闭应用也能收到）
+        同时发送系统通知（每天一条；服务端推送开启后，关闭应用也能收到）<InfoTip text="达到限额后打开应用会全屏红色警告，点「知道了」后当天不再弹出；手机推送由服务器每 20 分钟检查一次，达线即推（每天最多一条）。" />
       </label>
       <label className="reminder-toggle">
         <input type="checkbox" checked={draft.praiseEnabled} onChange={(event) => setDraft((current) => ({ ...current, praiseEnabled: event.target.checked }))} />
@@ -1779,7 +1777,6 @@ export function LocalDailyLimitAlertPanel({ value, onChange }: {
         <button type="button" disabled={!changed} onClick={save}>{saved ? "已保存" : "保存设置"}</button>
       </div>
       {permission === "denied" && <p className="reminder-hint warn">系统通知权限已被拒绝：可在系统设置中允许通知；即使不开通知，应用内全屏警告依然有效。</p>}
-      <InfoTip text="达到限额后打开应用会全屏红色警告，点「知道了」后当天不再弹出；手机推送由服务器每 20 分钟检查一次，达线即推（每天最多一条）。" />
     </div>
   );
 }
@@ -1876,7 +1873,7 @@ export function PlannedPurchasePanel({ items, todayRemainingCents, onAdd, onTogg
   return (
     <section className="panel planbuy-panel">
       <div className="chart-heading">
-        <h2>计划购买</h2>
+        <h2>计划购买<InfoTip text="清单云端同步，多设备一致；余额够买时应用内高亮 + 手机推送提醒（每天一轮）。「买到手」移入已买列表；右侧垃圾桶才是删除。" /></h2>
         <span>
           {pending.length > 0
             ? `${pending.length} 项待买 · 合计 ¥${centsToYuan(pendingTotal)}`
@@ -1923,7 +1920,7 @@ export function PlannedPurchasePanel({ items, todayRemainingCents, onAdd, onTogg
       )}
 
       {todayRemainingCents === null && pending.length > 0 && (
-        <InfoTip text="未设日常消费预算，无法判断今日余额（设置 → 预算管理）。" />
+        <p className="reminder-hint">未设日常消费预算，无法判断今日余额（设置 → 预算管理）。</p>
       )}
       {permission === "default" && pending.length > 0 && (
         <p className="reminder-hint">
@@ -1969,9 +1966,6 @@ export function PlannedPurchasePanel({ items, todayRemainingCents, onAdd, onTogg
               })}
             </div>
           )}
-          {pending.length > 0 && (
-            <InfoTip text="「买到手」移入已买列表；右侧垃圾桶才是删除。" />
-          )}
           {completed.length > 0 && (
             <details className="planbuy-completed">
               <summary>已买 {completed.length} 项（点开查看/撤销）</summary>
@@ -2000,7 +1994,6 @@ export function PlannedPurchasePanel({ items, todayRemainingCents, onAdd, onTogg
           )}
         </>
       )}
-      <InfoTip text="清单云端同步，多设备一致；余额够买时应用内高亮 + 手机推送提醒（每天一轮）。" />
     </section>
   );
 }
