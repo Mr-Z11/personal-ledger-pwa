@@ -4,12 +4,13 @@
 
 维护个人记账 PWA 的日常迭代与数据安全。**云端服务器已于 2026-08-29 失效**，当前数据完全以本地 Mac 为中心（local-first 架构 + 本地 PostgreSQL）。云端重建与否待用户决策。
 
-## 2. 已完成并部署的变更（2026-10-17 最新）
+## 2. 已完成并部署的变更（2026-10-18 最新）
 
-最新 commit `2d417e1` 已推送 GitHub main（本地与 origin 0/0 同步）；前端已构建并部署到**本地 Mac 栈**（云端服务器仍失效，见第 3 节）。
+最新 commit `0c63832` 已推送 GitHub main（本地与 origin 0/0 同步）；前端已构建并部署到**本地 Mac 栈**（云端服务器仍失效，见第 3 节）。
 
 | Commit | 描述 | 关键文件 | 状态 |
 |--------|------|---------|------|
+| `0c63832` | **全页面模块标题/内容字号对齐报表设置基准**：基准=标题 0.95rem/700、副题 0.75rem/700、标签 0.72rem/700、数值 0.95rem/700、徽章 0.72rem/700。修总览（标题 1rem/900→0.95/700、quick-card 标签 0.74→0.72rem、数值 1.02→0.95rem、蓄水池 1rem→0.95rem、三模块副题补全局规则）、报表（toolbar/分类统计/趋势面板标题、趋势副题 0.76→0.75rem、趋势徽章 0.62→0.72rem）、规划（4 标题 + 副题 0.78→0.75rem）、搜索（标题+副题）；补 h2 字重 700（Tailwind preflight 会把 h2 打成 400）；删三处表单头 0.92rem 与移动端 0.88/0.62/0.66rem 过期覆盖。无头 Chrome 390px 五页复测全部达标 | styles.css | 已部署 |
 | `2d417e1` | **报表 6 模块密度对齐设置页 + 字号加粗统一**：模块头 padding 0.5/0.85rem、gap 0.6rem；折叠体 0.85/0.7rem；标题统一 0.95rem/700（原三种规格：report-fold 1rem/900、insights 1rem/400 未加粗、special 0.74rem/900）；小字 0.75rem/700；卡片标签 0.72rem/700、数值 0.95rem/700；移动端过小标签 0.62/0.66rem 上调；修 insights 标题块 strut 撑高 4px | styles.css | 已部署 |
 | `6608ef0` | **设置页标题「?」修复**：`.settings-section summary span{display:block}` 把标题里 InfoTip 的 span 也块级化导致「?」独占一行；改 `:not(.info-tip)` 排除后「?」恢复紧跟标题（无头 Chrome 390px 实测 sameLine=true） | styles.css | 已部署 |
 | `d6deee4` | **删除冗余抬头 + 说明全「?」化**：分类维护删「分类」h2（说明「?」包进消费/收入切换标签行，新增 `.category-kind-wrap`）；账户管理删「账户」h2（「?」跟新增按钮后）；三个内联编辑表单头（新增账户/分类/预算）说明改「?」贴 h2，编辑态「正在编辑：X」数据行保留 | App.tsx, styles.css | 已部署 |
@@ -367,3 +368,12 @@
 - **卡片统一**：标签 0.72rem/700、数值 0.95rem/700（节奏卡数值 1.05rem 作页面主数字）；移动端过小标签（异常卡 0.62rem、指标卡 0.66rem）上调至 0.72rem
 - **strut 坑修复**：insights 标题容器是普通 block，行内 span 受父级 24px 行高 strut 影响把标题块撑高 4px（44px vs 子元素 37px）→ 改 flex 纵向堆叠后与 report-fold 头齐平（均 56px）
 - 校验：typecheck + build（PWA 校验通过）+ force-recreate caddy-local；无头 Chrome 390px 实测 6 模块标题全部 15.2px/700（与设置页 sectionTitle 完全一致）、头高 63/67 → 56px；逐模块截图目验通过
+
+## 2026-10-18 全页面模块标题/内容字号对齐报表设置基准（0c63832，已推送 origin/main）
+- 诉求：「继续排查其他模块的标题字体大小与内容字体大小，要与『报表』『设置』内的模块保持一致」。
+- 方法：先无头 Chrome 390px 全页面审计（总览/流水/搜索/报表/规划/设置的 h2、副题、标签、数值 computed style），与基准对比列出不一致清单，再定向改 CSS，改完全面复测 + 截图目验。
+- 基准（沿用上轮报表/设置定稿）：标题 0.95rem/700、副题 0.75rem/700、卡片标签 0.72rem/700、卡片数值 0.95rem/700、徽章 0.72rem/700。
+- 主要修正：① 通用 h2 1rem→0.95rem；② `.panel .chart-heading h2` 补 700（原 900）；③ 固定支出/计划购买 1.04rem、趋势面板 1.02rem→0.95rem；④ quick-card 标签 0.74rem/900→0.72rem/700、数值 1.02rem→0.95rem；⑤ 蓄水池标题 1rem→0.95rem、副字移动端 0.62rem 删除；⑥ 新增全局 `.chart-heading span:not(.info-tip)` 副题规则（总览三模块原本无规则继承 16px/400）；⑦ 删 `.report-page` 作用域 0.78rem/900 旧副题规则；⑧ 趋势面板徽章 0.62rem/950→0.72rem/700、标签 0.7→0.72rem/700、数值 0.98→0.95rem/700；⑨ report-toolbar span 0.8→0.75rem；⑩ inline-form-head p 0.82→0.75rem + 删三处 0.76rem 覆盖。
+- **关键坑：Tailwind preflight 把 h1-h6 的 font-size/font-weight 重置为 inherit**——本项目 body 是 1rem/400，所以任何没显式设 font-weight 的 h2 都会渲染成 400（审计发现「分析报表」「支出规划」两个 toolbar 标题是 400）。report-toolbar h2 / inline-form-head h2 / settings-section-body .panel h2 / edit-panel h2 共 4 处补 700。今后新增标题规则必须同时写 font-weight。
+- 保留不动的（设计使然，已在 commit message 列明）：hero 大数字、非报表 metric 1.45rem、交易详情标题 1.12rem、日限额全屏警报（1.5rem/2.6rem）、row 列表组件（全页共享规则，跨页已一致）、表单 label/输入控件、图表内部微字/脚注。
+- 验证：typecheck ✓ 31 冒烟 ✓ build 6.1s ✓ force-recreate caddy-local；无头 Chrome 390px 复测五页模块标题全部 15.2px/700、副题 12px/700、标签 11.52px/700、数值 15.2px/700；三页截图目验通过。

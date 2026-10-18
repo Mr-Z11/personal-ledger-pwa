@@ -325,3 +325,5 @@ Phase 29
 - [x] 设置页标题「?」独占一行修复：根因是 `.settings-section summary span{display:block}` 误伤 InfoTip span（无头 Chrome 实测确认），改 `:not(.info-tip)` 后「?」紧跟标题；build + force-recreate caddy-local，commit 6608ef0 已推送 origin/main
 
 - [x] 报表 6 模块密度对齐设置页 + 字号加粗统一：模块头 0.5/0.85rem、折叠体 0.85/0.7rem、页面间距 0.6rem；标题统一 0.95rem/700（修 insights 未加粗）、小字 0.75rem/700、卡片标签 0.72rem/700、数值 0.95rem/700；修 insights 标题 strut 撑高；无头 Chrome 390px 实测 6 模块标题 15.2px/700 与设置一致；build + force-recreate caddy-local，commit 2d417e1 已推送 origin/main
+
+- [x] 全页面模块标题/内容字号对齐报表设置基准：无头 Chrome 390px 六页审计列不一致清单；标题统一 0.95rem/700（通用 h2、chart-heading h2 补 700、固定支出/计划购买/趋势面板、表单头删 0.92rem 覆盖）、副题统一 0.75rem/700（新增全局 chart-heading span 规则、report-toolbar、inline-form-head、趋势副题）、标签 0.72rem/700（quick-card、蓄水池、趋势、spending-split）、数值 0.95rem/700（quick-card、蓄水池、趋势）；4 处 h2 补 font-weight 700（Tailwind preflight 坑）；typecheck + 31 冒烟 + build + force-recreate caddy-local，五页复测全部达标，commit 0c63832 已推送 origin/main
