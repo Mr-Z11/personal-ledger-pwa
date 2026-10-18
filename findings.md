@@ -416,3 +416,5 @@ docker logs personal-ledger-pwa-api-local-1 | tail     # 确认 prisma db push �
 - **压缩顺序参考**：先整体密度（面板/卡片/行/边距/字号）→ 再单模块（设置页作用域限定）→ 再单行列表（分类维护母版）→ 再折叠式新增 → 最后单行行内编辑 + 框高修正，逐层递进，用户每轮反馈后再扩到下一个模块
 - **表扬提醒「依据」= 真实总支出**：noSpendPraiseDue 的 zero 档必须今日全部支出（含专项/贷款/保险）为 0 才成立；thrifty 才用日常支出对比日限额。专项支出 ≠ 没花钱
 - **重复提醒去重规矩**：已订阅 web push（localStorage ledger-push-subscribed=1）时，前端 maybeNotifyDailyLimit / maybePraiseNoSpend 不发本地 Notification，只由服务端 checkSpendingAlerts 后台推送，避免 App 打开时同一条提醒弹两次
+- **抬头可省则省**：当列表行自身带 scope 徽标/标签已能区分归属时（如预算管理日常/总开支），删掉重复的 h2 抬头，把说明小字移到列表底部作脚注（`.budget-scope-hint margin:0.5rem 0 0` + `.budget-scope-panel .budget-list{margin-top:0}`），面板更紧凑
+- **抬头↔小字间距统一 = 0.12rem**：手机端 `.chart-heading` 上下堆叠（h2 + span）时 flex gap 由 0.55/0.65rem 收紧为 0.12rem，与 `.report-toolbar` 内 span(margin-top:.12rem)、设置摘要 span(margin-top:.1rem) 一致；桌面端 chart-heading 仍横向 h2|span 不受影响

@@ -3026,20 +3026,18 @@ function BudgetPanel({ budgets, categories, transactions, onSave, onDelete }: {
   return (
     <section className="grid two">
       <div className="budget-columns">
-        <div className="panel">
-          <h2>日常消费预算</h2>
-          <p className="budget-scope-hint">不含贷款、保险、教育等专项支出</p>
+        <div className="panel budget-scope-panel">
           <div className="budget-list">
             {dailyOverallBudget ? renderBudgetLine(dailyOverallBudget) : <p className="empty">尚未设置日常消费总预算</p>}
             {categoryBudgets.map(renderBudgetLine)}
           </div>
+          <p className="budget-scope-hint">不含贷款、保险、教育等专项支出</p>
         </div>
-        <div className="panel">
-          <h2>总开支预算</h2>
-          <p className="budget-scope-hint">包含日常消费 ¥{centsToYuan(monthDailySpent)} + 专项支出 ¥{centsToYuan(monthSpecialSpent)}</p>
+        <div className="panel budget-scope-panel">
           <div className="budget-list">
             {totalBudget ? renderBudgetLine(totalBudget) : <p className="empty">尚未设置总开支预算</p>}
           </div>
+          <p className="budget-scope-hint">包含日常消费 ¥{centsToYuan(monthDailySpent)} + 专项支出 ¥{centsToYuan(monthSpecialSpent)}</p>
         </div>
       </div>
       {editing ? (

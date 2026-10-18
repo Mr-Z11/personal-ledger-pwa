@@ -4300,10 +4300,17 @@ input[type="month"],
     grid-template-columns: 1fr;
   }
 
-  .report-toolbar,
-  .chart-heading {
+  .report-toolbar {
     align-items: stretch;
     flex-direction: column;
+  }
+
+  /* 手机端模块抬头与小字改为上下堆叠：收紧二者间距，与 report-toolbar/设置摘要的小字间距保持一致 */
+  .chart-heading,
+  .report-page .chart-heading {
+    align-items: stretch;
+    flex-direction: column;
+    gap: 0.12rem;
   }
 
   .report-controls {
@@ -5523,7 +5530,12 @@ input[type="month"],
 .budget-scope-hint {
   font-size: 0.72rem;
   color: #8a7154;
-  margin: 0.1rem 0 0.5rem;
+  margin: 0.5rem 0 0;
+}
+
+/* 预算管理去掉冗余抬头后：列表作为面板首元素不再需要顶部间距，说明小字移到列表下方作脚注 */
+.budget-scope-panel .budget-list {
+  margin-top: 0;
 }
 
 .bar.over i {

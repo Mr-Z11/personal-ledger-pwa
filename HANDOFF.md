@@ -318,3 +318,9 @@
 - **后台推送**：checkSpendingAlerts 新增表扬分支（zero 用全部支出 / thrifty 用日常对比日限额），ReminderSetting 加 praiseEnabled 列，设置 GET/PUT 同步；关 App 也能经本地 api-local web-push 送达（已验证日志 delivered:true）
 - **重复去重**：前端 maybeNotifyDailyLimit / maybePraiseNoSpend 在已订阅 web push（localStorage ledger-push-subscribed=1）时跳过本地 Notification，由服务端单发；PushAlertPanel 订阅/取消时写该标志
 - **部署**：前端 build + caddy force-recreate；后端 CI 构建镜像 → pull → api-local up（prisma db push 自动加 praiseEnabled 列）；迁移前已备份 ledger-local-20261018-174148.sql
+
+## 2026-10-18 预算管理抬头精简 + 抬头↔小字间距一致性（App.tsx + styles.css）
+- 预算管理：删除「日常消费预算」「总开支预算」两个 h2 抬头（预算行 scope 徽标 + 底部说明已可区分），原抬头下小字（budget-scope-hint）下移到各自列表底部作脚注；两个面板加 `.budget-scope-panel`
+- CSS：`.budget-scope-hint` margin `0.1rem 0 0.5rem → 0.5rem 0 0`；`.budget-scope-panel .budget-list { margin-top: 0 }`（无抬头后列表贴顶）
+- 一致性：手机端 `.chart-heading` 上下堆叠时 h2↔span 间距由 0.55/0.65rem 收紧为 0.12rem（与 `.report-toolbar` 内 span、设置摘要 span 一致）
+- 已部署：前端 build + force-recreate caddy-local
