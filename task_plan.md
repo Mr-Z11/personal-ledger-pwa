@@ -311,3 +311,5 @@ Phase 29
 - [x] 分析报表 7 模块「框大字小」修正：折叠头 padding 0.9/1.1→0.6/0.88rem、专项支出 min-height 2.65→2.3rem、图表趋势卡/洞察卡/异常汇总卡等只降框高不动字号（桌面+移动端同步）
 - [x] 部署：build 成功（PWA 启动校验 12 图通过）→ force-recreate caddy-local 重新挂载；磁盘 CSS 确认含全部新令牌
 - **Status:** complete（已部署本地栈；**未 git commit**，自 f2cb337 起 5 文件 modified）
+
+- [x] 表扬提醒：依据改为真实总支出（含专项）+ 服务端后台推送 + 重复去重（已部署本地栈，ba13f5f + 去重补丁）

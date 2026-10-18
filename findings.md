@@ -414,3 +414,5 @@ docker logs personal-ledger-pwa-api-local-1 | tail     # 确认 prisma db push �
 - **行内编辑优于双列 grid**：列表 + 编辑表单的组合，编辑态直接在数据行内展开表单（autoFocus + 保存/取消），侧栏只留提示卡；双列 grid 在 ≤940px 塌成单列会把表单挤到列表下方（"编辑跑到页面底部"的根源）
 - **移动端操作降级**：操作按钮在手机上只留图标（文字 span CSS 隐藏），桌面保持图标+文字；新增按钮保留文字（青色虚线）以引导点击
 - **压缩顺序参考**：先整体密度（面板/卡片/行/边距/字号）→ 再单模块（设置页作用域限定）→ 再单行列表（分类维护母版）→ 再折叠式新增 → 最后单行行内编辑 + 框高修正，逐层递进，用户每轮反馈后再扩到下一个模块
+- **表扬提醒「依据」= 真实总支出**：noSpendPraiseDue 的 zero 档必须今日全部支出（含专项/贷款/保险）为 0 才成立；thrifty 才用日常支出对比日限额。专项支出 ≠ 没花钱
+- **重复提醒去重规矩**：已订阅 web push（localStorage ledger-push-subscribed=1）时，前端 maybeNotifyDailyLimit / maybePraiseNoSpend 不发本地 Notification，只由服务端 checkSpendingAlerts 后台推送，避免 App 打开时同一条提醒弹两次

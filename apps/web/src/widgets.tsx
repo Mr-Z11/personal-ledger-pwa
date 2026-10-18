@@ -1530,9 +1530,31 @@ export function dailyLimitAlertDismissedKey() {
   return localStorage.getItem(DAILY_LIMIT_DISMISS_KEY);
 }
 
+const PUSH_SUBSCRIBED_KEY = "ledger-push-subscribed";
+
+/** 是否已在手机 PWA 订阅服务端 web push。订阅后，表扬/限额提醒由服务端后台推送送达，
+ * 前端不再叠发本地通知，避免「App 打开时同一条提醒弹两次」。 */
+export function isPushSubscribed(): boolean {
+  try {
+    return localStorage.getItem(PUSH_SUBSCRIBED_KEY) === "1";
+  } catch {
+    return false;
+  }
+}
+
+export function setPushSubscribed(value: boolean) {
+  try {
+    if (value) localStorage.setItem(PUSH_SUBSCRIBED_KEY, "1");
+    else localStorage.removeItem(PUSH_SUBSCRIBED_KEY);
+  } catch {
+    // 隐私模式下写入可能失败，忽略
+  }
+}
+
 /** 触发后每天发一条系统通知（失败静默降级为应用内全屏警告） */
 export function maybeNotifyDailyLimit(settings: DailyLimitAlertSettings, spentTodayCents: number, limitCents: number) {
   if (!settings.enabled || !settings.notify) return;
+  if (isPushSubscribed()) return; // 已订阅后台推送，避免与 web-push 重复弹窗
   if (!dailyLimitAlertTriggered(settings, spentTodayCents, limitCents)) return;
   const todayKey = dateKey(new Date().toISOString());
   if (localStorage.getItem(DAILY_LIMIT_NOTIFY_KEY) === todayKey) return;
@@ -1578,6 +1600,7 @@ export function praiseMessage(period: "am" | "pm", kind: "zero" | "thrifty"): st
 /** 低消费表扬：早上/下午没怎么花就发一条鼓励推送（每个时段每天最多一条） */
 export function maybePraiseNoSpend(settings: DailyLimitAlertSettings, spentTodayCents: number, limitCents: number, totalSpentTodayCents?: number) {
   if (!settings.enabled || !settings.notify || settings.praiseEnabled === false) return;
+  if (isPushSubscribed()) return; // 已订阅后台推送，避免与 web-push 重复弹窗
   const due = noSpendPraiseDue(Number(beijingDateTimeParts().hour), spentTodayCents, limitCents, totalSpentTodayCents ?? spentTodayCents);
   if (!due) return;
   const stamp = `${dateKey(new Date().toISOString())}:${due.period}`;

@@ -94,6 +94,7 @@ import {
   maybeNotifyDailyLimit,
   maybeNotifyPayday,
   maybePraiseNoSpend,
+  setPushSubscribed,
   salaryBannerDismissedKey,
   salaryBannerState,
   saveDailyLimitAlertSettings,
@@ -2360,8 +2361,14 @@ function PushAlertPanel({ token, onToast }: { token: string; onToast: (message: 
     if (!supported) return;
     void navigator.serviceWorker.ready
       .then((registration) => registration.pushManager.getSubscription())
-      .then((subscription) => setSubscribed(Boolean(subscription))
-      ).catch(() => setSubscribed(false));
+      .then((subscription) => {
+        setSubscribed(Boolean(subscription));
+        setPushSubscribed(Boolean(subscription));
+      })
+      .catch(() => {
+        setSubscribed(false);
+        setPushSubscribed(false);
+      });
   }, [supported]);
 
   async function enable() {
@@ -2384,6 +2391,7 @@ function PushAlertPanel({ token, onToast }: { token: string; onToast: (message: 
       });
       await api.subscribeNotifications(token, subscription.toJSON());
       setSubscribed(true);
+      setPushSubscribed(true);
       onToast("手机推送已开启：限额警告与可购买提醒会推送到这台设备");
     } catch (error) {
       onToast(error instanceof Error ? error.message : "开启推送失败");
@@ -2402,6 +2410,7 @@ function PushAlertPanel({ token, onToast }: { token: string; onToast: (message: 
         await subscription.unsubscribe();
       }
       setSubscribed(false);
+      setPushSubscribed(false);
       onToast("手机推送已关闭");
     } finally {
       setBusy(false);

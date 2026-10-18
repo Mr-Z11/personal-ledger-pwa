@@ -312,3 +312,9 @@
 - 导出功能在 iOS PWA 独立模式静默失败（`a.download` 被 WebKit 忽略）；如需手机导出，改用 Web Share API（`navigator.share`），但仅本地 origin 的 PWA 能受益
 - `limactl` 二进制缺失导致 `colima status/list` 失败；docker 仍可用，但建议修复 lima PATH 便于管理 VM
 - findings.md 中 P0 项「reliable-sync 工作包」（串行化 syncNow、逐行 ack outbox、启动先 flush 再 pull）尚未实施，是后续可靠性改进的首选
+
+## 2026-10-18 表扬提醒修复（ba13f5f + 去重补丁）
+- **依据修复**：noSpendPraiseDue 的 zero 档改用「今日全部支出」（含专项/贷款/保险），新增 todayAllSpentCents；专项支出不再误判「一分钱没花」
+- **后台推送**：checkSpendingAlerts 新增表扬分支（zero 用全部支出 / thrifty 用日常对比日限额），ReminderSetting 加 praiseEnabled 列，设置 GET/PUT 同步；关 App 也能经本地 api-local web-push 送达（已验证日志 delivered:true）
+- **重复去重**：前端 maybeNotifyDailyLimit / maybePraiseNoSpend 在已订阅 web push（localStorage ledger-push-subscribed=1）时跳过本地 Notification，由服务端单发；PushAlertPanel 订阅/取消时写该标志
+- **部署**：前端 build + caddy force-recreate；后端 CI 构建镜像 → pull → api-local up（prisma db push 自动加 praiseEnabled 列）；迁移前已备份 ledger-local-20261018-174148.sql
