@@ -1919,8 +1919,10 @@ input[type="month"],
   content: "收起";
 }
 
+/* 注意：span 规则原本用于副标题小字，但会误伤标题里的 InfoTip（span.info-tip），
+   把「?」变成 block 单独占一行——必须用 :not(.info-tip) 排除，让「?」紧跟标题文字 */
 .settings-section summary strong,
-.settings-section summary span {
+.settings-section summary span:not(.info-tip) {
   display: block;
   min-width: 0;
 }
