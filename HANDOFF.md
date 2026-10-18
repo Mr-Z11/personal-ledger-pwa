@@ -324,3 +324,9 @@
 - CSS：`.budget-scope-hint` margin `0.1rem 0 0.5rem → 0.5rem 0 0`；`.budget-scope-panel .budget-list { margin-top: 0 }`（无抬头后列表贴顶）
 - 一致性：手机端 `.chart-heading` 上下堆叠时 h2↔span 间距由 0.55/0.65rem 收紧为 0.12rem（与 `.report-toolbar` 内 span、设置摘要 span 一致）
 - 已部署：前端 build + force-recreate caddy-local
+
+## 2026-10-18 说明/备注文字统一改为「?」气泡（InfoTip 组件，App/widgets/plan + styles.css）
+- 新增复用组件 `InfoTip`（widgets.tsx）：一个「?」按钮，点击弹出说明气泡，点外部/Esc 关闭；样式 `.info-tip/.info-tip-btn/.info-tip-pop`
+- 已转换（纯说明/备注、无关键数据）：设置页 5 个模块描述（SettingsSection，? 贴在标题后）、预算管理 2 条 scope 说明、工资/当日限额/固定支出/计划购买/保险日历的 reminder-hint 说明段（各归位到原文字位置）
+- 刻意保留 inline：`reminder-hint.warn`（权限被拒等错误态）、带按钮的交互提示、以及含金额/笔数/匹配数等数据的 chart-heading/report-toolbar 小字（隐藏会丢信息）
+- 已部署：前端 build + force-recreate caddy-local

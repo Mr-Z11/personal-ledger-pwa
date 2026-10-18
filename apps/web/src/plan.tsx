@@ -12,7 +12,7 @@ import {
   offsetMonthKey,
   shortMonthLabel
 } from "./utils";
-import { collectRegularExpenses } from "./widgets";
+import { collectRegularExpenses, InfoTip } from "./widgets";
 
 /* ------------------------------------------------------------------ */
 /* 规划页：基于历史数据 + 去年同期（主权重）的未来支出预测（纯规则，无 AI） */
@@ -243,7 +243,7 @@ function InsuranceSchedulePanel({ items, futureKeys, onChange }: {
           disabled={!importText.trim()}
           onClick={importAndSave}
         >{saved ? `已保存（共 ${items.length} 项）` : `解析并保存${importText.trim() ? `（${importText.trim().split(/\r?\n/).filter(Boolean).length} 行）` : ""}`}</button>
-        <p className="reminder-hint">只保存在本机（换设备需重新导入）。预测总支出 = 原预测 − 历史保险月均 + 当月日历保费；没有保单的月份（如 10 月、12 月）不会计入保险支出。</p>
+        <InfoTip text="只保存在本机（换设备需重新导入）。预测总支出 = 原预测 − 历史保险月均 + 当月日历保费；没有保单的月份（如 10 月、12 月）不会计入保险支出。" />
       </div>
     </details>
   );

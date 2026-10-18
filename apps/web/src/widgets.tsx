@@ -1,6 +1,6 @@
 import { centsToYuan, monthKey, yuanToCents, type Account, type Budget, type Category, type PlannedPurchase, type Transaction } from "@ledger/shared";
 import { BellRing, Check, Minus, Pencil, Plus, Search, ShoppingBag, Trash2, TrendingDown, TrendingUp, X } from "lucide-react";
-import { useEffect, useId, useMemo, useState, type CSSProperties } from "react";
+import { useEffect, useId, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import {
   beijingDateTimeParts,
   categoryPath,
@@ -15,6 +15,55 @@ import {
   shortMonthLabel,
   yearLabel
 } from "./utils";
+
+/* ------------------------------------------------------------------ */
+/* 说明/备注文字统一组件：一个「?」按钮，点击弹出解释气泡，保持界面清爽          */
+/* ------------------------------------------------------------------ */
+
+/** 点击「?」显示说明气泡；点外部或 Esc 关闭。用于把较长的说明/备注文字收起来。 */
+export function InfoTip({ text, label = "查看说明" }: { text: ReactNode; label?: string }) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLSpanElement>(null);
+  useEffect(() => {
+    if (!open) return;
+    const onPointerDown = (event: Event) => {
+      if (ref.current && !ref.current.contains(event.target as Node)) setOpen(false);
+    };
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setOpen(false);
+    };
+    document.addEventListener("mousedown", onPointerDown);
+    document.addEventListener("touchstart", onPointerDown, { passive: true });
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("mousedown", onPointerDown);
+      document.removeEventListener("touchstart", onPointerDown);
+      document.removeEventListener("keydown", onKey);
+    };
+  }, [open]);
+  return (
+    <span className="info-tip" ref={ref}>
+      <button
+        type="button"
+        className="info-tip-btn"
+        aria-label={label}
+        aria-expanded={open}
+        onClick={(event) => {
+          event.preventDefault();
+          event.stopPropagation();
+          setOpen((value) => !value);
+        }}
+      >
+        ?
+      </button>
+      {open && (
+        <span className="info-tip-pop" role="tooltip">
+          {text}
+        </span>
+      )}
+    </span>
+  );
+}
 
 /* ------------------------------------------------------------------ */
 /* 工资日提醒（纯本地，离线可用）                                        */
@@ -217,7 +266,7 @@ export function LocalSalaryReminderPanel({ value, onChange }: {
         </button>
       </div>
       {permission === "denied" && <p className="reminder-hint warn">系统通知权限已被拒绝：可在系统设置中允许通知；即使不开通知，应用内横幅提醒依然有效。</p>}
-      <p className="reminder-hint">提醒完全保存在本机（离线、无服务器也能用）。打开应用时若到了工资日或倒计时范围内，首页顶部会显示横幅。当月没有 31 日时自动在当月最后一天提醒。</p>
+      <InfoTip text="提醒完全保存在本机（离线、无服务器也能用）。打开应用时若到了工资日或倒计时范围内，首页顶部会显示横幅。当月没有 31 日时自动在当月最后一天提醒。" />
     </div>
   );
 }
@@ -1428,9 +1477,7 @@ export function FixedExpenseOverview({ transactions = [], categories = [] }: {
         </button>
         {copiedMsg && <em className="copied-hint">已复制到后续月份（已有数据的月份不会被覆盖）</em>}
       </div>
-      <p className="reminder-hint">
-        手动维护，不依赖交易记录；从参考项目添加且关联了分类时，已支出会随当月该分类的实际消费自动更新（显示「自动」）。导入 AI 后可由消费记录全自动生成，此处改为只读对照。
-      </p>
+      <InfoTip text="手动维护，不依赖交易记录；从参考项目添加且关联了分类时，已支出会随当月该分类的实际消费自动更新（显示「自动」）。导入 AI 后可由消费记录全自动生成，此处改为只读对照。" />
     </section>
   );
 }
@@ -1712,7 +1759,7 @@ export function LocalDailyLimitAlertPanel({ value, onChange }: {
           onChange={(event) => setToleranceInput(event.target.value)}
         />
       </label>
-      <span className="reminder-hint">今日动态限额 =（月日常预算 − 截至昨日累计支出）÷ 含今日的剩余天数。今日消费 ≥ 今日动态限额 − 误差金额 时：打开应用立即全屏红色警告，同时推送手机提醒（每天一条）。当日花多少只影响明天及以后的限额，不改变今天自己的限额。</span>
+      <InfoTip text="今日动态限额 =（月日常预算 − 截至昨日累计支出）÷ 含今日的剩余天数。今日消费 ≥ 今日动态限额 − 误差金额 时：打开应用立即全屏红色警告，同时推送手机提醒（每天一条）。当日花多少只影响明天及以后的限额，不改变今天自己的限额。" />
       <label className="reminder-toggle">
         <input type="checkbox" checked={draft.notify} onChange={(event) => void toggleNotify(event.target.checked)} />
         同时发送系统通知（每天一条；服务端推送开启后，关闭应用也能收到）
@@ -1732,7 +1779,7 @@ export function LocalDailyLimitAlertPanel({ value, onChange }: {
         <button type="button" disabled={!changed} onClick={save}>{saved ? "已保存" : "保存设置"}</button>
       </div>
       {permission === "denied" && <p className="reminder-hint warn">系统通知权限已被拒绝：可在系统设置中允许通知；即使不开通知，应用内全屏警告依然有效。</p>}
-      <p className="reminder-hint">达到限额后打开应用会全屏红色警告，点「知道了」后当天不再弹出；手机推送由服务器每 20 分钟检查一次，达线即推（每天最多一条）。</p>
+      <InfoTip text="达到限额后打开应用会全屏红色警告，点「知道了」后当天不再弹出；手机推送由服务器每 20 分钟检查一次，达线即推（每天最多一条）。" />
     </div>
   );
 }
@@ -1876,7 +1923,7 @@ export function PlannedPurchasePanel({ items, todayRemainingCents, onAdd, onTogg
       )}
 
       {todayRemainingCents === null && pending.length > 0 && (
-        <p className="reminder-hint">未设日常消费预算，无法判断今日余额（设置 → 预算管理）。</p>
+        <InfoTip text="未设日常消费预算，无法判断今日余额（设置 → 预算管理）。" />
       )}
       {permission === "default" && pending.length > 0 && (
         <p className="reminder-hint">
@@ -1923,7 +1970,7 @@ export function PlannedPurchasePanel({ items, todayRemainingCents, onAdd, onTogg
             </div>
           )}
           {pending.length > 0 && (
-            <p className="reminder-hint">「买到手」移入已买列表；右侧垃圾桶才是删除。</p>
+            <InfoTip text="「买到手」移入已买列表；右侧垃圾桶才是删除。" />
           )}
           {completed.length > 0 && (
             <details className="planbuy-completed">
@@ -1953,7 +2000,7 @@ export function PlannedPurchasePanel({ items, todayRemainingCents, onAdd, onTogg
           )}
         </>
       )}
-      <p className="reminder-hint">清单云端同步，多设备一致；余额够买时应用内高亮 + 手机推送提醒（每天一轮）。</p>
+      <InfoTip text="清单云端同步，多设备一致；余额够买时应用内高亮 + 手机推送提醒（每天一轮）。" />
     </section>
   );
 }

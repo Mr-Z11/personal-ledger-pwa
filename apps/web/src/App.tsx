@@ -89,6 +89,7 @@ import {
   dailyLimitAlertTriggered,
   dailyLimitCents,
   dismissSalaryBannerForToday,
+  InfoTip,
   loadDailyLimitAlertSettings,
   loadSalarySettings,
   maybeNotifyDailyLimit,
@@ -2455,7 +2456,7 @@ function PushAlertPanel({ token, onToast }: { token: string; onToast: (message: 
           </button>
         )}
       </div>
-      <p className="reminder-hint">开启后即使应用已关闭，服务器也会推送：① 今日消费达限额警告 ② 计划购买「今日余额可买」提醒（各每天最多一条）。iPhone 请先把 App 加到主屏幕，再从主屏幕图标打开后开启。</p>
+      <InfoTip text="开启后即使应用已关闭，服务器也会推送：① 今日消费达限额警告 ② 计划购买「今日余额可买」提醒（各每天最多一条）。iPhone 请先把 App 加到主屏幕，再从主屏幕图标打开后开启。" />
     </div>
   );
 }
@@ -2465,8 +2466,7 @@ function SettingsSection({ title, description, children, defaultOpen = false }: 
     <details className="settings-section" open={defaultOpen}>
       <summary>
         <div>
-          <strong>{title}</strong>
-          <span>{description}</span>
+          <strong>{title}<InfoTip text={description} /></strong>
         </div>
       </summary>
       <div className="settings-section-body">{children}</div>
@@ -3031,13 +3031,13 @@ function BudgetPanel({ budgets, categories, transactions, onSave, onDelete }: {
             {dailyOverallBudget ? renderBudgetLine(dailyOverallBudget) : <p className="empty">尚未设置日常消费总预算</p>}
             {categoryBudgets.map(renderBudgetLine)}
           </div>
-          <p className="budget-scope-hint">不含贷款、保险、教育等专项支出</p>
+          <InfoTip text={<>不含贷款、保险、教育等专项支出</>} />
         </div>
         <div className="panel budget-scope-panel">
           <div className="budget-list">
             {totalBudget ? renderBudgetLine(totalBudget) : <p className="empty">尚未设置总开支预算</p>}
           </div>
-          <p className="budget-scope-hint">包含日常消费 ¥{centsToYuan(monthDailySpent)} + 专项支出 ¥{centsToYuan(monthSpecialSpent)}</p>
+          <InfoTip text={<>包含日常消费 ¥{centsToYuan(monthDailySpent)} + 专项支出 ¥{centsToYuan(monthSpecialSpent)}</>} />
         </div>
       </div>
       {editing ? (

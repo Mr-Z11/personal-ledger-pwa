@@ -2007,6 +2007,58 @@ input[type="month"],
   font-weight: 700;
 }
 
+/* 说明/备注「?」气泡：默认只显示一个小问号，点击展开解释，保持界面清爽 */
+.info-tip {
+  position: relative;
+  display: inline-flex;
+  vertical-align: middle;
+  margin-left: 0.28rem;
+}
+
+.info-tip-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.05rem;
+  height: 1.05rem;
+  padding: 0;
+  border: 1px solid rgba(31, 95, 116, 0.4);
+  border-radius: 999px;
+  background: rgba(31, 95, 116, 0.08);
+  color: #1f5f74;
+  font-size: 0.7rem;
+  font-weight: 900;
+  line-height: 1;
+  cursor: pointer;
+  transition: background 0.15s ease, border-color 0.15s ease;
+}
+
+.info-tip-btn:hover,
+.info-tip-btn[aria-expanded="true"] {
+  background: rgba(31, 95, 116, 0.16);
+  border-color: rgba(31, 95, 116, 0.6);
+}
+
+.info-tip-pop {
+  position: absolute;
+  top: calc(100% + 0.4rem);
+  left: 0;
+  z-index: 60;
+  width: max-content;
+  max-width: min(20rem, 78vw);
+  padding: 0.55rem 0.7rem;
+  border: 1px solid rgba(31, 95, 116, 0.22);
+  border-radius: 0.55rem;
+  background: #fffdf7;
+  color: #243127;
+  font-size: 0.76rem;
+  font-weight: 500;
+  line-height: 1.55;
+  text-align: left;
+  white-space: normal;
+  box-shadow: 0 0.6rem 1.4rem rgba(36, 49, 39, 0.16);
+}
+
 
 .settings-section-body > .grid,
 .settings-section-body > .category-tree {
