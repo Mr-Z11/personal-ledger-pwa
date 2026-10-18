@@ -6,10 +6,15 @@
 
 ## 2. 已完成并部署的变更（2026-10-17 最新）
 
-最新 commit `f2cb337` 已推送 GitHub main（本地与 origin 0/0 同步）；前端已构建并部署到**本地 Mac 栈**（云端服务器仍失效，见第 3 节）。
+最新 commit `3187576` 已推送 GitHub main（本地与 origin 0/0 同步）；前端已构建并部署到**本地 Mac 栈**（云端服务器仍失效，见第 3 节）。
 
 | Commit | 描述 | 关键文件 | 状态 |
 |--------|------|---------|------|
+| `3187576` | **「?」气泡内联排版**：InfoTip 不单独占行，全部贴到被解释文字后（标题/标签/状态条/预算行名后）；删计划购买 2 条独立问号；预算说明入 `renderBudgetLine(budget, tip?)` 参数；保险说明并入标题；推送提示入状态条 | App.tsx, widgets.tsx, plan.tsx | 已部署 |
+| `81428ab` | **说明/备注「?」气泡化（InfoTip）**：新增复用组件（? 按钮 + 点击气泡 + 外部/Esc 关闭）；设置页 5 模块描述、预算 scope、工资/限额/固定支出/计划购买/保险日历说明段改造；错误态/交互提示/数据型小字保持 inline | widgets.tsx, App.tsx, plan.tsx, styles.css | 已部署 |
+| `997adb7` | **预算管理抬头精简 + 间距一致性**：删「日常消费预算/总开支预算」两个 h2；说明小字移列表底部；手机端 chart-heading 抬头↔小字间距收紧至 0.12rem 全模块一致 | App.tsx, styles.css | 已部署 |
+| `65df483` | **提醒去重**：已订阅 web push（localStorage ledger-push-subscribed）时前端 maybeNotifyDailyLimit / maybePraiseNoSpend 不再发本地 Notification，只由服务端单发 | widgets.tsx, App.tsx | 已部署 |
+| `ba13f5f` | **表扬提醒修复**：noSpendPraiseDue zero 档改用今日全部支出（含专项，todayAllSpentCents）；服务端 checkSpendingAlerts 新增表扬分支（sendPraiseReminder，ReminderSetting 加 praiseEnabled 列，GET/PUT 同步），关 App 也能 web-push 送达（日志已验证 delivered:true） | widgets.tsx, App.tsx, api.ts, schema.prisma, api/index.ts, notifications.ts, widgets.smoke.test.tsx | 已部署 |
 | `f2cb337` | **低消费表扬提醒**：DailyLimitAlertSettings 加 praiseEnabled（默认 true）；纯函数 noSpendPraiseDue（hour≥18=pm / ≥12=am；spent≤0=zero / spent<limit=thrifty，达/超限不表扬）+ praiseMessage（应急资金变厚/压力更小）；maybePraiseNoSpend 按 `日期:时段` 去重（每时段每天最多一条本地 Notification）；App 即时 effect + 10 分钟轮询双调用；设置页「低消费表扬」checkbox | widgets.tsx, App.tsx, widgets.smoke.test.tsx | 已部署 |
 | `6f40518` | **搜索时间范围 + 设置默认收起 + 红警每次打开必弹**：搜索加「起始月/截止月」下拉（YYYY-MM 字符串比较，选项取自匹配结果月份）；设置页数据管理/数据同步去掉 defaultOpen 默认收起；当日限额红警改会话内关闭（useState 取代持久化 dismiss），超限后当天每次打开 App 都再弹 | widgets.tsx, App.tsx, styles.css | 已部署 |
 | `203b247` | **搜索筛选+排序 + 底部导航 6 列**：搜索视图加分类/账户/排序（日期↑↓、金额↑↓）筛选，filtered 集合同时驱动概览卡/按月汇总/按年汇总/明细；手机 nav repeat(5,1fr)→repeat(6,1fr) 解决「搜索」按钮被挤到第二排 | widgets.tsx, App.tsx, styles.css | 已部署 |
@@ -330,3 +335,10 @@
 - 已转换（纯说明/备注、无关键数据）：设置页 5 个模块描述（SettingsSection，? 贴在标题后）、预算管理 2 条 scope 说明、工资/当日限额/固定支出/计划购买/保险日历的 reminder-hint 说明段（各归位到原文字位置）
 - 刻意保留 inline：`reminder-hint.warn`（权限被拒等错误态）、带按钮的交互提示、以及含金额/笔数/匹配数等数据的 chart-heading/report-toolbar 小字（隐藏会丢信息）
 - 已部署：前端 build + force-recreate caddy-local
+
+## 2026-10-18 「?」气泡改为跟随文字内联排版（3187576，已推送 origin/main）
+- 用户反馈「?」不要单独占一行 → 全部 InfoTip 挪到被解释文字旁内联；`.info-tip` 为 `inline-flex + vertical-align:middle + margin-left:.28rem` 保证与文字基线对齐
+- 计划购买：删除两条独立 InfoTip（文字已合并进标题问号）；保险缴费日历说明并入 `<h2>` 标题问号（plan.tsx）
+- 手机推送提示：从 PushAlertPanel 底部挪入 `.reminder-status` 状态条内联（App.tsx）
+- 预算面板：`renderBudgetLine(budget, tip?)` 加可选参数，说明贴 `budget-name` 后内联；未设置预算的空状态行也带问号；顺手修 `categoryBudgets.map(renderBudgetLine)` 把索引误传为 tip 的隐患
+- 校验：typecheck 通过、31 个冒烟测试通过、build 成功、force-recreate caddy-local 已部署（线上 HTML/CSS/JS 均含 info-tip 新令牌）

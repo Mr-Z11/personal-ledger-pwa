@@ -317,3 +317,5 @@ Phase 29
 - [x] 预算管理：删除「日常消费预算/总开支预算」两个 h2 抬头，说明小字下移到列表底部；手机端 chart-heading 抬头↔小字间距收紧至 0.12rem 统一（已部署本地栈）
 
 - [x] 说明/备注文字统一「?」气泡：新增 InfoTip 组件，设置页 5 模块描述 + 预算 scope + 工资/限额/固定支出/计划购买/保险日历说明段改造（保留错误态与数据型小字 inline）；已部署本地栈
+
+- [x] 「?」气泡全部改为跟随文字内联排版：删除独立行 InfoTip（计划购买 2 条）、预算说明入 renderBudgetLine 可选 tip 参数贴预算行名后、保险说明并入标题、推送提示入状态条；typecheck + 31 冒烟 + build + force-recreate caddy-local，commit 3187576 已推送 origin/main
