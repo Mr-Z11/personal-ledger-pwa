@@ -72,7 +72,8 @@ const reminderSettingSchema = z.object({
   enabled: z.boolean().optional(),
   dailyLimitEnabled: z.boolean().optional(),
   dailyLimitHour: z.number().int().min(0).max(23).optional(),
-  dailyLimitToleranceCents: z.number().int().min(0).max(1_000_000).optional()
+  dailyLimitToleranceCents: z.number().int().min(0).max(1_000_000).optional(),
+  praiseEnabled: z.boolean().optional()
 });
 
 const pushSubscriptionSchema = z.object({
@@ -458,7 +459,8 @@ export async function buildApp(): Promise<FastifyInstance> {
       exists: Boolean(setting),
       dailyLimitEnabled: setting?.dailyLimitEnabled ?? true,
       dailyLimitHour: setting?.dailyLimitHour ?? 21,
-      dailyLimitToleranceCents: setting?.dailyLimitToleranceCents ?? 2000
+      dailyLimitToleranceCents: setting?.dailyLimitToleranceCents ?? 2000,
+      praiseEnabled: setting?.praiseEnabled ?? true
     };
   });
 
@@ -475,7 +477,8 @@ export async function buildApp(): Promise<FastifyInstance> {
         enabled: input.enabled ?? false,
         dailyLimitEnabled: input.dailyLimitEnabled ?? true,
         dailyLimitHour: input.dailyLimitHour ?? 21,
-        dailyLimitToleranceCents: input.dailyLimitToleranceCents ?? 2000
+        dailyLimitToleranceCents: input.dailyLimitToleranceCents ?? 2000,
+        praiseEnabled: input.praiseEnabled ?? true
       },
       // 只更新本次传入的字段，未传的保持原值（前端可只改限额提醒时间）
       update: {
@@ -485,7 +488,8 @@ export async function buildApp(): Promise<FastifyInstance> {
         ...(input.enabled !== undefined ? { enabled: input.enabled } : {}),
         ...(input.dailyLimitEnabled !== undefined ? { dailyLimitEnabled: input.dailyLimitEnabled } : {}),
         ...(input.dailyLimitHour !== undefined ? { dailyLimitHour: input.dailyLimitHour } : {}),
-        ...(input.dailyLimitToleranceCents !== undefined ? { dailyLimitToleranceCents: input.dailyLimitToleranceCents } : {})
+        ...(input.dailyLimitToleranceCents !== undefined ? { dailyLimitToleranceCents: input.dailyLimitToleranceCents } : {}),
+        ...(input.praiseEnabled !== undefined ? { praiseEnabled: input.praiseEnabled } : {})
       }
     });
     void existing;

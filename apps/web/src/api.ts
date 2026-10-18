@@ -290,4 +290,5 @@ export interface NotificationSettings {
   dailyLimitEnabled: boolean;
   dailyLimitHour: number;
   dailyLimitToleranceCents: number;
+  praiseEnabled: boolean;
 }

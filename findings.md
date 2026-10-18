@@ -405,3 +405,12 @@ docker logs personal-ledger-pwa-api-local-1 | tail     # 确认 prisma db push �
 - **git push 代理坑 + SHA 分叉对齐**：沙箱 HTTP(S)_PROXY 会让 push 报 HTTP2 framing/Empty reply，用 `env -u HTTP_PROXY -u HTTPS_PROXY -u http_proxy -u https_proxy git -c http.version=HTTP/1.1 push` 绕过；早期用 GitHub Data API 推的等价 commit 与本地 SHA 不同造成非快进时，先 `git diff <本地等价> <远端等价>` 确认 tree 相同，再 `git rebase --onto origin/main <本地等价> main` 重放，内容零变化
 - **caddy force-recreate 后根路径偶发 000** 是容器启动竞态（不是部署失败），重试 curl 即 200；批量验证时代码里做 2-3 次重试
 - **容器热补丁技巧**：API dist 是纯 JS（架构无关），本地构建后 `docker cp apps/api/dist/. api-local:/app/apps/api/dist/ && docker restart api-local` 即可更新容器内容，绕过 GHCR 6 小时下载；Prisma 引擎二进制用容器自带 node_modules，不影响 schema 迁移
+
+## 2026-10-18 新发现 — UI 紧凑化范式
+
+- **分类维护 = 单行列表母版**：`.category-line` 用 `grid-template-columns: minmax(0,1fr) auto auto`（名称 | 操作 | 操作），编辑/删除按钮为「图标 + 隐藏 span」，移动端 `@media` 让 `span{display:none}` 只留图标。所有新列表行（账户/预算/固定支出/专项支出）都应复用同款 3 列单行结构，不要回到竖列堆叠（手机端"行太高"的根因）
+- **折叠式「新增」母版**：默认只显示一个青色虚线 `*-add-toggle` 按钮，点击展开内联表单（`form-stack *-editor-panel inline-edit-form`），保存后 `if(!wasEditing) setShowNewForm(false)` 自动收起；编辑态隐藏 toggle。账户管理/预算管理/计划购买/本月固定支出/分类维护 5 处已统一，不要再写常驻右侧表单
+- **「框大字小」只降框高**：用户明确「字号不变、调框高」。只用 `padding`/`min-height`/`gap` 收紧（如折叠头 `0.9/1.1→0.6/0.88rem`、专项 `min-height 2.65→2.3rem`、图表趋势卡 `0.6/0.7→0.5/0.62rem`）；**严禁动 font-size**。桌面与对应 `@media` 移动端规则要同步改，否则两端比例不一致
+- **行内编辑优于双列 grid**：列表 + 编辑表单的组合，编辑态直接在数据行内展开表单（autoFocus + 保存/取消），侧栏只留提示卡；双列 grid 在 ≤940px 塌成单列会把表单挤到列表下方（"编辑跑到页面底部"的根源）
+- **移动端操作降级**：操作按钮在手机上只留图标（文字 span CSS 隐藏），桌面保持图标+文字；新增按钮保留文字（青色虚线）以引导点击
+- **压缩顺序参考**：先整体密度（面板/卡片/行/边距/字号）→ 再单模块（设置页作用域限定）→ 再单行列表（分类维护母版）→ 再折叠式新增 → 最后单行行内编辑 + 框高修正，逐层递进，用户每轮反馈后再扩到下一个模块

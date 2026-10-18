@@ -1,5 +1,5 @@
 import { centsToYuan, monthKey, yuanToCents, type Account, type Budget, type Category, type PlannedPurchase, type Transaction } from "@ledger/shared";
-import { BellRing, Check, Minus, Plus, Search, ShoppingBag, Trash2, TrendingDown, TrendingUp, X } from "lucide-react";
+import { BellRing, Check, Minus, Pencil, Plus, Search, ShoppingBag, Trash2, TrendingDown, TrendingUp, X } from "lucide-react";
 import { useEffect, useId, useMemo, useState, type CSSProperties } from "react";
 import {
   beijingDateTimeParts,
@@ -1064,9 +1064,12 @@ function FixedExpenseRow({ item, autoSpent, categories, onChange, onDelete, onUn
   onDelete: () => void;
   onUnlink: () => void;
 }) {
+  // 默认只读紧凑行，点行进入编辑；保存才写回，避免每敲一个字就落库
+  const [editing, setEditing] = useState(false);
   const [name, setName] = useState(item.name);
   const [spent, setSpent] = useState(() => centsToYuan(item.spentCents));
   const [predicted, setPredicted] = useState(() => centsToYuan(item.predictedCents));
+  const [categoryId, setCategoryId] = useState(item.categoryId ?? "");
 
   const tracked = autoSpent !== null;
   const effectiveSpent = tracked ? autoSpent : item.spentCents;
@@ -1074,24 +1077,80 @@ function FixedExpenseRow({ item, autoSpent, categories, onChange, onDelete, onUn
   const pct = item.predictedCents > 0 ? Math.min(100, Math.round((effectiveSpent / item.predictedCents) * 100)) : 0;
   const over = item.predictedCents > 0 && effectiveSpent > item.predictedCents;
 
+  function startEdit() {
+    setName(item.name);
+    setSpent(centsToYuan(item.spentCents));
+    setPredicted(centsToYuan(item.predictedCents));
+    setCategoryId(item.categoryId ?? "");
+    setEditing(true);
+  }
+
+  function commit() {
+    let nextSpent = item.spentCents;
+    let nextPredicted = item.predictedCents;
+    try { nextSpent = yuanToCents(spent.trim() || "0"); } catch { /* 保留原值 */ }
+    try { nextPredicted = yuanToCents(predicted.trim() || "0"); } catch { /* 保留原值 */ }
+    onChange({
+      name: name.trim() || item.name,
+      predictedCents: nextPredicted,
+      categoryId: categoryId || null,
+      spentCents: categoryId ? 0 : nextSpent
+    });
+    setEditing(false);
+  }
+
+  if (!editing) {
+    return (
+      <div className={tracked ? "fixed-expense-row compact tracked" : "fixed-expense-row compact"}>
+        <button type="button" className="fe-row-main" onClick={startEdit} title="点击修改这项固定支出">
+          <span className="fe-item-name">
+            {item.name}
+            {tracked && <em className="fe-auto-tag">自动</em>}
+            <Pencil size={11} className="fe-edit-hint" />
+          </span>
+          <span className="fe-item-money">
+            <em>支出</em>¥{centsToYuan(effectiveSpent)}
+            <i>/</i>
+            <em>预计</em>¥{centsToYuan(item.predictedCents)}
+          </span>
+        </button>
+        <div className="fe-right">
+          <span className={`fe-remaining ${over ? "over" : ""}`}>
+            {over ? `超 ¥${centsToYuan(effectiveSpent - item.predictedCents)}` : `剩 ¥${centsToYuan(remaining)}`}
+          </span>
+          <div className="fe-bar"><i style={{ width: `${effectiveSpent > 0 ? Math.max(3, pct) : 0}%` }} /></div>
+        </div>
+        <button type="button" className="icon-button" title="删除这项" aria-label="删除这项" onClick={onDelete}>
+          <Trash2 size={15} />
+        </button>
+      </div>
+    );
+  }
+
   return (
-    <div className="fixed-expense-row manual">
+    <div className="fixed-expense-row manual editing">
       <input
         className="fe-name"
         value={name}
         maxLength={20}
         placeholder="项目名"
-        onChange={(event) => {
-          setName(event.target.value);
-          onChange({ name: event.target.value });
-        }}
+        onChange={(event) => setName(event.target.value)}
       />
       <div className="fe-fields">
         {tracked ? (
           <label className="fe-field fe-auto">
             <span>已支出 <em className="fe-auto-tag">自动</em></span>
             <span className="fe-amount fe-auto-value">¥{centsToYuan(effectiveSpent)}</span>
-            <button type="button" className="link-button fe-unlink" onClick={onUnlink}>改手动</button>
+            <button
+              type="button"
+              className="link-button fe-unlink"
+              onClick={() => {
+                // 解除关联后转为手动：把当前自动累计值填进输入框，避免保存时又关联回去
+                setCategoryId("");
+                setSpent(centsToYuan(effectiveSpent));
+                onUnlink();
+              }}
+            >改手动</button>
           </label>
         ) : (
           <label className="fe-field">
@@ -1100,29 +1159,8 @@ function FixedExpenseRow({ item, autoSpent, categories, onChange, onDelete, onUn
               className="fe-amount"
               inputMode="decimal"
               value={spent}
-              onChange={(event) => {
-                setSpent(event.target.value);
-                try {
-                  onChange({ spentCents: yuanToCents(event.target.value || "0") });
-                } catch {
-                  onChange({ spentCents: 0 });
-                }
-              }}
+              onChange={(event) => setSpent(event.target.value)}
             />
-            <select
-              className="fe-cat"
-              value={item.categoryId ?? ""}
-              title="关联分类后，已支出按当月该分类消费自动累计"
-              onChange={(event) => {
-                const value = event.target.value;
-                onChange({ categoryId: value || null, spentCents: 0 });
-              }}
-            >
-              <option value="">关联分类→自动</option>
-              {categories.map((category) => (
-                <option key={category.id} value={category.id}>{categoryPath(category, categories)}</option>
-              ))}
-            </select>
           </label>
         )}
         <label className="fe-field">
@@ -1131,25 +1169,27 @@ function FixedExpenseRow({ item, autoSpent, categories, onChange, onDelete, onUn
             className="fe-amount"
             inputMode="decimal"
             value={predicted}
-            onChange={(event) => {
-              setPredicted(event.target.value);
-              try {
-                onChange({ predictedCents: yuanToCents(event.target.value || "0") });
-              } catch {
-                onChange({ predictedCents: 0 });
-              }
-            }}
+            onChange={(event) => setPredicted(event.target.value)}
           />
         </label>
+        <label className="fe-field fe-field-cat">
+          <span>关联分类</span>
+          <select
+            className="fe-cat"
+            value={categoryId}
+            title="关联分类后，已支出按当月该分类消费自动累计"
+            onChange={(event) => setCategoryId(event.target.value)}
+          >
+            <option value="">不关联（手动填）</option>
+            {categories.map((category) => (
+              <option key={category.id} value={category.id}>{categoryPath(category, categories)}</option>
+            ))}
+          </select>
+        </label>
       </div>
-      <div className="fe-right">
-        <span className={`fe-remaining ${over ? "over" : ""}`}>
-          {over ? `超 ¥${centsToYuan(effectiveSpent - item.predictedCents)}` : `剩 ¥${centsToYuan(remaining)}`}
-        </span>
-        <div className="fe-bar"><i style={{ width: `${effectiveSpent > 0 ? Math.max(3, pct) : 0}%` }} /></div>
-        <button type="button" className="icon-button" title="删除这项" aria-label="删除这项" onClick={onDelete}>
-          <Trash2 size={15} />
-        </button>
+      <div className="fe-edit-actions">
+        <button type="button" className="primary fe-save" onClick={commit}>保存</button>
+        <button type="button" className="ghost fe-cancel" onClick={() => setEditing(false)}>取消</button>
       </div>
     </div>
   );
@@ -1167,6 +1207,7 @@ export function FixedExpenseOverview({ transactions = [], categories = [] }: {
   const [copyMonths, setCopyMonths] = useState(1);
   const [copiedMsg, setCopiedMsg] = useState(false);
   const [showSuggest, setShowSuggest] = useState(false);
+  const [showAdd, setShowAdd] = useState(false);
 
   useEffect(() => {
     setItems(loadFixedExpenses(currentKey));
@@ -1237,8 +1278,76 @@ export function FixedExpenseOverview({ transactions = [], categories = [] }: {
     <section className="panel fixed-expense-overview">
       <div className="chart-heading">
         <h2>本月固定支出</h2>
-        <span>{monthLabel(currentKey)} · {items.length} 项 · 手动维护</span>
+        <div className="fe-head-right">
+          <span>{monthLabel(currentKey)} · {items.length} 项 · 手动维护</span>
+          <button
+            type="button"
+            className={showAdd ? "fe-add-icon active" : "fe-add-icon"}
+            title={showAdd ? "收起新增" : "新增固定支出项"}
+            aria-label={showAdd ? "收起新增" : "新增固定支出项"}
+            onClick={() => setShowAdd((value) => !value)}
+          >
+            <Plus size={16} />
+          </button>
+        </div>
       </div>
+
+      {showAdd && (
+        <div className="fixed-expense-add">
+          <input
+            className="fe-name"
+            value={nameInput}
+            placeholder="新项目（如：房租）"
+            maxLength={20}
+            autoFocus
+            onChange={(event) => setNameInput(event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key === "Enter") {
+                let predicted = 0;
+                try { predicted = yuanToCents(predictedInput || "0"); } catch { return; }
+                addItem(nameInput, predicted, categoryInput || null);
+              }
+            }}
+          />
+          <input
+            className="fe-amount fe-add-amount"
+            inputMode="decimal"
+            value={predictedInput}
+            placeholder="预计 ¥"
+            onChange={(event) => setPredictedInput(event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key === "Enter") {
+                let predicted = 0;
+                try { predicted = yuanToCents(predictedInput || "0"); } catch { return; }
+                addItem(nameInput, predicted, categoryInput || null);
+              }
+            }}
+          />
+          <select
+            className="fe-cat fe-add-cat"
+            value={categoryInput}
+            title="选择分类后，已支出按当月该分类消费自动累计"
+            onChange={(event) => setCategoryInput(event.target.value)}
+          >
+            <option value="">关联分类（可选）</option>
+            {categories.map((category) => (
+              <option key={category.id} value={category.id}>{categoryPath(category, categories)}</option>
+            ))}
+          </select>
+          <button
+            type="button"
+            className="primary"
+            disabled={!nameInput.trim() || !predictedInput.trim()}
+            onClick={() => {
+              let predicted = 0;
+              try { predicted = yuanToCents(predictedInput || "0"); } catch { return; }
+              addItem(nameInput, predicted, categoryInput || null);
+            }}
+          >
+            <Plus size={16} />添加
+          </button>
+        </div>
+      )}
       <div className="fixed-expense-total">
         <div>
           <span>固定项合计</span>
@@ -1281,16 +1390,14 @@ export function FixedExpenseOverview({ transactions = [], categories = [] }: {
 
       {items.length > 0 && (
         <div className="fixed-expense-colhead">
-          <span>项目</span>
-          <span>已支出</span>
-          <span>预计</span>
-          <span>剩余</span>
+          <span>项目 · 支出 / 预计（点行可改）</span>
+          <span>剩余进度</span>
         </div>
       )}
 
       <div className="fixed-expense-list">
         {items.length === 0 ? (
-          <p className="empty">还没有固定支出项。从上方参考项目点选添加，或在下方手动新建；已支出可手动填，也可关联分类后自动跟踪当月消费。</p>
+          <p className="empty">还没有固定支出项。点标题右侧的「＋」手动新建，或展开上方参考项目点选添加；已支出可手动填，也可关联分类后自动跟踪当月消费。</p>
         ) : (
           items.map((item) => {
             const auto = autoSpentByItem.get(item.id) ?? null;
@@ -1307,60 +1414,6 @@ export function FixedExpenseOverview({ transactions = [], categories = [] }: {
             );
           })
         )}
-      </div>
-
-      <div className="fixed-expense-add">
-        <input
-          className="fe-name"
-          value={nameInput}
-          placeholder="新项目（如：房租）"
-          maxLength={20}
-          onChange={(event) => setNameInput(event.target.value)}
-          onKeyDown={(event) => {
-            if (event.key === "Enter") {
-              let predicted = 0;
-              try { predicted = yuanToCents(predictedInput || "0"); } catch { return; }
-              addItem(nameInput, predicted, categoryInput || null);
-            }
-          }}
-        />
-        <input
-          className="fe-amount fe-add-amount"
-          inputMode="decimal"
-          value={predictedInput}
-          placeholder="预计 ¥"
-          onChange={(event) => setPredictedInput(event.target.value)}
-          onKeyDown={(event) => {
-            if (event.key === "Enter") {
-              let predicted = 0;
-              try { predicted = yuanToCents(predictedInput || "0"); } catch { return; }
-              addItem(nameInput, predicted, categoryInput || null);
-            }
-          }}
-        />
-        <select
-          className="fe-cat fe-add-cat"
-          value={categoryInput}
-          title="选择分类后，已支出按当月该分类消费自动累计"
-          onChange={(event) => setCategoryInput(event.target.value)}
-        >
-          <option value="">关联分类（可选）</option>
-          {categories.map((category) => (
-            <option key={category.id} value={category.id}>{categoryPath(category, categories)}</option>
-          ))}
-        </select>
-        <button
-          type="button"
-          className="primary"
-          disabled={!nameInput.trim() || !predictedInput.trim()}
-          onClick={() => {
-            let predicted = 0;
-            try { predicted = yuanToCents(predictedInput || "0"); } catch { return; }
-            addItem(nameInput, predicted, categoryInput || null);
-          }}
-        >
-          <Plus size={16} />添加
-        </button>
       </div>
 
       <div className="fixed-expense-template">
@@ -1454,6 +1507,16 @@ export function todayDailySpentCents(transactions: Transaction[], categories: Ca
     .reduce((sum, item) => sum + item.amountCents, 0);
 }
 
+/** 今日全部支出合计（含贷款/保险/教育/专项等所有分类）—— 用于判断「真的 0 花费」。
+ * 任何分类花过钱都算花过，避免「上午花了一笔保险/贷款却收到『一分钱没花』表扬」的错判。 */
+export function todayAllSpentCents(transactions: Transaction[], categories: Category[]) {
+  const today = dateKey(new Date().toISOString());
+  return transactions
+    .filter((item) => item.type === "expense")
+    .filter((item) => dateKey(item.occurredAt) === today)
+    .reduce((sum, item) => sum + item.amountCents, 0);
+}
+
 /** 是否触发当日限额提醒：今日消费 ≥ 日限额 − 误差金额 */
 export function dailyLimitAlertTriggered(settings: DailyLimitAlertSettings, spentTodayCents: number, limitCents: number) {
   return settings.enabled && limitCents > 0 && spentTodayCents >= limitCents - settings.toleranceCents;
@@ -1475,8 +1538,11 @@ export function maybeNotifyDailyLimit(settings: DailyLimitAlertSettings, spentTo
   if (localStorage.getItem(DAILY_LIMIT_NOTIFY_KEY) === todayKey) return;
   try {
     if (typeof Notification === "undefined" || Notification.permission !== "granted") return;
-    new Notification("⚠️ 今日消费已达限额", {
-      body: `今天日常消费已花 ¥${centsToYuan(spentTodayCents)}，达到日限额 ¥${centsToYuan(limitCents)}（含 ¥${centsToYuan(settings.toleranceCents)} 误差线）。`
+    const overCents = spentTodayCents - limitCents;
+    new Notification(overCents > 0 ? "⚠️ 今日消费已超出日限额" : "⚠️ 今日消费已到日限额", {
+      body: overCents > 0
+        ? `今日已花 ¥${centsToYuan(spentTodayCents)}，超出今日限额 ¥${centsToYuan(limitCents)} 共 ¥${centsToYuan(overCents)}。`
+        : `今日已花 ¥${centsToYuan(spentTodayCents)}，已达今日限额 ¥${centsToYuan(limitCents)} 附近（限额已含 ¥${centsToYuan(settings.toleranceCents)} 误差线），还没超。`
     });
     localStorage.setItem(DAILY_LIMIT_NOTIFY_KEY, todayKey);
   } catch {
@@ -1485,11 +1551,14 @@ export function maybeNotifyDailyLimit(settings: DailyLimitAlertSettings, spentTo
 }
 
 /** 低消费表扬是否到期：中午起评「上午」、傍晚起评「下午」。
- * 条件：今天完全没花（zero），或设有日限额且今日消费低于限额、没有过度消费（thrifty）。 */
-export function noSpendPraiseDue(hour: number, spentTodayCents: number, limitCents: number): { period: "am" | "pm"; kind: "zero" | "thrifty" } | null {
+ * 条件：
+ * - zero：今天全部支出（含专项）=0，即真的「一分钱没花」；
+ * - thrifty：设有日限额且今日日常消费低于限额（没超支）。
+ * totalSpentTodayCents 为今日全部支出，缺省回退到日常支出以兼容旧调用。 */
+export function noSpendPraiseDue(hour: number, spentTodayCents: number, limitCents: number, totalSpentTodayCents: number = spentTodayCents): { period: "am" | "pm"; kind: "zero" | "thrifty" } | null {
   const period = hour >= 18 ? "pm" : hour >= 12 ? "am" : null;
   if (!period) return null;
-  if (spentTodayCents <= 0) return { period, kind: "zero" };
+  if (totalSpentTodayCents <= 0) return { period, kind: "zero" };
   if (limitCents > 0 && spentTodayCents < limitCents) return { period, kind: "thrifty" };
   return null;
 }
@@ -1507,9 +1576,9 @@ export function praiseMessage(period: "am" | "pm", kind: "zero" | "thrifty"): st
 }
 
 /** 低消费表扬：早上/下午没怎么花就发一条鼓励推送（每个时段每天最多一条） */
-export function maybePraiseNoSpend(settings: DailyLimitAlertSettings, spentTodayCents: number, limitCents: number) {
+export function maybePraiseNoSpend(settings: DailyLimitAlertSettings, spentTodayCents: number, limitCents: number, totalSpentTodayCents?: number) {
   if (!settings.enabled || !settings.notify || settings.praiseEnabled === false) return;
-  const due = noSpendPraiseDue(Number(beijingDateTimeParts().hour), spentTodayCents, limitCents);
+  const due = noSpendPraiseDue(Number(beijingDateTimeParts().hour), spentTodayCents, limitCents, totalSpentTodayCents ?? spentTodayCents);
   if (!due) return;
   const stamp = `${dateKey(new Date().toISOString())}:${due.period}`;
   if (localStorage.getItem(PRAISE_NOTIFY_KEY) === stamp) return;
@@ -1532,6 +1601,7 @@ export function DailyLimitOverlay({ spentCents, limitCents, toleranceCents, onDi
   onDismiss: () => void;
 }) {
   const overCents = spentCents - limitCents;
+  const reachedOnly = overCents <= 0;
   useEffect(() => {
     document.body.classList.add("daily-limit-lock");
     return () => document.body.classList.remove("daily-limit-lock");
@@ -1540,11 +1610,25 @@ export function DailyLimitOverlay({ spentCents, limitCents, toleranceCents, onDi
     <div className="daily-limit-overlay" role="alert" aria-live="assertive">
       <div className="daily-limit-card">
         <span className="daily-limit-icon">⚠️</span>
-        <h2>今日消费已达限额</h2>
-        <p className="daily-limit-amount">¥{centsToYuan(spentCents)}</p>
+        <h2>{reachedOnly ? "今日消费已到日限额" : "今日消费已超出日限额"}</h2>
+        <div className="daily-limit-figure">
+          <span className="daily-limit-label">今日已花（实际消费）</span>
+          <p className="daily-limit-amount">¥{centsToYuan(spentCents)}</p>
+        </div>
+        <div className="daily-limit-meta">
+          <div>
+            <span>今日限额</span>
+            <strong>¥{centsToYuan(limitCents)}</strong>
+          </div>
+          <div>
+            <span>{reachedOnly ? "状态" : "超出限额"}</span>
+            <strong className={reachedOnly ? "" : "over"}>
+              {reachedOnly ? "误差线内，还没超" : `¥${centsToYuan(overCents)}`}
+            </strong>
+          </div>
+        </div>
         <p className="daily-limit-detail">
-          今日动态限额 ¥{centsToYuan(limitCents)}（误差线 ¥{centsToYuan(toleranceCents)}）
-          {overCents > 0 ? ` · 已超出 ¥${centsToYuan(overCents)}` : " · 已到临界，别再花了"}
+          今日限额已含 ¥{centsToYuan(toleranceCents)} 误差线，花到 ¥{centsToYuan(Math.max(0, limitCents - toleranceCents))} 就算达线。
         </p>
         <p className="daily-limit-advice">今天花的每一笔都会滚入明天的动态限额——少花明天更宽裕，多花后面几天自动收紧。想买的东西先加进「计划购买」，等额度够时再买。</p>
         <button type="button" className="daily-limit-dismiss" onClick={onDismiss}>知道了（下次打开仍会提醒）</button>
@@ -1681,6 +1765,7 @@ export function PlannedPurchasePanel({ items, todayRemainingCents, onAdd, onTogg
   const [permission, setPermission] = useState<NotificationPermission | "unsupported">(
     typeof Notification === "undefined" ? "unsupported" : Notification.permission
   );
+  const [showAdd, setShowAdd] = useState(false);
 
   const pending = useMemo(
     () => items.filter((item) => !item.completedAt).sort((left, right) => left.amountCents - right.amountCents),
@@ -1710,6 +1795,7 @@ export function PlannedPurchasePanel({ items, todayRemainingCents, onAdd, onTogg
     onAdd(name, amountCents);
     setNameInput("");
     setAmountInput("");
+    setShowAdd(false);
   }
 
   async function requestNotifyPermission() {
@@ -1733,26 +1819,38 @@ export function PlannedPurchasePanel({ items, todayRemainingCents, onAdd, onTogg
         </span>
       </div>
 
-      <div className="planbuy-add">
-        <input
-          value={nameInput}
-          placeholder="想买什么（如：冬季床上三件套）"
-          maxLength={40}
-          onChange={(event) => setNameInput(event.target.value)}
-          onKeyDown={(event) => { if (event.key === "Enter") addItem(); }}
-        />
-        <input
-          value={amountInput}
-          placeholder="预算 ¥"
-          inputMode="decimal"
-          className="planbuy-amount"
-          onChange={(event) => setAmountInput(event.target.value)}
-          onKeyDown={(event) => { if (event.key === "Enter") addItem(); }}
-        />
-        <button type="button" className="primary" disabled={!nameInput.trim() || !amountInput.trim()} onClick={addItem}>
-          <ShoppingBag size={16} />加入清单
+      <div className="planbuy-toolbar">
+        <button
+          type="button"
+          className={showAdd ? "planbuy-add-toggle active" : "planbuy-add-toggle"}
+          onClick={() => setShowAdd((value) => !value)}
+        >
+          <Plus size={15} />{showAdd ? "收起新增" : "新增计划购买"}
         </button>
       </div>
+
+      {showAdd && (
+        <div className="planbuy-add">
+          <input
+            value={nameInput}
+            placeholder="想买什么（如：冬季床上三件套）"
+            maxLength={40}
+            onChange={(event) => setNameInput(event.target.value)}
+            onKeyDown={(event) => { if (event.key === "Enter") addItem(); }}
+          />
+          <input
+            value={amountInput}
+            placeholder="预算 ¥"
+            inputMode="decimal"
+            className="planbuy-amount"
+            onChange={(event) => setAmountInput(event.target.value)}
+            onKeyDown={(event) => { if (event.key === "Enter") addItem(); }}
+          />
+          <button type="button" className="primary" disabled={!nameInput.trim() || !amountInput.trim()} onClick={addItem}>
+            <ShoppingBag size={16} />加入清单
+          </button>
+        </div>
+      )}
 
       {todayRemainingCents === null && pending.length > 0 && (
         <p className="reminder-hint">未设日常消费预算，无法判断今日余额（设置 → 预算管理）。</p>
@@ -1789,7 +1887,7 @@ export function PlannedPurchasePanel({ items, todayRemainingCents, onAdd, onTogg
                       <strong>¥{centsToYuan(item.amountCents)}</strong>
                       <div className="planbuy-actions">
                         <button type="button" className="planbuy-mark" title="标记已买到手，移入已买列表" onClick={() => onToggleComplete(item)}>
-                          已买到手
+                          买到手
                         </button>
                         <button type="button" className="icon-button" title="删除这条计划" aria-label="删除这条计划" onClick={() => onDelete(item)}>
                           <Trash2 size={15} />
@@ -1802,7 +1900,7 @@ export function PlannedPurchasePanel({ items, todayRemainingCents, onAdd, onTogg
             </div>
           )}
           {pending.length > 0 && (
-            <p className="reminder-hint">「已买到手」移入已买列表；右侧垃圾桶才是删除。</p>
+            <p className="reminder-hint">「买到手」移入已买列表；右侧垃圾桶才是删除。</p>
           )}
           {completed.length > 0 && (
             <details className="planbuy-completed">

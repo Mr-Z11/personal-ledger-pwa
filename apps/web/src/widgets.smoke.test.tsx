@@ -5,6 +5,7 @@ import {
   BigExpensePanel,
   BudgetReservoir,
   DailyPaceChart,
+  DailyLimitOverlay,
   FixedExpenseOverview,
   LocalSalaryReminderPanel,
   RegularExpensePanel,
@@ -222,12 +223,12 @@ describe("常规项支出与规划页", () => {
     saveFixedExpenses(monthKey(), []);
   });
 
-  it("FixedExpenseOverview 添加表单提供分类选择", () => {
+  it("FixedExpenseOverview 新增入口默认只有一个图标按钮，不占一整行表单", () => {
     const html = renderToString(<FixedExpenseOverview transactions={[]} categories={categories} />);
-    expect(html).toContain("关联分类（可选）");
-    // 分类选择器列出账本里的分类（路径中的 > 在 HTML 中被转义，这里只校验分类名片段）
-    expect(html).toContain("三餐");
-    expect(html).toContain("贷款本金");
+    // 默认收起：只有 ＋ 图标按钮，没有常驻的输入行
+    expect(html).toContain("新增固定支出项");
+    expect(html).not.toContain("关联分类（可选）");
+    expect(html).not.toContain("新项目（如：房租）");
   });
 
   it("dailyLimitCents 为动态限额：当日消费不影响当日限额，昨日消费才计入", () => {
@@ -301,6 +302,19 @@ describe("低消费表扬：时段判定与文案", () => {
     expect(noSpendPraiseDue(14, 3000, 5000)).toEqual({ period: "am", kind: "thrifty" });
   });
 
+  it("上午花了一笔专项支出（日常=0、全部>0）→ 不再误判 zero，按日常口径判 thrifty", () => {
+    // 第 4 个参数 totalSpentTodayCents 为今日全部支出（含专项）
+    expect(noSpendPraiseDue(13, 0, 5000, 3000)).toEqual({ period: "am", kind: "thrifty" });
+  });
+
+  it("上午花专项但无预算（limit=0）→ 不表扬（避免大额专项支出还被夸）", () => {
+    expect(noSpendPraiseDue(13, 0, 0, 3000)).toBeNull();
+  });
+
+  it("今日全部支出真的为 0 → 表扬 zero", () => {
+    expect(noSpendPraiseDue(13, 0, 5000, 0)).toEqual({ period: "am", kind: "zero" });
+  });
+
   it("达到/超过日限额 → 不表扬", () => {
     expect(noSpendPraiseDue(14, 5000, 5000)).toBeNull();
     expect(noSpendPraiseDue(14, 6000, 5000)).toBeNull();
@@ -313,5 +327,29 @@ describe("低消费表扬：时段判定与文案", () => {
   it("文案包含正向鼓励关键词", () => {
     expect(praiseMessage("am", "zero")).toContain("应急资金");
     expect(praiseMessage("pm", "thrifty")).toContain("压力");
+  });
+});
+
+describe("当日限额全屏警告文案", () => {
+  it("明确标注大额数字是「今日已花」，限额单独一行，不产生歧义", () => {
+    const html = renderToString(
+      <DailyLimitOverlay spentCents={123400} limitCents={120000} toleranceCents={2000} onDismiss={() => {}} />
+    );
+    expect(html).toContain("今日已花（实际消费）");
+    // SSR 会在 ¥ 与数字之间插入注释节点，这里只断言数字
+    expect(html).toContain("1234.00");
+    expect(html).toContain("今日限额");
+    expect(html).toContain("1200.00");
+    expect(html).toContain("超出限额");
+    expect(html).toContain("34.00");
+    expect(html).toContain("今日消费已超出日限额");
+  });
+
+  it("误差线内未超出时给出「还没超」而不是金额", () => {
+    const html = renderToString(
+      <DailyLimitOverlay spentCents={119000} limitCents={120000} toleranceCents={2000} onDismiss={() => {}} />
+    );
+    expect(html).toContain("今日消费已到日限额");
+    expect(html).toContain("误差线内，还没超");
   });
 });

@@ -162,6 +162,8 @@ model ReminderSetting {
   dailyLimitHour Int @default(21)
   /** 误差金额（分）：今日消费 ≥ 日限额 − 误差即视为达线 */
   dailyLimitToleranceCents Int @default(2000)
+  /** 低消费表扬：关闭后不推送表扬提醒（含前台通知与服务端后台推送） */
+  praiseEnabled Boolean @default(true)
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 }

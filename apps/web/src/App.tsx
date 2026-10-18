@@ -41,7 +41,7 @@ import {
   Upload,
   X
 } from "lucide-react";
-import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import { api } from "./api";
 import { getApiBase, setApiBase, getDefaultApiBase } from "./api";
 import { clearOutbox, db, enqueue, readOutboxPayload, resetLocalData, saveSnapshot } from "./db";
@@ -99,6 +99,7 @@ import {
   saveDailyLimitAlertSettings,
   saveSalarySettings,
   todayDailySpentCents,
+  todayAllSpentCents,
   type DailyLimitAlertSettings,
   type SalarySettings
 } from "./widgets";
@@ -657,6 +658,10 @@ export function App() {
     () => todayDailySpentCents(activeTransactions, activeCategories),
     [activeTransactions, activeCategories]
   );
+  const todayAllSpentCentsValue = useMemo(
+    () => todayAllSpentCents(activeTransactions, activeCategories),
+    [activeTransactions, activeCategories]
+  );
   const monthBudgetCents = useMemo(() => monthBudgetTotal(activeBudgets, currentMonth), [activeBudgets, currentMonth]);
   const todayLimitCents = useMemo(
     () => dailyLimitCents(activeBudgets, activeTransactions, activeCategories, currentMonth),
@@ -671,17 +676,17 @@ export function App() {
 
   useEffect(() => {
     maybeNotifyDailyLimit(dailyLimitSettings, todaySpentCents, todayLimitCents);
-    maybePraiseNoSpend(dailyLimitSettings, todaySpentCents, todayLimitCents);
-  }, [dailyLimitSettings, todaySpentCents, todayLimitCents]);
+    maybePraiseNoSpend(dailyLimitSettings, todaySpentCents, todayLimitCents, todayAllSpentCentsValue);
+  }, [dailyLimitSettings, todaySpentCents, todayLimitCents, todayAllSpentCentsValue]);
 
   // 应用一直开着也要能到点提醒：每 10 分钟重查一次
   useEffect(() => {
     const timer = window.setInterval(() => {
       maybeNotifyDailyLimit(dailyLimitSettings, todaySpentCents, todayLimitCents);
-      maybePraiseNoSpend(dailyLimitSettings, todaySpentCents, todayLimitCents);
+      maybePraiseNoSpend(dailyLimitSettings, todaySpentCents, todayLimitCents, todayAllSpentCentsValue);
     }, 10 * 60 * 1000);
     return () => window.clearInterval(timer);
-  }, [dailyLimitSettings, todaySpentCents, todayLimitCents]);
+  }, [dailyLimitSettings, todaySpentCents, todayLimitCents, todayAllSpentCentsValue]);
 
   /** 限额提醒设置同步到服务端：dailyLimitHour 固定 0（提醒时间功能已移除，达线即推）；离线时静默失败，本机设置仍生效 */
   const syncDailyLimitSettings = useCallback(async (next: DailyLimitAlertSettings) => {
@@ -690,7 +695,8 @@ export function App() {
       await api.saveNotificationSettings(token, {
         dailyLimitEnabled: next.enabled,
         dailyLimitHour: 0,
-        dailyLimitToleranceCents: next.toleranceCents
+        dailyLimitToleranceCents: next.toleranceCents,
+        praiseEnabled: next.praiseEnabled
       });
     } catch {
       // 离线或服务端旧版本：忽略，本机提醒仍生效
@@ -703,6 +709,18 @@ export function App() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  /** 先把本机待同步队列推上去；队列为空返回 null。
+   * 注意：判定依据必须是 outbox 行数，不能按 payload 长度算——否则只含「计划购买」的队列会被当成空队列，
+   * 直接走 pull 把本地还没上传的数据用云端快照覆盖掉，队列也清不掉，表现为「怎么刷新都同步不了」。 */
+  async function pushPending(nextToken = token) {
+    if (!nextToken) return null;
+    if ((await db.outbox.count()) === 0) return null;
+    const pending = await readOutboxPayload();
+    const pushed = await api.push(nextToken, pending);
+    await clearOutbox();
+    return pushed;
+  }
+
   async function hydrateFromServer(nextToken = token) {
     if (!nextToken) return;
     if (nextToken.startsWith("local-preview:")) {
@@ -712,7 +730,8 @@ export function App() {
     }
     setBusy(true);
     try {
-      const snapshot = await api.bootstrap(nextToken);
+      // 启动时若本机还有没推上去的改动，先推再取，避免被云端快照覆盖
+      const snapshot = (await pushPending(nextToken)) ?? (await api.bootstrap(nextToken));
       await saveSnapshot(snapshot);
       await refreshLocal();
       setMessage("云端数据已更新");
@@ -732,26 +751,17 @@ export function App() {
     }
     setBusy(true);
     try {
-      const pending = await readOutboxPayload();
-      if (
-        (pending.accounts?.length ?? 0) +
-          (pending.categories?.length ?? 0) +
-          (pending.transactions?.length ?? 0) +
-          (pending.budgets?.length ?? 0) +
-          (pending.analysisNotes?.length ?? 0) >
-        0
-      ) {
-        const pushed = await api.push(token, pending);
-        await clearOutbox();
-        await saveSnapshot(pushed);
-      } else {
-        const pulled = await api.pull(token);
-        await saveSnapshot(pulled);
-      }
+      const pushed = await pushPending();
+      const snapshot = pushed ?? (await api.pull(token));
+      await saveSnapshot(snapshot);
       await refreshLocal();
-      setMessage("同步完成");
+      const doneAt = new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" });
+      setMessage(`同步完成 ${doneAt}`);
+      setToast(pushed ? "同步完成（已上传本机改动）" : "同步完成");
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : "离线中，稍后自动同步");
+      const detail = error instanceof Error ? error.message : "未知错误";
+      setMessage(`同步失败：${detail}`);
+      setToast(`同步失败：${detail}`);
     } finally {
       setBusy(false);
     }
@@ -785,6 +795,11 @@ export function App() {
     const timer = window.setTimeout(() => setToast(null), 2800);
     return () => window.clearTimeout(timer);
   }, [toast]);
+
+  // 切换标签（尤其「流水」）时回到顶部：每次都从最新一条往下看，而不是沿用上个页面的滚动位置
+  useEffect(() => {
+    window.scrollTo({ top: 0, left: 0, behavior: "auto" });
+  }, [view]);
 
   async function signOut() {
     localStorage.removeItem("ledger-token");
@@ -854,7 +869,9 @@ export function App() {
         </nav>
         <div className="sync-card">
           <span>{isLocalPreview ? "本地预览" : navigator.onLine ? "在线" : "离线"} · 待同步 {isLocalPreview ? 0 : outboxCount}</span>
-          <small>{lastSync ? new Date(lastSync).toLocaleString() : message}</small>
+          <small title={lastSync ? new Date(lastSync).toLocaleString() : undefined}>
+            {message}{lastSync ? ` · ${new Date(lastSync).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}` : ""}
+          </small>
           <button className="icon-button" onClick={syncNow} disabled={busy} title="立即同步">
             <RefreshCw size={18} className={busy ? "spin" : ""} />
           </button>
@@ -2544,8 +2561,18 @@ function AccountsPanel({ accounts, onSave, onDelete }: { accounts: Account[]; on
   const [color, setColor] = useState("#1f5f74");
   const [limit, setLimit] = useState("");
   const [editing, setEditing] = useState<Account | null>(null);
+  const [showNewForm, setShowNewForm] = useState(false);
+
+  function resetForm() {
+    setEditing(null);
+    setName("");
+    setType("bank");
+    setColor("#1f5f74");
+    setLimit("");
+  }
 
   function editAccount(account: Account) {
+    setShowNewForm(false);
     setEditing(account);
     setName(account.name);
     setType(account.type);
@@ -2556,53 +2583,38 @@ function AccountsPanel({ accounts, onSave, onDelete }: { accounts: Account[]; on
   async function deleteAccount(account: Account) {
     const confirmed = window.confirm(`删除账户“${account.name}”？历史流水会保留，只是不再作为可选账户显示。`);
     if (!confirmed) return;
-    if (editing?.id === account.id) {
-      setEditing(null);
-      setName("");
-      setColor("#1f5f74");
-      setLimit("");
-    }
+    if (editing?.id === account.id) resetForm();
     await onDelete(account);
   }
 
-  return (
-    <section className="grid two account-management">
-      <div className="panel management-panel">
-        <h2>账户管理</h2>
-        <p className="empty">新增、编辑、删除账户集中在设置中维护。</p>
-        <div className="account-list">
-          {accounts.map((account) => (
-            <div className="account-line" key={account.id}>
-              <i style={{ background: account.color }} />
-              <span title={account.name}>{account.name}</span>
-              <em>{accountTypeLabels[account.type]} · 额度 {accountLimitText(account)}</em>
-              <div className="account-actions">
-                <button className="text-action" onClick={() => editAccount(account)} type="button"><Pencil size={15} />编辑</button>
-                <button className="text-action danger" onClick={() => void deleteAccount(account)} type="button"><Trash2 size={15} />删除</button>
-              </div>
-            </div>
-          ))}
+  async function submit(event: React.FormEvent) {
+    event.preventDefault();
+    const wasEditing = !!editing;
+    await onSave({
+      ...(editing ?? entityStamp()),
+      name,
+      type,
+      openingBalanceCents: limit ? yuanToCents(limit) : 0,
+      color,
+      version: editing ? editing.version + 1 : 1,
+      updatedAt: new Date().toISOString(),
+      deletedAt: null
+    });
+    resetForm();
+    // 新增保存后收起表单，把界面还给账户列表；编辑则在原地结束
+    if (!wasEditing) setShowNewForm(false);
+  }
+
+  function renderForm() {
+    return (
+      <form className="panel form-stack account-editor-panel inline-edit-form" onSubmit={submit}>
+        <div className="inline-form-head">
+          <div>
+            <h2>{editing ? "编辑账户" : "新增账户"}</h2>
+            <p>{editing ? `正在编辑：${editing.name}` : "新增一个账户，记账时可快速选择；也可以设置额度。"}</p>
+          </div>
         </div>
-      </div>
-      <form className="panel form-stack" onSubmit={async (event) => {
-        event.preventDefault();
-        await onSave({
-          ...(editing ?? entityStamp()),
-          name,
-          type,
-          openingBalanceCents: limit ? yuanToCents(limit) : 0,
-          color,
-          version: editing ? editing.version + 1 : 1,
-          updatedAt: new Date().toISOString(),
-          deletedAt: null
-        });
-        setName("");
-        setColor("#1f5f74");
-        setLimit("");
-        setEditing(null);
-      }}>
-        <h2>{editing ? "编辑账户" : "新增账户"}</h2>
-        <input value={name} onChange={(event) => setName(event.target.value)} placeholder="账户名称" required />
+        <input value={name} onChange={(event) => setName(event.target.value)} placeholder="账户名称" required autoFocus={!editing} />
         <select value={type} onChange={(event) => setType(event.target.value as Account["type"])}>
           <option value="bank">银行卡</option>
           <option value="cash">现金</option>
@@ -2616,14 +2628,49 @@ function AccountsPanel({ accounts, onSave, onDelete }: { accounts: Account[]; on
         <input value={limit} onChange={(event) => setLimit(event.target.value)} placeholder="额度（可选）" inputMode="decimal" />
         <input value={color} onChange={(event) => setColor(event.target.value)} type="color" />
         <button className="primary">保存账户</button>
-        {editing && <button type="button" className="ghost" onClick={() => {
-          setEditing(null);
-          setName("");
-          setColor("#1f5f74");
-          setLimit("");
-        }}>取消编辑</button>}
+        {editing
+          ? <button type="button" className="ghost" onClick={resetForm}>取消编辑</button>
+          : <button type="button" className="ghost" onClick={() => setShowNewForm(false)}>收起</button>}
       </form>
-    </section>
+    );
+  }
+
+  return (
+    <div className="panel management-panel">
+      <h2>账户</h2>
+      <p className="empty">记账时选择的资金账户，删除后历史流水保留。</p>
+      <div className="account-toolbar">
+        {!editing && (
+          <button
+            type="button"
+            className={showNewForm ? "account-add-toggle active" : "account-add-toggle"}
+            onClick={() => setShowNewForm((value) => !value)}
+          >
+            <Plus size={15} />{showNewForm ? "收起新增" : "新增账户"}
+          </button>
+        )}
+      </div>
+      {(showNewForm || editing) && renderForm()}
+      <div className="account-list">
+        {accounts.length === 0 ? (
+          <p className="empty">还没有账户，点击上方「新增账户」添加一个吧。</p>
+        ) : (
+          accounts.map((account) => (
+            <div className="account-line" key={account.id}>
+              <i style={{ background: account.color }} />
+              <div className="account-info">
+                <span className="account-name" title={account.name}>{account.name}</span>
+                <em className="account-meta">{accountTypeLabels[account.type]} · 额度 {accountLimitText(account)}</em>
+              </div>
+              <div className="account-actions">
+                <button className="text-action icon-only" onClick={() => editAccount(account)} type="button" title="编辑" aria-label="编辑"><Pencil size={15} /><span className="action-label">编辑</span></button>
+                <button className="text-action danger icon-only" onClick={() => void deleteAccount(account)} type="button" title="删除" aria-label="删除"><Trash2 size={15} /><span className="action-label">删除</span></button>
+              </div>
+            </div>
+          ))
+        )}
+      </div>
+    </div>
   );
 }
 
@@ -2633,27 +2680,51 @@ function CategoriesPanel({ categories, onSave, onDelete }: { categories: Categor
   const [visibleKind, setVisibleKind] = useState<Category["kind"]>("expense");
   const [parentId, setParentId] = useState("__other__");
   const [editing, setEditing] = useState<Category | null>(null);
+  const [showNewForm, setShowNewForm] = useState(false);
   const [openCategoryIds, setOpenCategoryIds] = useState<Set<string>>(() => new Set());
+  const inlineEditorRef = useRef<HTMLFormElement | null>(null);
   const activeCategories = activeOnly(categories);
   const topCategories = activeCategories.filter((category) => !category.parentId && category.kind === kind && category.id !== editing?.id);
   const groupedParents = activeCategories.filter((category) => !category.parentId && category.kind === visibleKind);
 
+  function resetEditor() {
+    setEditing(null);
+    setName("");
+    setParentId("__other__");
+  }
+
   function editCategory(category: Category) {
+    setShowNewForm(false);
     setEditing(category);
     setName(category.name);
     setKind(category.kind);
     setVisibleKind(category.kind);
     setParentId(category.parentId ?? "");
+    if (category.parentId) {
+      setOpenCategoryIds((current) => {
+        const next = new Set(current);
+        next.add(category.parentId as string);
+        return next;
+      });
+    }
   }
 
   function toggleCategoryGroup(id: string) {
-    setOpenCategoryIds((current) => {
-      const next = new Set(current);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
-      return next;
-    });
+    const next = new Set(openCategoryIds);
+    if (next.has(id)) {
+      next.delete(id);
+      if (editing?.parentId === id) resetEditor();
+    } else {
+      next.add(id);
+    }
+    setOpenCategoryIds(next);
   }
+
+  // 编辑表单就近渲染在被编辑的分类行下方，避免用户再滚回面板顶部
+  useEffect(() => {
+    if (!editing) return;
+    inlineEditorRef.current?.scrollIntoView({ block: "nearest", behavior: "smooth" });
+  }, [editing?.id]);
 
   async function deleteCategory(category: Category) {
     const children = activeCategories.filter((item) => item.parentId === category.id);
@@ -2669,9 +2740,7 @@ function CategoriesPanel({ categories, onSave, onDelete }: { categories: Categor
       version: item.version + 1
     }));
     if (editing && deleted.some((item) => item.id === editing.id)) {
-      setEditing(null);
-      setName("");
-      setParentId("__other__");
+      resetEditor();
     }
     await onDelete(deleted);
   }
@@ -2696,21 +2765,26 @@ function CategoriesPanel({ categories, onSave, onDelete }: { categories: Categor
       updatedAt: new Date().toISOString(),
       deletedAt: null
     });
-    setName("");
-    setParentId("__other__");
-    setEditing(null);
+    resetEditor();
+    // 新增保存后收起表单，把界面还给分类列表；编辑则在行内结束
+    if (!editing) setShowNewForm(false);
   }
 
-  return (
-    <>
-      <form className="panel form-stack category-editor-panel" onSubmit={submit}>
+  function renderEditor(placement: "top" | "inline") {
+    const inline = placement === "inline";
+    return (
+      <form
+        ref={inline ? inlineEditorRef : undefined}
+        className={inline ? "panel form-stack category-editor-panel inline-edit-form" : "panel form-stack category-editor-panel"}
+        onSubmit={submit}
+      >
         <div className="inline-form-head">
           <div>
-            <h2>{editing ? "编辑分类" : "新增分类"}</h2>
+            <h2>{editing ? (inline ? "编辑当前分类" : "编辑分类") : "新增分类"}</h2>
             <p>{editing ? `正在编辑：${categoryPath(editing, activeCategories)}` : "新增分类会优先放入“其他”，也可以手动选择一级分类。"}</p>
           </div>
         </div>
-        <input value={name} onChange={(event) => setName(event.target.value)} placeholder="分类名称" required />
+        <input value={name} onChange={(event) => setName(event.target.value)} placeholder="分类名称" required autoFocus={!editing} />
         <select value={kind} onChange={(event) => setKind(event.target.value as Category["kind"])}>
           <option value="expense">消费</option>
           <option value="income">收入</option>
@@ -2721,15 +2795,18 @@ function CategoriesPanel({ categories, onSave, onDelete }: { categories: Categor
           {topCategories.map((category) => <option key={category.id} value={category.id}>{category.name}</option>)}
         </select>
         <button className="primary">保存分类</button>
-        {editing && <button type="button" className="ghost" onClick={() => {
-          setEditing(null);
-          setName("");
-          setParentId("__other__");
-        }}>取消编辑</button>}
+        {editing
+          ? <button type="button" className="ghost" onClick={resetEditor}>取消编辑</button>
+          : <button type="button" className="ghost" onClick={() => setShowNewForm(false)}>收起</button>}
       </form>
-      <div className="panel management-panel">
-        <h2>分类</h2>
-        <p className="empty">先选择一级方向，再展开维护二级分类，日常只维护消费分类即可。</p>
+    );
+  }
+
+  return (
+    <div className="panel management-panel">
+      <h2>分类</h2>
+      <p className="empty">先选择一级方向，再展开维护二级分类，日常只维护消费分类即可。</p>
+      <div className="category-toolbar">
         <div className="segmented compact category-kind-tabs">
           {(["expense", "income"] as Category["kind"][]).map((item) => (
             <button
@@ -2738,41 +2815,59 @@ function CategoriesPanel({ categories, onSave, onDelete }: { categories: Categor
               className={visibleKind === item ? "active" : ""}
               onClick={() => {
                 setVisibleKind(item);
-                if (!editing) setKind(item);
+                if (editing) {
+                  if (editing.kind !== item) resetEditor();
+                } else {
+                  setKind(item);
+                }
               }}
             >
               {item === "expense" ? "消费分类" : "收入分类"}
             </button>
           ))}
         </div>
-        <div className="category-tree">
-          {groupedParents.map((parent) => {
-            const children = activeCategories.filter((category) => category.parentId === parent.id);
-            const open = openCategoryIds.has(parent.id);
-            const parentEditing = editing?.id === parent.id;
-            return (
-              <div className="category-group" key={parent.id}>
-                <div className={parentEditing ? "category-line editing" : "category-line"}>
-                  <button className="category-toggle" type="button" onClick={() => toggleCategoryGroup(parent.id)}>
-                    <strong>{parent.name}</strong>
-                    <span>{children.length} 个子分类 · {open ? "收起" : "展开"}</span>
-                  </button>
-                  <button className="text-action" onClick={() => editCategory(parent)} type="button"><Pencil size={15} />编辑</button>
-                  <button className="text-action danger" onClick={() => void deleteCategory(parent)} type="button"><Trash2 size={15} />删除</button>
-                </div>
-                {open && children.map((child) => (
-                  <div className={editing?.id === child.id ? "category-line child editing" : "category-line child"} key={child.id}>
-                    <span>{child.name}</span>
-                    <button className="text-action" onClick={() => editCategory(child)} type="button"><Pencil size={15} />编辑</button>
-                    <button className="text-action danger" onClick={() => void deleteCategory(child)} type="button"><Trash2 size={15} />删除</button>
-                  </div>
-                ))}
-              </div>
-            );
-          })}
-        </div>
+        {!editing && (
+          <button
+            type="button"
+            className={showNewForm ? "category-add-toggle active" : "category-add-toggle"}
+            onClick={() => setShowNewForm((value) => !value)}
+          >
+            <Plus size={15} />{showNewForm ? "收起新增" : "新增分类"}
+          </button>
+        )}
       </div>
-    </>
+      {!editing && showNewForm && renderEditor("inline")}
+      <div className="category-tree">
+        {groupedParents.map((parent) => {
+          const children = activeCategories.filter((category) => category.parentId === parent.id);
+          const open = openCategoryIds.has(parent.id);
+          const parentEditing = editing?.id === parent.id;
+          return (
+            <div className="category-group" key={parent.id}>
+              <div className={parentEditing ? "category-line editing" : "category-line"}>
+                <button className="category-toggle" type="button" onClick={() => toggleCategoryGroup(parent.id)}>
+                  <strong>{parent.name}</strong>
+                  <span>{children.length} 个子分类 · {open ? "收起" : "展开"}</span>
+                </button>
+                <button className="text-action" onClick={() => editCategory(parent)} type="button" title="编辑分类" aria-label="编辑分类"><Pencil size={15} /><span>编辑</span></button>
+                <button className="text-action danger" onClick={() => void deleteCategory(parent)} type="button" title="删除分类" aria-label="删除分类"><Trash2 size={15} /><span>删除</span></button>
+              </div>
+              {parentEditing && renderEditor("inline")}
+              {open && children.map((child) => (
+                <Fragment key={child.id}>
+                  <div className={editing?.id === child.id ? "category-line child editing" : "category-line child"}>
+                    <span>{child.name}</span>
+                    <button className="text-action" onClick={() => editCategory(child)} type="button" title="编辑分类" aria-label="编辑分类"><Pencil size={15} /><span>编辑</span></button>
+                    <button className="text-action danger" onClick={() => void deleteCategory(child)} type="button" title="删除分类" aria-label="删除分类"><Trash2 size={15} /><span>删除</span></button>
+                  </div>
+                  {editing?.id === child.id && renderEditor("inline")}
+                </Fragment>
+              ))}
+            </div>
+          );
+        })}
+      </div>
+    </div>
   );
 }
 
@@ -2788,6 +2883,7 @@ function BudgetPanel({ budgets, categories, transactions, onSave, onDelete }: {
   const [categoryId, setCategoryId] = useState("");
   const [amount, setAmount] = useState("");
   const [editing, setEditing] = useState<Budget | null>(null);
+  const [showNewForm, setShowNewForm] = useState(false);
   const expenseCategories = categories.filter((item) => item.kind === "expense");
   const monthTransactions = transactions.filter((item) => item.occurredAt.startsWith(month));
   const monthExpensesAll = monthTransactions.filter((item) => item.type === "expense");
@@ -2837,6 +2933,7 @@ function BudgetPanel({ budgets, categories, transactions, onSave, onDelete }: {
 
   async function submit(event: React.FormEvent) {
     event.preventDefault();
+    const wasEditing = !!editing;
     const resolvedCategoryId = budgetKind === "category" ? categoryId || null : null;
     const resolvedScope = budgetKind === "total" ? "total" as const : "daily" as const;
     const duplicate = budgets.find((item) =>
@@ -2858,6 +2955,8 @@ function BudgetPanel({ budgets, categories, transactions, onSave, onDelete }: {
       deletedAt: null
     });
     resetForm();
+    // 新增保存后收起表单，把界面还给预算列表；编辑则在行内原地结束
+    if (!wasEditing) setShowNewForm(false);
   }
 
   function renderBudgetLine(budget: Budget) {
@@ -2897,12 +2996,17 @@ function BudgetPanel({ budgets, categories, transactions, onSave, onDelete }: {
           </form>
         ) : (
           <>
-            <span>{budgetLabel(budget)}</span>
-            <strong>¥{centsToYuan(spent)} / ¥{centsToYuan(budget.amountCents)}</strong>
-            <div className={over ? "bar over" : "bar"}><i style={{ width: `${ratio}%` }} /></div>
+            <div className="budget-info">
+              <span className="budget-name">{budgetLabel(budget)}</span>
+              <span className="budget-amount">
+                ¥{centsToYuan(spent)} / ¥{centsToYuan(budget.amountCents)}
+                {over && <em className="budget-over">超</em>}
+              </span>
+            </div>
+            <div className={over ? "bar over" : "bar"} style={{ width: "3.5rem" }}><i style={{ width: `${ratio}%` }} /></div>
             <div className="budget-line-actions">
-              <button className="text-action" onClick={() => editBudget(budget)} type="button"><Pencil size={15} />编辑</button>
-              <button className="text-action danger" onClick={() => void deleteBudget(budget)} type="button"><Trash2 size={15} />删除</button>
+              <button className="text-action" onClick={() => editBudget(budget)} type="button"><Pencil size={15} /><span>编辑</span></button>
+              <button className="text-action danger" onClick={() => void deleteBudget(budget)} type="button"><Trash2 size={15} /><span>删除</span></button>
             </div>
           </>
         )}
@@ -2932,28 +3036,46 @@ function BudgetPanel({ budgets, categories, transactions, onSave, onDelete }: {
       {editing ? (
         <div className="panel budget-add-hint">
           <p>正在编辑「{budgetLabel(editing)}」——直接在上方对应预算行内修改并保存。</p>
-          <button type="button" className="ghost" onClick={resetForm}>+ 新增预算</button>
         </div>
       ) : (
-        <form className="panel form-stack" onSubmit={submit}>
-          <h2>新增预算</h2>
-          <MonthField value={month} onChange={setMonth} label="预算月份" />
-          <label>预算类型
-            <select value={budgetKind} onChange={(event) => setBudgetKind(event.target.value as "daily" | "total" | "category")}>
-              <option value="daily">日常消费总预算</option>
-              <option value="total">总开支预算（含日常消费）</option>
-              <option value="category">分类预算（归入日常消费）</option>
-            </select>
-          </label>
-          {budgetKind === "category" && (
-            <select value={categoryId} onChange={(event) => setCategoryId(event.target.value)} required>
-              <option value="" disabled>选择分类</option>
-              {expenseCategories.map((category) => <option key={category.id} value={category.id}>{category.name}</option>)}
-            </select>
+        <div className="panel budget-add-panel">
+          <div className="budget-toolbar">
+            <button
+              type="button"
+              className={showNewForm ? "budget-add-toggle active" : "budget-add-toggle"}
+              onClick={() => setShowNewForm((value) => !value)}
+            >
+              <Plus size={15} />{showNewForm ? "收起新增" : "新增预算"}
+            </button>
+          </div>
+          {showNewForm && (
+            <form className="panel form-stack budget-editor-panel inline-edit-form" onSubmit={submit}>
+              <div className="inline-form-head">
+                <div>
+                  <h2>新增预算</h2>
+                  <p>设置日常消费、总开支或某个分类的月度预算。</p>
+                </div>
+              </div>
+              <MonthField value={month} onChange={setMonth} label="预算月份" />
+              <label>预算类型
+                <select value={budgetKind} onChange={(event) => setBudgetKind(event.target.value as "daily" | "total" | "category")}>
+                  <option value="daily">日常消费总预算</option>
+                  <option value="total">总开支预算（含日常消费）</option>
+                  <option value="category">分类预算（归入日常消费）</option>
+                </select>
+              </label>
+              {budgetKind === "category" && (
+                <select value={categoryId} onChange={(event) => setCategoryId(event.target.value)} required>
+                  <option value="" disabled>选择分类</option>
+                  {expenseCategories.map((category) => <option key={category.id} value={category.id}>{category.name}</option>)}
+                </select>
+              )}
+              <input value={amount} onChange={(event) => setAmount(event.target.value)} placeholder="预算金额" inputMode="decimal" required autoFocus />
+              <button className="primary">保存预算</button>
+              <button type="button" className="ghost" onClick={() => setShowNewForm(false)}>收起</button>
+            </form>
           )}
-          <input value={amount} onChange={(event) => setAmount(event.target.value)} placeholder="预算金额" inputMode="decimal" required />
-          <button className="primary">保存预算</button>
-        </form>
+        </div>
       )}
     </section>
   );

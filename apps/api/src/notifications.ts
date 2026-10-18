@@ -75,9 +75,12 @@ export async function sendTestReminder(userId: string) {
 }
 
 export async function sendDailyLimitReminder(userId: string, spentCents: number, limitCents: number, toleranceCents = DAILY_LIMIT_TOLERANCE_CENTS) {
+  const overCents = spentCents - limitCents;
   return deliver(userId, {
-    title: "⚠️ 今日消费已达限额",
-    body: `今天日常消费已花 ¥${centsToYuan(spentCents)}，达到日限额 ¥${centsToYuan(limitCents)}（含 ¥${centsToYuan(toleranceCents)} 误差线）。剩下的时间悠着点花！`,
+    title: overCents > 0 ? "⚠️ 今日消费已超出日限额" : "⚠️ 今日消费已到日限额",
+    body: overCents > 0
+      ? `今日已花 ¥${centsToYuan(spentCents)}，超出今日限额 ¥${centsToYuan(limitCents)} 共 ¥${centsToYuan(overCents)}。剩下的时间悠着点花！`
+      : `今日已花 ¥${centsToYuan(spentCents)}，已达今日限额 ¥${centsToYuan(limitCents)} 附近（限额已含 ¥${centsToYuan(toleranceCents)} 误差线），还没超。`,
     url: "/"
   });
 }
@@ -88,6 +91,27 @@ export async function sendPlanBuyReminder(userId: string, remainingCents: number
   return deliver(userId, {
     title: "今日预算有余额，可以安排计划购买",
     body: `今日预算余额 ¥${centsToYuan(remainingCents)}，够买：${shown}${more}。打开总览标记完成。`,
+    url: "/"
+  });
+}
+
+/** 与前端 widgets.tsx praiseMessage 保持一致：低消费表扬文案 */
+function praiseContent(period: "am" | "pm", kind: "zero" | "thrifty"): string {
+  if (kind === "zero") {
+    return period === "am"
+      ? "上午一分钱没花，太赞了！守住钱包，应急资金越来越厚，压力也越来越小。"
+      : "到下午都还没花钱，克制得漂亮！存款在悄悄变厚，心里更踏实、选择更多。";
+  }
+  return period === "am"
+    ? "上午消费很节制，没有超支。保持这个节奏，月底更从容，应急资金也在增加。"
+    : "下午依然花得很稳，没有过度消费。省钱的日子，选择更多、压力更小。";
+}
+
+export async function sendPraiseReminder(userId: string, period: "am" | "pm", kind: "zero" | "thrifty") {
+  const title = kind === "zero" ? "🌱 表扬：今天很会守住钱" : "👏 表扬：今天消费很节制";
+  return deliver(userId, {
+    title,
+    body: praiseContent(period, kind),
     url: "/"
   });
 }
@@ -147,7 +171,19 @@ function chinaToday() {
   const dayKey = `${now.year}-${String(now.month).padStart(2, "0")}-${String(now.day).padStart(2, "0")}`;
   const monthKey = `${now.year}-${String(now.month).padStart(2, "0")}`;
   const start = new Date(Date.UTC(now.year, now.month - 1, now.day) - 8 * 3600_000);
-  return { dayKey, monthKey, hour: now.hour, start, end: new Date(start.getTime() + 24 * 3600_000), days: daysInMonth(now.year, now.month - 1) };
+  return { dayKey, monthKey, hour: now.hour, start, end: new Date(start.getTime() + 24 * 3600_000), days: daysInMonth(now.year, now.month - 1), year: now.year, month: now.month, day: now.day };
+}
+
+/** 北京时间日期键 YYYY-MM-DD，用于和前端的 dateKey 对齐 */
+function chinaDateKey(date: Date) {
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Asia/Shanghai",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit"
+  }).formatToParts(date);
+  const get = (type: string) => parts.find((part) => part.type === type)?.value ?? "0";
+  return `${get("year")}-${get("month")}-${get("day")}`;
 }
 
 function categoryPathOf(category: { name: string; parentId: string | null } | undefined, byId: Map<string, { name: string; parentId: string | null }>) {
@@ -180,27 +216,77 @@ async function checkSpendingAlerts(log: FastifyBaseLogger) {
       const monthDailyBudgetCents = overallDaily
         ? Number(overallDaily.amountCents)
         : budgets.filter((budget) => budget.categoryId).reduce((sum, budget) => sum + Number(budget.amountCents), 0);
-      if (monthDailyBudgetCents <= 0) continue;
-      const dailyLimitCents = Math.round(monthDailyBudgetCents / today.days);
 
-      const [categories, todayExpenses] = await Promise.all([
+      // 与前端 widgets.tsx dailyLimitCents 保持一致：动态日限额
+      // = (当月日常预算 − 截至昨日累计日常支出) ÷ 含今日在内的剩余天数
+      const daysLeft = Math.max(1, today.days - today.day + 1);
+
+      // 取本月 1 号至今的全部支出（含专项/非日常），再拆分「截至昨日」「今日日常」「今日全部」
+      const monthStart = new Date(Date.UTC(today.year, today.month - 1, 1) - 8 * 3600_000);
+      const [categories, monthExpenses] = await Promise.all([
         prisma.category.findMany({ where: { ledgerId: ledger.id }, select: { id: true, name: true, parentId: true } }),
         prisma.transaction.findMany({
           where: {
             ledgerId: ledger.id,
             type: "expense",
             deletedAt: null,
-            occurredAt: { gte: today.start, lt: today.end }
+            occurredAt: { gte: monthStart, lt: today.end }
           },
-          select: { amountCents: true, categoryId: true }
+          select: { amountCents: true, categoryId: true, occurredAt: true }
         })
       ]);
       const byId = new Map(categories.map((category) => [category.id, category]));
-      const spentTodayCents = todayExpenses
-        .filter((item) => !NON_DAILY_PATTERN.test(categoryPathOf(item.categoryId ? byId.get(item.categoryId) : undefined, byId)))
+      const isDailyExpense = (item: { amountCents: bigint; categoryId: string | null; occurredAt: Date }) =>
+        !NON_DAILY_PATTERN.test(categoryPathOf(item.categoryId ? byId.get(item.categoryId) : undefined, byId));
+
+      const spentThroughYesterdayCents = monthExpenses
+        .filter(isDailyExpense)
+        .filter((item) => {
+          const key = chinaDateKey(item.occurredAt);
+          if (!key.startsWith(today.monthKey)) return false;
+          return Number(key.slice(8, 10)) < today.day;
+        })
+        .reduce((sum, item) => sum + Number(item.amountCents), 0);
+
+      const spentTodayCents = monthExpenses
+        .filter(isDailyExpense)
+        .filter((item) => chinaDateKey(item.occurredAt) === today.dayKey)
+        .reduce((sum, item) => sum + Number(item.amountCents), 0);
+
+      // 今日「全部」支出（含专项/非日常）—— 判断「真的 0 花费」用，避免把专项支出误判为一分钱没花
+      const spentTodayTotalCents = monthExpenses
+        .filter((item) => chinaDateKey(item.occurredAt) === today.dayKey)
         .reduce((sum, item) => sum + Number(item.amountCents), 0);
 
       const setting = await prisma.reminderSetting.findUnique({ where: { userId: ledger.ownerId } });
+
+      // ---- 低消费表扬（不依赖预算即可发 zero 表扬；thrifty 需有日限额） ----
+      // 开关对齐前端：主开关 dailyLimitEnabled（=设置页「当日限额提醒」）与子开关 praiseEnabled 同时开启才发
+      const praiseOn = (setting?.dailyLimitEnabled ?? true) && (setting?.praiseEnabled ?? true);
+      if (praiseOn) {
+        const period = today.hour >= 18 ? "pm" : today.hour >= 12 ? "am" : null;
+        if (period) {
+          let praise: { period: "am" | "pm"; kind: "zero" | "thrifty" } | null = null;
+          if (spentTodayTotalCents <= 0) {
+            praise = { period, kind: "zero" };
+          } else if (monthDailyBudgetCents > 0) {
+            const dynamicLimitCents = Math.round(Math.max(0, monthDailyBudgetCents - spentThroughYesterdayCents) / daysLeft);
+            if (spentTodayCents < dynamicLimitCents) praise = { period, kind: "thrifty" };
+          }
+          if (praise && !(await alreadySentToday(ledger.ownerId, "praise", `${today.dayKey}:${praise.period}`))) {
+            const delivered = await sendPraiseReminder(ledger.ownerId, praise.period, praise.kind);
+            if (delivered) await markSentToday(ledger.ownerId, "praise", `${today.dayKey}:${praise.period}`);
+            log.info({ userId: ledger.ownerId, kind: praise.kind, delivered }, "praise reminder dispatched");
+          }
+        }
+      }
+
+      // ---- 预算相关分支（需设预算；无预算则跳过，但上面的表扬分支已先执行） ----
+      if (monthDailyBudgetCents <= 0) continue;
+
+      const monthRemainingCents = Math.max(0, monthDailyBudgetCents - spentThroughYesterdayCents);
+      const dailyLimitCents = Math.round(monthRemainingCents / daysLeft);
+
       const dailyLimitEnabled = setting?.dailyLimitEnabled ?? true;
       const dailyLimitHour = setting?.dailyLimitHour ?? 21;
       const dailyLimitToleranceCents = setting?.dailyLimitToleranceCents ?? DAILY_LIMIT_TOLERANCE_CENTS;

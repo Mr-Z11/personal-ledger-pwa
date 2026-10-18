@@ -90,6 +90,23 @@
 - 打通手机同步：确认 mDNS fallback 自动生效，手机 8-31 后数据全部入本地 PG（3416→3469，最新 2026-09-24）
 - 升级前备份：`backups/pre-image-upgrade-20260925-101948.sql.gz`；导出存档 `Desktop/记账数据-截至2026-09-25.xlsx`
 
+### 2026-10-18 工作（未提交，已部署本地栈）
+
+> 以下为 **2026-10-18 当天**的 UI 紧凑化迭代，**仍未 `git commit`**（自 `f2cb337` 起 5 个文件 modified、未推送；用户尚未批准提交）。代码已 build 并用 `force-recreate caddy-local` 重新挂载到本地栈，手机刷新即见。
+
+| 文件 | 本轮改动摘要 | 状态 |
+|------|------|------|
+| `apps/web/src/styles.css` | 整体 UI 密度收紧（面板/卡片/行/页面边距/字号）、设置页单独收紧、分类维护单行母版、账户管理单行+折叠式新增、预算管理行内编辑样式、预算/固定支出/专项支出单行压缩、分析报表 7 模块「框大字小」只降框高不动字号 | 已部署本地栈，未提交 |
+| `apps/web/src/App.tsx` | 账户管理单行化 + 折叠式「新增账户」、预算管理行内编辑 + 折叠式「新增预算」、预算行压缩为单行（budget-info / mini-bar / 操作） | 已部署本地栈，未提交 |
+| `apps/web/src/widgets.tsx` | 计划购买折叠式「新增」(showAdd)、固定支出行/专项支出行单行化样式配套 | 已部署本地栈，未提交 |
+| `apps/api/src/notifications.ts` | 服务端动态日限额公式与前端对齐（按「截至昨日」口径，不再静态 ÷ 当月天数） | 已部署本地栈，未提交（需 api-local 热补丁或重拉镜像才生效） |
+| `apps/web/src/widgets.smoke.test.tsx` | 冒烟测试随 widgets/App 改动小幅更新 | 已部署本地栈，未提交 |
+
+**部署状态**：前端 5 文件改动已 build → `docker compose -f docker-compose.local.yml --env-file .env.local up -d --force-recreate caddy-local` 重新挂载；`https://localhost:8443/` 与 mDNS 入口均 200，磁盘 CSS 已确认含全部新令牌。
+**后端（notifications.ts）**：纯 JS，可 `docker cp apps/api/dist/. api-local:/app/apps/api/dist/ && docker restart api-local` 热补丁验证；或等 CI 镜像后 `docker pull --platform linux/amd64 ghcr.io/mr-z11/personal-ledger-pwa-api:main && compose up -d api-local`。
+**未提交原因与提交方法**：用户本会话未批准 commit/push；如需提交用 `env -u HTTP_PROXY -u HTTPS_PROXY -u http_proxy -u https_proxy git -c http.version=HTTP/1.1 push`（沙箱代理挡直连 push）；远端若因历史 Data API 推送产生等价 commit 分叉，先 `git diff <本地等价> <远端等价>` 确认 tree 相同再 `git rebase --onto origin/main <本地等价> main` 重放，切勿 force push。
+**详细逐条记录**：见项目记忆 `.workbuddy/memory/2026-10-18.md`（本轮 9 项改动均有条目）。
+
 ## 3. 当前环境状态（2026-09-25 更新）
 
 ### ⚠️ 云端已失效（2026-08-29 起）
@@ -105,6 +122,7 @@
 - 数据库：**3469 笔（2020-05-31 ~ 2026-09-24）**，bigint 金额列，serverVersion 122；**Budget 表 2026-09-25 新增 scope 列（daily/total）**
 - api-local 镜像：GHCR main @ 7796d90（含预算两层 + 工资本地化后端；服务端推送后续经 Git Data API/热补丁更新至 6950f5f 内容）
 - 前端静态文件：`apps/web/dist` 本地构建 @ f2cb337，由 caddy-local 挂载 `/srv/web`（**改 dist 后需 force-recreate caddy-local**）
+- **2026-10-18 补充**：当前 dist 已包含本轮未提交改动（自 `f2cb337` 起 5 文件 modified），前端已重新挂载；git 工作区未提交，用户尚未批准 commit/push
 - 前端版本核对方法：`curl -sk https://localhost:8443/` → 200；取 dist 目录里的 App chunk 文件名（如 `App-Bqrt7isC.js`）后 `curl -sk https://localhost:8443/assets/App-*.js | grep -c "<特征串>"` → ≥1（App 是异步 chunk，入口是 index-*.js）
 - 冒烟测试：`npm --workspace @ledger/web run test` → widgets.smoke.test.tsx 26 项全过（含动态日限额/搜索/表扬用例）
 - 手机 8-31 后数据已于 2026-09-25 11:15 全部同步入本地 PG（用户确认）
@@ -276,6 +294,10 @@
 - 计划购买的动作按钮（已买到手）不要用绿色——绿色只代表真实状态（已买徽章/今日可买），动作用青色，删除/超支用红色（1038d48 起的配色语义）
 - git push 被沙箱代理挡时不要反复重试同一命令：用 `env -u HTTP_PROXY -u HTTPS_PROXY -u http_proxy -u https_proxy git -c http.version=HTTP/1.1 push`；若远端因 GitHub Data API 推送产生等价 commit SHA 分叉，先确认重叠点 tree 相同再 `git rebase --onto origin/main <本地等价commit> main` 重放，切勿 force push 覆盖
 - caddy force-recreate 后根路径偶发 000 是启动竞态，重试 curl 即可，不要误判为部署失败去排查容器
+- 不要为「框大字小」去改字号凑比例——用户要的是「字号不变、只降框高」；只用 padding/min-height/gap 收紧，font-size 一律不动
+- 列表行单行化已成母版范式：名称+金额同行、操作按钮 flex-row，移动端操作降级为纯图标（`.text-action span{display:none}`）；新列表行直接复用 `.category-line`/`.budget-line`/`.fixed-expense-row` 同款 3 列 `minmax(0,1fr) auto auto`
+- 所有「新增」入口统一为「分类维护折叠式」：默认只显示青色虚线 toggle，点击展开内联表单、保存自动收起，不要再做常驻右侧表单
+- 账户/预算等「列表+编辑」用行内编辑（编辑态在行内展开表单），不要回到双列 grid（≤940px 塌成单列会把表单挤到列表下方）
 
 ## 10. 待确认/建议下一步
 

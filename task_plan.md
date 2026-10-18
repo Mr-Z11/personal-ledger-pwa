@@ -4,7 +4,7 @@
 Eliminate the 2–10 second blank screen during iPhone home-screen PWA cold starts by rendering an immediate static shell, showing local data first, and keeping cloud synchronization off the critical rendering path; verify, push main, and deploy production.
 
 ## Current Phase
-Phase 28
+Phase 29
 
 ## Phases
 
@@ -299,3 +299,15 @@ Phase 28
 - [x] 低消费表扬：noSpendPraiseDue（am/pm × zero/thrifty）+ praiseMessage；maybePraiseNoSpend 按 `日期:时段` 去重；即时 effect + 10 分钟轮询；设置页「低消费表扬」checkbox（f2cb337）
 - [x] git push 代理绕过 + rebase 对齐远端等价 commit，origin/main 到达 f2cb337（本地 0/0）
 - **Status:** complete（已推送 main + 部署本地栈；vitest 26/26；待手机实测 8 项新功能）
+
+### Phase 29: 分析报表与设置页 UI 紧凑化（2026-10-18，未提交）
+- [x] 整体 UI 密度收紧：面板/卡片/列表行/页面边距/字号逐级压缩（纯 CSS）
+- [x] 设置页单独收紧（作用域限定 .settings-*，不影响其他页）
+- [x] 修复设置内子标题 > 模块标题的比例失调（子标题 ≤ 0.95rem）
+- [x] 账户管理：两行式 → 参照分类维护单行式（色点+名称+类型·额度同行）；「新增账户」改折叠式（青色虚线 toggle，保存自动收起）
+- [x] 预算管理：行内编辑（编辑态行内展开表单）+ 折叠式「新增预算」
+- [x] 全量统一「新增」为分类维护折叠式：分类维护/账户管理/预算管理/本月固定支出/计划购买 5 处（计划购买原常驻表单改 showAdd 折叠）
+- [x] 预算行压缩为单行（budget-info 名称+金额 / mini 进度条 / 编辑·删除），固定支出行、专项支出行同步单行化
+- [x] 分析报表 7 模块「框大字小」修正：折叠头 padding 0.9/1.1→0.6/0.88rem、专项支出 min-height 2.65→2.3rem、图表趋势卡/洞察卡/异常汇总卡等只降框高不动字号（桌面+移动端同步）
+- [x] 部署：build 成功（PWA 启动校验 12 图通过）→ force-recreate caddy-local 重新挂载；磁盘 CSS 确认含全部新令牌
+- **Status:** complete（已部署本地栈；**未 git commit**，自 f2cb337 起 5 文件 modified）
