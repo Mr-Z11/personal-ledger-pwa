@@ -6,10 +6,11 @@
 
 ## 2. 已完成并部署的变更（2026-10-17 最新）
 
-最新 commit `3187576` 已推送 GitHub main（本地与 origin 0/0 同步）；前端已构建并部署到**本地 Mac 栈**（云端服务器仍失效，见第 3 节）。
+最新 commit `d6deee4` 已推送 GitHub main（本地与 origin 0/0 同步）；前端已构建并部署到**本地 Mac 栈**（云端服务器仍失效，见第 3 节）。
 
 | Commit | 描述 | 关键文件 | 状态 |
 |--------|------|---------|------|
+| `d6deee4` | **删除冗余抬头 + 说明全「?」化**：分类维护删「分类」h2（说明「?」包进消费/收入切换标签行，新增 `.category-kind-wrap`）；账户管理删「账户」h2（「?」跟新增按钮后）；三个内联编辑表单头（新增账户/分类/预算）说明改「?」贴 h2，编辑态「正在编辑：X」数据行保留 | App.tsx, styles.css | 已部署 |
 | `3187576` | **「?」气泡内联排版**：InfoTip 不单独占行，全部贴到被解释文字后（标题/标签/状态条/预算行名后）；删计划购买 2 条独立问号；预算说明入 `renderBudgetLine(budget, tip?)` 参数；保险说明并入标题；推送提示入状态条 | App.tsx, widgets.tsx, plan.tsx | 已部署 |
 | `81428ab` | **说明/备注「?」气泡化（InfoTip）**：新增复用组件（? 按钮 + 点击气泡 + 外部/Esc 关闭）；设置页 5 模块描述、预算 scope、工资/限额/固定支出/计划购买/保险日历说明段改造；错误态/交互提示/数据型小字保持 inline | widgets.tsx, App.tsx, plan.tsx, styles.css | 已部署 |
 | `997adb7` | **预算管理抬头精简 + 间距一致性**：删「日常消费预算/总开支预算」两个 h2；说明小字移列表底部；手机端 chart-heading 抬头↔小字间距收紧至 0.12rem 全模块一致 | App.tsx, styles.css | 已部署 |
@@ -342,3 +343,11 @@
 - 手机推送提示：从 PushAlertPanel 底部挪入 `.reminder-status` 状态条内联（App.tsx）
 - 预算面板：`renderBudgetLine(budget, tip?)` 加可选参数，说明贴 `budget-name` 后内联；未设置预算的空状态行也带问号；顺手修 `categoryBudgets.map(renderBudgetLine)` 把索引误传为 tip 的隐患
 - 校验：typecheck 通过、31 个冒烟测试通过、build 成功、force-recreate caddy-local 已部署（线上 HTML/CSS/JS 均含 info-tip 新令牌）
+
+## 2026-10-18 删除账户/分类冗余抬头，说明统一「?」化（d6deee4，已推送 origin/main）
+- 用户反馈「分类维护」展开后「分类」抬头 + 一大段说明啰嗦 → 删除抬头，说明改「?」；同类问题全模块扫描后一并修改
+- **分类维护**：删 `<h2>分类</h2>` 与说明段；「?」包进消费/收入切换标签行（新增 `.category-kind-wrap` 承接原 `flex:1 1 11rem`，toolbar 成为面板首元素 margin 归零，与预算面板一致）
+- **账户管理**：删 `<h2>账户</h2>` 与说明段；「?」跟在「新增账户」按钮后（`.account-toolbar` flex 行内）
+- **三个内联编辑表单头**（新增账户/新增分类/新增预算）：说明段改「?」贴 h2 后；编辑态「正在编辑：X」数据行保留 inline（`.inline-form-head h2` margin:0，删 p 无残留间距）
+- 保留未动：报表/规划页图表标题的数据型小字（金额/笔数/权重）、空态引导语（固定支出/计划购买/搜索的「还没有…」提示，空的时候正是需要引导的时候）
+- 校验：typecheck + 31 冒烟通过；build + force-recreate caddy-local 已部署（新 bundle `App-0pKuPKVC.js` 含新文案，CSS 含 `category-kind-wrap`）
