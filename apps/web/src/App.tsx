@@ -2619,8 +2619,8 @@ function AccountsPanel({ accounts, onSave, onDelete }: { accounts: Account[]; on
       <form className="panel form-stack account-editor-panel inline-edit-form" onSubmit={submit}>
         <div className="inline-form-head">
           <div>
-            <h2>{editing ? "编辑账户" : "新增账户"}</h2>
-            <p>{editing ? `正在编辑：${editing.name}` : "新增一个账户，记账时可快速选择；也可以设置额度。"}</p>
+            <h2>{editing ? "编辑账户" : "新增账户"}{!editing && <InfoTip text="新增一个账户，记账时可快速选择；也可以设置额度。" />}</h2>
+            {editing && <p>正在编辑：{editing.name}</p>}
           </div>
         </div>
         <input value={name} onChange={(event) => setName(event.target.value)} placeholder="账户名称" required autoFocus={!editing} />
@@ -2646,17 +2646,18 @@ function AccountsPanel({ accounts, onSave, onDelete }: { accounts: Account[]; on
 
   return (
     <div className="panel management-panel">
-      <h2>账户</h2>
-      <p className="empty">记账时选择的资金账户，删除后历史流水保留。</p>
       <div className="account-toolbar">
         {!editing && (
-          <button
-            type="button"
-            className={showNewForm ? "account-add-toggle active" : "account-add-toggle"}
-            onClick={() => setShowNewForm((value) => !value)}
-          >
-            <Plus size={15} />{showNewForm ? "收起新增" : "新增账户"}
-          </button>
+          <>
+            <button
+              type="button"
+              className={showNewForm ? "account-add-toggle active" : "account-add-toggle"}
+              onClick={() => setShowNewForm((value) => !value)}
+            >
+              <Plus size={15} />{showNewForm ? "收起新增" : "新增账户"}
+            </button>
+            <InfoTip text="记账时选择的资金账户；删除账户后历史流水会保留。" />
+          </>
         )}
       </div>
       {(showNewForm || editing) && renderForm()}
@@ -2789,8 +2790,8 @@ function CategoriesPanel({ categories, onSave, onDelete }: { categories: Categor
       >
         <div className="inline-form-head">
           <div>
-            <h2>{editing ? (inline ? "编辑当前分类" : "编辑分类") : "新增分类"}</h2>
-            <p>{editing ? `正在编辑：${categoryPath(editing, activeCategories)}` : "新增分类会优先放入“其他”，也可以手动选择一级分类。"}</p>
+            <h2>{editing ? (inline ? "编辑当前分类" : "编辑分类") : "新增分类"}{!editing && <InfoTip text="新增分类会优先放入“其他”，也可以手动选择一级分类。" />}</h2>
+            {editing && <p>正在编辑：{categoryPath(editing, activeCategories)}</p>}
           </div>
         </div>
         <input value={name} onChange={(event) => setName(event.target.value)} placeholder="分类名称" required autoFocus={!editing} />
@@ -2813,27 +2814,28 @@ function CategoriesPanel({ categories, onSave, onDelete }: { categories: Categor
 
   return (
     <div className="panel management-panel">
-      <h2>分类</h2>
-      <p className="empty">先选择一级方向，再展开维护二级分类，日常只维护消费分类即可。</p>
       <div className="category-toolbar">
-        <div className="segmented compact category-kind-tabs">
-          {(["expense", "income"] as Category["kind"][]).map((item) => (
-            <button
-              key={item}
-              type="button"
-              className={visibleKind === item ? "active" : ""}
-              onClick={() => {
-                setVisibleKind(item);
-                if (editing) {
-                  if (editing.kind !== item) resetEditor();
-                } else {
-                  setKind(item);
-                }
-              }}
-            >
-              {item === "expense" ? "消费分类" : "收入分类"}
-            </button>
-          ))}
+        <div className="category-kind-wrap">
+          <div className="segmented compact category-kind-tabs">
+            {(["expense", "income"] as Category["kind"][]).map((item) => (
+              <button
+                key={item}
+                type="button"
+                className={visibleKind === item ? "active" : ""}
+                onClick={() => {
+                  setVisibleKind(item);
+                  if (editing) {
+                    if (editing.kind !== item) resetEditor();
+                  } else {
+                    setKind(item);
+                  }
+                }}
+              >
+                {item === "expense" ? "消费分类" : "收入分类"}
+              </button>
+            ))}
+          </div>
+          <InfoTip text="先选择一级方向（消费/收入），再展开维护二级分类，日常只维护消费分类即可；删除分类后历史流水会保留。" />
         </div>
         {!editing && (
           <button
@@ -3061,8 +3063,7 @@ function BudgetPanel({ budgets, categories, transactions, onSave, onDelete }: {
             <form className="panel form-stack budget-editor-panel inline-edit-form" onSubmit={submit}>
               <div className="inline-form-head">
                 <div>
-                  <h2>新增预算</h2>
-                  <p>设置日常消费、总开支或某个分类的月度预算。</p>
+                  <h2>新增预算<InfoTip text="设置日常消费、总开支或某个分类的月度预算。" /></h2>
                 </div>
               </div>
               <MonthField value={month} onChange={setMonth} label="预算月份" />

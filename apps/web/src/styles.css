@@ -2301,11 +2301,18 @@ input[type="month"],
   align-items: center;
   gap: 0.5rem;
   flex-wrap: wrap;
-  margin-top: 0.75rem;
+  margin-top: 0;
+}
+
+/* 「?」说明包住切换标签，紧跟标签不单独占行（分类抬头已删，toolbar 是面板首元素） */
+.category-toolbar .category-kind-wrap {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  flex: 1 1 11rem;
 }
 
 .category-toolbar .category-kind-tabs {
-  flex: 1 1 11rem;
   margin-top: 0;
 }
 
@@ -2378,7 +2385,7 @@ input[type="month"],
   align-items: center;
   gap: 0.5rem;
   flex-wrap: wrap;
-  margin-top: 0.5rem;
+  margin-top: 0;
 }
 
 .account-add-toggle {
