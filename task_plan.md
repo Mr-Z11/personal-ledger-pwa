@@ -321,3 +321,5 @@ Phase 29
 - [x] 「?」气泡全部改为跟随文字内联排版：删除独立行 InfoTip（计划购买 2 条）、预算说明入 renderBudgetLine 可选 tip 参数贴预算行名后、保险说明并入标题、推送提示入状态条；typecheck + 31 冒烟 + build + force-recreate caddy-local，commit 3187576 已推送 origin/main
 
 - [x] 删除账户/分类面板冗余抬头 + 说明全「?」化：分类维护删「分类」h2（「?」包进切换标签行，新增 .category-kind-wrap）、账户管理删「账户」h2（「?」跟新增按钮后）、三个表单头（账户/分类/预算）说明改「?」贴 h2，编辑态数据行保留；typecheck + 31 冒烟 + build + force-recreate caddy-local，commit d6deee4 已推送 origin/main
+
+- [x] 设置页标题「?」独占一行修复：根因是 `.settings-section summary span{display:block}` 误伤 InfoTip span（无头 Chrome 实测确认），改 `:not(.info-tip)` 后「?」紧跟标题；build + force-recreate caddy-local，commit 6608ef0 已推送 origin/main

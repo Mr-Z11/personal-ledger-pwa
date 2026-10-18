@@ -6,10 +6,11 @@
 
 ## 2. 已完成并部署的变更（2026-10-17 最新）
 
-最新 commit `d6deee4` 已推送 GitHub main（本地与 origin 0/0 同步）；前端已构建并部署到**本地 Mac 栈**（云端服务器仍失效，见第 3 节）。
+最新 commit `6608ef0` 已推送 GitHub main（本地与 origin 0/0 同步）；前端已构建并部署到**本地 Mac 栈**（云端服务器仍失效，见第 3 节）。
 
 | Commit | 描述 | 关键文件 | 状态 |
 |--------|------|---------|------|
+| `6608ef0` | **设置页标题「?」修复**：`.settings-section summary span{display:block}` 把标题里 InfoTip 的 span 也块级化导致「?」独占一行；改 `:not(.info-tip)` 排除后「?」恢复紧跟标题（无头 Chrome 390px 实测 sameLine=true） | styles.css | 已部署 |
 | `d6deee4` | **删除冗余抬头 + 说明全「?」化**：分类维护删「分类」h2（说明「?」包进消费/收入切换标签行，新增 `.category-kind-wrap`）；账户管理删「账户」h2（「?」跟新增按钮后）；三个内联编辑表单头（新增账户/分类/预算）说明改「?」贴 h2，编辑态「正在编辑：X」数据行保留 | App.tsx, styles.css | 已部署 |
 | `3187576` | **「?」气泡内联排版**：InfoTip 不单独占行，全部贴到被解释文字后（标题/标签/状态条/预算行名后）；删计划购买 2 条独立问号；预算说明入 `renderBudgetLine(budget, tip?)` 参数；保险说明并入标题；推送提示入状态条 | App.tsx, widgets.tsx, plan.tsx | 已部署 |
 | `81428ab` | **说明/备注「?」气泡化（InfoTip）**：新增复用组件（? 按钮 + 点击气泡 + 外部/Esc 关闭）；设置页 5 模块描述、预算 scope、工资/限额/固定支出/计划购买/保险日历说明段改造；错误态/交互提示/数据型小字保持 inline | widgets.tsx, App.tsx, plan.tsx, styles.css | 已部署 |
@@ -351,3 +352,9 @@
 - **三个内联编辑表单头**（新增账户/新增分类/新增预算）：说明段改「?」贴 h2 后；编辑态「正在编辑：X」数据行保留 inline（`.inline-form-head h2` margin:0，删 p 无残留间距）
 - 保留未动：报表/规划页图表标题的数据型小字（金额/笔数/权重）、空态引导语（固定支出/计划购买/搜索的「还没有…」提示，空的时候正是需要引导的时候）
 - 校验：typecheck + 31 冒烟通过；build + force-recreate caddy-local 已部署（新 bundle `App-0pKuPKVC.js` 含新文案，CSS 含 `category-kind-wrap`）
+
+## 2026-10-18 设置页标题「?」独占一行修复（6608ef0，已推送 origin/main）
+- 用户反馈：设置页几个模块的「?」都是单独一行，要全部放到标题后面
+- **根因**（无头 Chrome 390px 实测 DOM/计算样式确认）：`.settings-section summary span { display: block }` 原为副标题小字设计，但 InfoTip 的根元素也是 `<span class="info-tip">`，被这条规则块级化 → 「?」掉到标题下方独占一行（computed display=block、width=285px 撑满）
+- **修复**：该规则改 `.settings-section summary span:not(.info-tip)`；「?」恢复 `inline-flex`，实测 sameLine=true、「?」在标题文字右侧 4px；点击只弹气泡不误折叠模块（stopPropagation 生效）
+- 排查工具沉淀：`~/.workbuddy/binaries/node/workspace/` 装有 playwright-core，可用「本地签发 JWT（JWT_SECRET 签 sub=用户id）+ 无头 Chrome（executablePath=/Applications/Google Chrome.app/...、ignoreHTTPSErrors）+ addInitScript 写 ledger-token」渲染需登录的页面并截图；当天超限额时先点「知道了」关 daily-limit-overlay 再操作
