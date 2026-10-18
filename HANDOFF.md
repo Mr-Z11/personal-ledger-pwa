@@ -6,10 +6,11 @@
 
 ## 2. 已完成并部署的变更（2026-10-17 最新）
 
-最新 commit `6608ef0` 已推送 GitHub main（本地与 origin 0/0 同步）；前端已构建并部署到**本地 Mac 栈**（云端服务器仍失效，见第 3 节）。
+最新 commit `2d417e1` 已推送 GitHub main（本地与 origin 0/0 同步）；前端已构建并部署到**本地 Mac 栈**（云端服务器仍失效，见第 3 节）。
 
 | Commit | 描述 | 关键文件 | 状态 |
 |--------|------|---------|------|
+| `2d417e1` | **报表 6 模块密度对齐设置页 + 字号加粗统一**：模块头 padding 0.5/0.85rem、gap 0.6rem；折叠体 0.85/0.7rem；标题统一 0.95rem/700（原三种规格：report-fold 1rem/900、insights 1rem/400 未加粗、special 0.74rem/900）；小字 0.75rem/700；卡片标签 0.72rem/700、数值 0.95rem/700；移动端过小标签 0.62/0.66rem 上调；修 insights 标题块 strut 撑高 4px | styles.css | 已部署 |
 | `6608ef0` | **设置页标题「?」修复**：`.settings-section summary span{display:block}` 把标题里 InfoTip 的 span 也块级化导致「?」独占一行；改 `:not(.info-tip)` 排除后「?」恢复紧跟标题（无头 Chrome 390px 实测 sameLine=true） | styles.css | 已部署 |
 | `d6deee4` | **删除冗余抬头 + 说明全「?」化**：分类维护删「分类」h2（说明「?」包进消费/收入切换标签行，新增 `.category-kind-wrap`）；账户管理删「账户」h2（「?」跟新增按钮后）；三个内联编辑表单头（新增账户/分类/预算）说明改「?」贴 h2，编辑态「正在编辑：X」数据行保留 | App.tsx, styles.css | 已部署 |
 | `3187576` | **「?」气泡内联排版**：InfoTip 不单独占行，全部贴到被解释文字后（标题/标签/状态条/预算行名后）；删计划购买 2 条独立问号；预算说明入 `renderBudgetLine(budget, tip?)` 参数；保险说明并入标题；推送提示入状态条 | App.tsx, widgets.tsx, plan.tsx | 已部署 |
@@ -358,3 +359,11 @@
 - **根因**（无头 Chrome 390px 实测 DOM/计算样式确认）：`.settings-section summary span { display: block }` 原为副标题小字设计，但 InfoTip 的根元素也是 `<span class="info-tip">`，被这条规则块级化 → 「?」掉到标题下方独占一行（computed display=block、width=285px 撑满）
 - **修复**：该规则改 `.settings-section summary span:not(.info-tip)`；「?」恢复 `inline-flex`，实测 sameLine=true、「?」在标题文字右侧 4px；点击只弹气泡不误折叠模块（stopPropagation 生效）
 - 排查工具沉淀：`~/.workbuddy/binaries/node/workspace/` 装有 playwright-core，可用「本地签发 JWT（JWT_SECRET 签 sub=用户id）+ 无头 Chrome（executablePath=/Applications/Google Chrome.app/...、ignoreHTTPSErrors）+ addInitScript 写 ledger-token」渲染需登录的页面并截图；当天超限额时先点「知道了」关 daily-limit-overlay 再操作
+
+## 2026-10-18 报表 6 模块密度对齐设置页 + 字号加粗统一（2d417e1，已推送 origin/main）
+- 用户反馈：报表中本月消费节奏/常规项支出/核心洞察/消费异常分析/大额开销/专项支出 6 个模块太大显得字小，要参考「设置」的密度，并注意字体大小和加粗一致性
+- **框体收紧（对齐设置）**：模块头 padding 0.6/0.88 → **0.5/0.85rem**、gap 0.8 → 0.6rem；折叠体 padding 1.1rem → **0.85/0.7rem**；页面模块间距 0.72 → 0.6rem；面板内距 0.78 → 0.7rem；工具栏 padding 0.78/0.9 → 0.6/0.85rem
+- **标题统一 0.95rem/700**（原来三种规格：report-fold 1rem/900、insights 1rem/**400 没加粗**、special span 0.74rem/900）；小字统一 0.75rem/700 弱化色
+- **卡片统一**：标签 0.72rem/700、数值 0.95rem/700（节奏卡数值 1.05rem 作页面主数字）；移动端过小标签（异常卡 0.62rem、指标卡 0.66rem）上调至 0.72rem
+- **strut 坑修复**：insights 标题容器是普通 block，行内 span 受父级 24px 行高 strut 影响把标题块撑高 4px（44px vs 子元素 37px）→ 改 flex 纵向堆叠后与 report-fold 头齐平（均 56px）
+- 校验：typecheck + build（PWA 校验通过）+ force-recreate caddy-local；无头 Chrome 390px 实测 6 模块标题全部 15.2px/700（与设置页 sectionTitle 完全一致）、头高 63/67 → 56px；逐模块截图目验通过

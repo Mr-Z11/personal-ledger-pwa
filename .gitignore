@@ -31,3 +31,8 @@ caddy-config/
 
 .DS_Store
 Thumbs.db
+
+# 本地一次性产物：服务器部署备份副本 / 历史交接记录
+server-backup-*/
+handoffs/
+.workbuddy/

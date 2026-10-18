@@ -323,3 +323,5 @@ Phase 29
 - [x] 删除账户/分类面板冗余抬头 + 说明全「?」化：分类维护删「分类」h2（「?」包进切换标签行，新增 .category-kind-wrap）、账户管理删「账户」h2（「?」跟新增按钮后）、三个表单头（账户/分类/预算）说明改「?」贴 h2，编辑态数据行保留；typecheck + 31 冒烟 + build + force-recreate caddy-local，commit d6deee4 已推送 origin/main
 
 - [x] 设置页标题「?」独占一行修复：根因是 `.settings-section summary span{display:block}` 误伤 InfoTip span（无头 Chrome 实测确认），改 `:not(.info-tip)` 后「?」紧跟标题；build + force-recreate caddy-local，commit 6608ef0 已推送 origin/main
+
+- [x] 报表 6 模块密度对齐设置页 + 字号加粗统一：模块头 0.5/0.85rem、折叠体 0.85/0.7rem、页面间距 0.6rem；标题统一 0.95rem/700（修 insights 未加粗）、小字 0.75rem/700、卡片标签 0.72rem/700、数值 0.95rem/700；修 insights 标题 strut 撑高；无头 Chrome 390px 实测 6 模块标题 15.2px/700 与设置一致；build + force-recreate caddy-local，commit 2d417e1 已推送 origin/main
