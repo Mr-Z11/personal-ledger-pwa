@@ -1662,6 +1662,27 @@ export function maybePraiseNoSpend(settings: DailyLimitAlertSettings, spentToday
   }
 }
 
+/** 常驻的当日限额警示条：达线=琥珀、超支=深红。全屏遮罩关掉后它仍在，
+ * 配合 body 上的 daily-limit-over 皮肤，让整个界面持续保持警示状态。 */
+export function DailyLimitRibbon({ spentCents, limitCents }: {
+  spentCents: number;
+  limitCents: number;
+}) {
+  const overCents = spentCents - limitCents;
+  const over = overCents > 0;
+  const percent = limitCents > 0 ? Math.max(0, Math.round((spentCents / limitCents) * 100)) : 0;
+  return (
+    <div className={`daily-limit-ribbon ${over ? "over" : "warn"}`} role="status">
+      <span className="daily-limit-ribbon-mark">!</span>
+      <div className="daily-limit-ribbon-body">
+        <strong>{over ? `今日已超日限额 ¥${centsToYuan(overCents)}` : "今日已到日限额"}</strong>
+        <small>已花 ¥{centsToYuan(spentCents)} / 限额 ¥{centsToYuan(limitCents)} · 今天别再花了</small>
+      </div>
+      <span className="daily-limit-ribbon-pct">{percent}%</span>
+    </div>
+  );
+}
+
 /** 全屏红色警告遮罩：达到限额时覆盖整个页面，关闭后仅本次会话不再弹出（下次打开仍会提醒） */
 export function DailyLimitOverlay({ spentCents, limitCents, toleranceCents, onDismiss }: {
   spentCents: number;

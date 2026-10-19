@@ -77,6 +77,7 @@ import {
   BigExpensePanel,
   BudgetReservoir,
   DailyLimitOverlay,
+  DailyLimitRibbon,
   DailyPaceChart,
   FixedExpenseOverview,
   LocalDailyLimitAlertPanel,
@@ -671,6 +672,7 @@ export function App() {
   );
   const todayRemainingCents = monthBudgetCents > 0 ? todayLimitCents - todaySpentCents : null;
   const dailyLimitHit = dailyLimitAlertTriggered(dailyLimitSettings, todaySpentCents, todayLimitCents);
+  const dailyLimitOver = dailyLimitHit && todaySpentCents > todayLimitCents;
 
   useEffect(() => {
     maybeNotifyPayday(salarySettings);
@@ -689,6 +691,16 @@ export function App() {
     }, 10 * 60 * 1000);
     return () => window.clearInterval(timer);
   }, [dailyLimitSettings, todaySpentCents, todayLimitCents, todayAllSpentCentsValue]);
+
+  // 超限额时整个界面换深红警示皮肤（超支）或琥珀警示（刚好达线），关掉全屏遮罩后依然生效
+  useEffect(() => {
+    const body = document.body;
+    body.classList.toggle("daily-limit-over", dailyLimitOver);
+    body.classList.toggle("daily-limit-warn", dailyLimitHit && !dailyLimitOver);
+    return () => {
+      body.classList.remove("daily-limit-over", "daily-limit-warn");
+    };
+  }, [dailyLimitHit, dailyLimitOver]);
 
   /** 限额提醒设置同步到服务端：dailyLimitHour 固定 0（提醒时间功能已移除，达线即推）；离线时静默失败，本机设置仍生效 */
   const syncDailyLimitSettings = useCallback(async (next: DailyLimitAlertSettings) => {
@@ -906,6 +918,9 @@ export function App() {
       </aside>
 
       <main>
+        {dailyLimitHit && (
+          <DailyLimitRibbon spentCents={todaySpentCents} limitCents={todayLimitCents} />
+        )}
         {(!isLocalPreview && (outboxCount > 0 || !navigator.onLine)) && (
         <div className="mobile-sync-bar">
           <span className={`mobile-sync-dot ${navigator.onLine ? "online" : "offline"}`} />
