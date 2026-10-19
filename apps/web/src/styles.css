@@ -903,7 +903,8 @@ input[type="month"],
 }
 
 .entry-amount-field {
-  grid-template-columns: auto minmax(0, 1fr);
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
   align-items: center;
   gap: 0.56rem;
   padding: 0.28rem 0.58rem;
@@ -942,110 +943,29 @@ input[type="month"],
   color: rgba(36, 49, 39, 0.3);
 }
 
-.amount-keypad {
+.entry-amount-clear {
+  width: 1.9rem;
+  min-height: 1.9rem;
+  border: 0;
+  border-radius: 999px;
   display: grid;
-  gap: 0.5rem;
-  padding: 0.52rem;
-  border: 1px solid rgba(49, 71, 58, 0.1);
-  border-radius: 0.74rem;
-  background: linear-gradient(145deg, rgba(255, 253, 247, 0.96), rgba(239, 234, 214, 0.76));
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.72);
-}
-
-.amount-keypad-head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 0.75rem;
-  color: rgba(36, 49, 39, 0.64);
-  font-size: 0.82rem;
-  font-weight: 900;
-}
-
-.amount-keypad-head strong {
-  display: block;
-  color: #243127;
-  font-size: 1rem;
-  font-weight: 950;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.keypad-live-amount {
-  display: block;
-  margin-top: 0.08rem;
-  color: rgba(36, 49, 39, 0.58);
-  font-size: 0.72rem;
-  font-weight: 950;
-}
-
-.amount-keypad-clear {
-  min-height: 2.18rem;
-  border: 1px solid rgba(49, 71, 58, 0.12);
-  border-radius: 0.58rem;
-  padding: 0 0.72rem;
+  place-items: center;
+  padding: 0;
   background: rgba(49, 71, 58, 0.08);
-  color: rgba(36, 49, 39, 0.72);
-  font-size: 0.82rem;
-  font-weight: 950;
+  color: rgba(36, 49, 39, 0.66);
 }
 
-.amount-keypad-clear:disabled {
-  opacity: 0.42;
-  cursor: not-allowed;
+.entry-amount-clear:active {
+  background: rgba(49, 71, 58, 0.16);
 }
 
-.amount-keypad-grid {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 0.48rem;
+/* 备注常显：避免展开折叠区时的版面上跳 */
+.entry-note-field {
+  gap: 0.28rem;
 }
 
-.amount-key {
-  min-height: 3.26rem;
-  border: 1px solid rgba(49, 71, 58, 0.12);
-  border-radius: 0.72rem;
-  background: rgba(255, 250, 240, 0.96);
-  color: #243127;
-  font-size: 1.38rem;
-  font-weight: 950;
-  box-shadow: 0 0.32rem 0.8rem rgba(36, 49, 39, 0.08);
-  touch-action: manipulation;
-  transition: transform 90ms ease, box-shadow 90ms ease, background 120ms ease;
-}
-
-.amount-key:active {
-  transform: translateY(1px) scale(0.985);
-  background: rgba(246, 241, 231, 0.98);
-  box-shadow: inset 0 0 0 2px rgba(47, 125, 79, 0.12), 0 0.16rem 0.4rem rgba(36, 49, 39, 0.08);
-}
-
-.amount-key.confirmed {
-  background: rgba(232, 245, 235, 0.96);
-  color: #245f3d;
-  box-shadow:
-    inset 0 0 0 2px rgba(47, 125, 79, 0.25),
-    0 0.45rem 1rem rgba(47, 125, 79, 0.16);
-  animation: keyConfirmPulse 180ms cubic-bezier(0.18, 0.9, 0.22, 1.15);
-}
-
-.amount-key.muted {
-  background: rgba(49, 71, 58, 0.08);
-  color: rgba(36, 49, 39, 0.72);
-  font-size: 0.98rem;
-}
-
-.amount-key.save {
-  grid-row: span 2;
-  background: #243127;
-  color: #fff7df;
-  font-size: 1.04rem;
-}
-
-.amount-key.save:disabled {
-  opacity: 0.44;
-  cursor: not-allowed;
+.entry-note-field input {
+  min-height: 2.32rem;
 }
 
 @keyframes amountPreviewPulse {
@@ -1072,20 +992,6 @@ input[type="month"],
 
   42% {
     transform: scale(1.07);
-  }
-
-  100% {
-    transform: scale(1);
-  }
-}
-
-@keyframes keyConfirmPulse {
-  0% {
-    transform: scale(0.97);
-  }
-
-  58% {
-    transform: scale(1.035);
   }
 
   100% {
@@ -1194,10 +1100,6 @@ input[type="month"],
   box-sizing: border-box;
   -webkit-appearance: none;
   appearance: none;
-}
-
-.entry-more-grid label:last-child {
-  grid-column: 1 / -1;
 }
 
 .filters {
@@ -2552,6 +2454,12 @@ input[type="month"],
   min-height: 1.9rem;
   padding: 0 0.5rem;
   font-size: 0.76rem;
+}
+
+.category-picker-count {
+  color: rgba(36, 49, 39, 0.5);
+  font-size: 0.76rem;
+  font-weight: 800;
 }
 
 .field-label {
@@ -4497,6 +4405,27 @@ input[type="month"],
   .save-toast {
     bottom: calc(5.2rem + max(0.75rem, env(safe-area-inset-bottom)));
   }
+
+  /* 键盘弹出（body.keyboard-open）时：底部导航与悬浮按钮会随键盘上移盖住正在输入的字段，
+     直接隐藏它们；保存条也不再吸底，避免输入时版面来回跳 */
+  body.keyboard-open .sidebar,
+  body.keyboard-open .floating,
+  body.keyboard-open .save-toast {
+    display: none;
+  }
+
+  body.keyboard-open .entry-actions {
+    position: static;
+    bottom: auto;
+    box-shadow: none;
+  }
+
+  .entry-form-grid input,
+  .entry-form-grid select,
+  .entry-form-grid textarea,
+  .category-search input {
+    scroll-margin-block: 5.5rem;
+  }
 }
 
 @media (max-width: 520px) {
@@ -4660,26 +4589,6 @@ input[type="month"],
   .entry-amount-field input {
     min-height: 2rem;
     font-size: 1.28rem;
-  }
-
-  .amount-keypad {
-    gap: 0.42rem;
-    padding: 0.46rem;
-  }
-
-  .amount-keypad-grid {
-    grid-template-columns: repeat(3, minmax(0, 1fr));
-    gap: 0.42rem;
-  }
-
-  .amount-key {
-    min-height: 3.05rem;
-    border-radius: 0.68rem;
-    font-size: 1.3rem;
-  }
-
-  .amount-key.muted {
-    font-size: 0.92rem;
   }
 
   .entry-more summary {

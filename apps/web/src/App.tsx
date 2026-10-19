@@ -801,7 +801,28 @@ export function App() {
   // 切换标签（尤其「流水」）时回到顶部：每次都从最新一条往下看，而不是沿用上个页面的滚动位置
   useEffect(() => {
     window.scrollTo({ top: 0, left: 0, behavior: "auto" });
+    syncKeyboardFlag();
   }, [view]);
+
+  // 键盘弹出时给 body 打标记：隐藏底部导航/悬浮按钮、取消保存条的 sticky，
+  // 避免这些固定元素被键盘顶起来盖住正在输入的字段，造成页面跳动
+  useEffect(() => {
+    let blurTimer = 0;
+    const sync = () => syncKeyboardFlag();
+    const onFocusOut = () => {
+      window.clearTimeout(blurTimer);
+      blurTimer = window.setTimeout(sync, 120);
+    };
+    document.addEventListener("focusin", sync);
+    document.addEventListener("focusout", onFocusOut);
+    sync();
+    return () => {
+      window.clearTimeout(blurTimer);
+      document.removeEventListener("focusin", sync);
+      document.removeEventListener("focusout", onFocusOut);
+      document.body.classList.remove("keyboard-open");
+    };
+  }, []);
 
   async function signOut() {
     localStorage.removeItem("ledger-token");
@@ -1274,101 +1295,24 @@ function Metric({ title, value, icon: Icon, tone }: { title: string; value: numb
   );
 }
 
-type AmountPadKey = "0" | "1" | "2" | "3" | "4" | "5" | "6" | "7" | "8" | "9" | "00" | "." | "backspace" | "clear";
-
 function triggerHaptic(pattern: VibratePattern = 8) {
   if (typeof navigator === "undefined" || typeof navigator.vibrate !== "function") return;
   navigator.vibrate(pattern);
 }
 
-function appendAmountDigits(value: string, digits: string) {
-  let next = value.trim();
-  for (const digit of digits) {
-    if (next.includes(".")) {
-      const fraction = next.split(".")[1] ?? "";
-      if (fraction.length >= 2) break;
-      next += digit;
-      continue;
-    }
-    if (!next || next === "0") {
-      next = digit === "0" ? "0" : digit;
-      continue;
-    }
-    if (next.length >= 8) break;
-    next += digit;
-  }
-  return next;
+// 会唤出系统软键盘的输入框（select/日期控件不算，它们弹的是系统选择器）
+const NON_TYPING_INPUT_TYPES = new Set(["checkbox", "radio", "button", "submit", "reset", "file", "range", "color"]);
+
+function isTypingElement(element: Element | null) {
+  if (typeof HTMLElement === "undefined" || !(element instanceof HTMLElement)) return false;
+  if (element.tagName === "TEXTAREA") return true;
+  if (element.tagName !== "INPUT") return false;
+  return !NON_TYPING_INPUT_TYPES.has((element as HTMLInputElement).type);
 }
 
-function nextAmountValue(value: string, key: AmountPadKey) {
-  const current = value.trim();
-  if (key === "clear") return "";
-  if (key === "backspace") return current.slice(0, -1);
-  if (key === ".") return current.includes(".") ? current : `${current || "0"}.`;
-  return appendAmountDigits(current, key);
-}
-
-function isAmountEntryKey(key: AmountPadKey) {
-  return key === "." || /^\d+$/.test(key);
-}
-
-function AmountKeypad({ value, preview, title = "输入金额", replaceOnNextEntry = false, onChange }: {
-  value: string;
-  preview: string;
-  title?: string;
-  replaceOnNextEntry?: boolean;
-  onChange: (value: string, key: AmountPadKey) => void;
-}) {
-  const [confirmedKey, setConfirmedKey] = useState<AmountPadKey | null>(null);
-  const keys: { key: AmountPadKey; label: string; tone?: string; ariaLabel?: string }[] = [
-    { key: "1", label: "1" },
-    { key: "2", label: "2" },
-    { key: "3", label: "3" },
-    { key: "4", label: "4" },
-    { key: "5", label: "5" },
-    { key: "6", label: "6" },
-    { key: "7", label: "7" },
-    { key: "8", label: "8" },
-    { key: "9", label: "9" },
-    { key: ".", label: "." },
-    { key: "0", label: "0" },
-    { key: "backspace", label: "退格", tone: "muted", ariaLabel: "删除上一位" }
-  ];
-
-  function confirmInput(nextValue: string, key: AmountPadKey) {
-    setConfirmedKey(key);
-    window.setTimeout(() => setConfirmedKey((current) => current === key ? null : current), 150);
-    triggerHaptic(key === "backspace" || key === "clear" ? 12 : 8);
-    onChange(nextValue, key);
-  }
-
-  return (
-    <div className="amount-keypad full" aria-label="金额数字键盘">
-      <div className="amount-keypad-head">
-        <div>
-          <strong>{title}</strong>
-          <span className="keypad-live-amount">¥{preview}</span>
-        </div>
-        <button type="button" className="amount-keypad-clear" disabled={!value.trim()} onClick={() => confirmInput("", "clear")}>清空</button>
-      </div>
-      <div className="amount-keypad-grid">
-        {keys.map((item) => (
-          <button
-            key={item.key}
-            type="button"
-            className={`${item.tone ? `amount-key ${item.tone}` : "amount-key"} ${confirmedKey === item.key ? "confirmed" : ""}`.trim()}
-            aria-label={item.ariaLabel}
-            onClick={() => {
-              const baseValue = replaceOnNextEntry && isAmountEntryKey(item.key) ? "" : value;
-              confirmInput(nextAmountValue(baseValue, item.key), item.key);
-            }}
-          >
-            {item.label}
-          </button>
-        ))}
-      </div>
-    </div>
-  );
+function syncKeyboardFlag() {
+  if (typeof document === "undefined") return;
+  document.body.classList.toggle("keyboard-open", isTypingElement(document.activeElement));
 }
 
 function EntryForm({ accounts, categories, transactions, onSave, onSaveCategory, editing, onCancel, focusSignal = 0 }: {
@@ -1393,7 +1337,6 @@ function EntryForm({ accounts, categories, transactions, onSave, onSaveCategory,
   const [saveFeedback, setSaveFeedback] = useState("");
   const [amountPulse, setAmountPulse] = useState(0);
   const [savedFlash, setSavedFlash] = useState(false);
-  const [replaceAmountOnNextEntry, setReplaceAmountOnNextEntry] = useState(Boolean(editing));
   const amountInputRef = useRef<HTMLInputElement>(null);
 
   const categoryKind = type === "income" ? "income" : "expense";
@@ -1442,19 +1385,18 @@ function EntryForm({ accounts, categories, transactions, onSave, onSaveCategory,
     : `${selectedCategoryPath} · ${selectedAccount?.name ?? "选择账户"}`;
   const entryIntent = type === "income" ? "记录一笔收入" : type === "transfer" ? "记录账户流转" : "记录一笔消费";
   const handleAmountChange = useCallback((nextValue: string) => {
-    setReplaceAmountOnNextEntry(false);
     setAmount((currentValue) => {
       if (nextValue !== currentValue) setAmountPulse((value) => value + 1);
       return nextValue;
     });
   }, []);
-  const handleAmountKeypadChange = useCallback((nextValue: string, key: AmountPadKey) => {
-    if (isAmountEntryKey(key)) setReplaceAmountOnNextEntry(false);
-    handleAmountChange(nextValue);
-  }, [handleAmountChange]);
+  const clearAmount = useCallback(() => {
+    setAmount("");
+    const input = amountInputRef.current;
+    if (input) input.focus();
+  }, []);
   const prepareAmountOverwrite = useCallback(() => {
     if (!editing) return;
-    setReplaceAmountOnNextEntry(true);
     window.setTimeout(() => {
       const input = amountInputRef.current;
       if (!input || document.activeElement !== input) return;
@@ -1484,7 +1426,6 @@ function EntryForm({ accounts, categories, transactions, onSave, onSaveCategory,
     setToAccountId(editing.toAccountId ?? "");
     setCategoryId(editing.categoryId ?? "");
     setAmount(centsToYuan(editing.amountCents));
-    setReplaceAmountOnNextEntry(true);
     setMerchant(editing.merchant ?? "");
     setNote(editing.note ?? "");
     setOccurredAt(toBeijingDatetimeLocal(editing.occurredAt));
@@ -1581,23 +1522,26 @@ function EntryForm({ accounts, categories, transactions, onSave, onSaveCategory,
             </div>
           </div>
         )}
-        <label className="entry-amount-field full"><span>金额</span><input ref={amountInputRef} value={amount} onFocus={prepareAmountOverwrite} onClick={prepareAmountOverwrite} onChange={(event) => handleAmountChange(event.target.value)} placeholder="0.00" inputMode="decimal" enterKeyHint="done" autoFocus={!editing} required /></label>
-        <AmountKeypad value={amount} preview={amountPreview} title={editing ? "重输金额" : "输入金额"} replaceOnNextEntry={replaceAmountOnNextEntry} onChange={handleAmountKeypadChange} />
+        <div className="entry-amount-field full">
+          <span>金额</span>
+          <input ref={amountInputRef} value={amount} aria-label="金额" onFocus={prepareAmountOverwrite} onClick={prepareAmountOverwrite} onChange={(event) => handleAmountChange(event.target.value)} placeholder="0.00" inputMode="decimal" enterKeyHint="done" autoComplete="off" autoFocus={!editing} required />
+          {amount.trim() && <button type="button" className="entry-amount-clear" onClick={clearAmount} aria-label="清空金额" title="清空金额"><X size={14} /></button>}
+        </div>
         <label className="entry-account-field">{type === "income" ? "收款账户" : type === "expense" ? "信用卡" : "付款账户"}<select value={accountId} onChange={(event) => setAccountId(event.target.value)}>{accountOptions.map((account) => <option key={account.id} value={account.id}>{account.name}</option>)}</select></label>
         {type === "transfer" ? (
           <label>转入账户<select value={toAccountId} onChange={(event) => setToAccountId(event.target.value)}>{accounts.filter((item) => item.id !== accountId).map((account) => <option key={account.id} value={account.id}>{account.name}</option>)}</select></label>
         ) : (
           <CategoryPicker categories={categories} options={filteredCategories} usageCounts={recentUsageCounts} kind={categoryKind} value={categoryId} onChange={setCategoryId} onCreate={onSaveCategory} />
         )}
+        <label className="entry-note-field full">备注<input value={note} onChange={(event) => setNote(event.target.value)} placeholder="补充说明（可选）" enterKeyHint="done" autoComplete="off" /></label>
         <details className="entry-more full">
-          <summary>时间、商户、备注</summary>
+          <summary>时间、商户</summary>
           <div className="entry-more-grid">
             <label className="entry-time-field">时间<input value={occurredAt} onChange={(event) => {
               setOccurredAt(event.target.value);
               setTimeTouched(true);
             }} type="datetime-local" /></label>
             <label>商户<input value={merchant} onChange={(event) => setMerchant(event.target.value)} placeholder="超市、餐厅、客户..." /></label>
-            <label>备注<input value={note} onChange={(event) => setNote(event.target.value)} placeholder="补充说明" /></label>
           </div>
         </details>
         <div className="entry-actions full">
@@ -1619,7 +1563,6 @@ function CategoryPicker({ categories, options, usageCounts, kind, value, onChang
   onCreate: (item: Category) => Promise<void>;
 }) {
   const [query, setQuery] = useState("");
-  const [expanded, setExpanded] = useState(false);
   const queryText = query.trim();
   const normalizedQuery = queryText.toLowerCase();
   const selectedCategory = options.find((category) => category.id === value);
@@ -1647,7 +1590,6 @@ function CategoryPicker({ categories, options, usageCounts, kind, value, onChang
   function chooseCategory(id: string) {
     onChange(id);
     setQuery("");
-    setExpanded(false);
   }
 
   async function createQuickCategory() {
@@ -1662,70 +1604,69 @@ function CategoryPicker({ categories, options, usageCounts, kind, value, onChang
     await onCreate(child);
     onChange(child.id);
     setQuery("");
-    setExpanded(false);
   }
 
   return (
     <div className="category-picker full">
       <div className="category-picker-head">
         <span className="field-label">分类</span>
-        <button type="button" className="text-action" onClick={() => setExpanded((value) => !value)}>
-          <Search size={14} />{expanded ? "收起" : "搜索"}
-        </button>
+        <small className="category-picker-count">共 {options.length} 个</small>
       </div>
-      <div className="category-chip-list">
-        {quickOptions.map((category) => (
-          <button type="button" className={value === category.id ? "category-chip active" : "category-chip"} key={category.id} onClick={() => chooseCategory(category.id)}>
-            {categoryPath(category, categories)}
-          </button>
-        ))}
-        {canCreate && (
-          <button type="button" className="category-chip create" onClick={() => void createQuickCategory()}>
-            新增：其他 &gt; {queryText}
-          </button>
-        )}
-      </div>
-      {expanded && (
-        <div className="category-search-panel">
-          <div className="category-search">
-            <Search size={15} />
-            <input
-              value={query}
-              onChange={(event) => setQuery(event.target.value)}
-              onKeyDown={(event) => {
-                if (event.key === "Enter") {
-                  event.preventDefault();
-                  if (matches[0]) chooseCategory(matches[0].id);
-                  else if (canCreate) void createQuickCategory();
-                }
-                if (event.key === "Escape") setQuery("");
-              }}
-              placeholder="搜索分类，例如三餐、教育、停车"
-            />
-            {query && (
-              <button type="button" className="category-search-clear" onClick={() => setQuery("")} title="清空搜索">
-                <X size={14} />
-              </button>
-            )}
-          </div>
-          {normalizedQuery && (
-            <small className="category-search-meta">
-              {matches.length > 0 ? `找到 ${matches.length} 个匹配分类` : "没有匹配分类，可以新增到其他分类"}
-            </small>
+      {(quickOptions.length > 0 || canCreate) && (
+        <div className="category-chip-list">
+          {quickOptions.map((category) => (
+            <button type="button" className={value === category.id ? "category-chip active" : "category-chip"} key={category.id} onClick={() => chooseCategory(category.id)}>
+              {categoryPath(category, categories)}
+            </button>
+          ))}
+          {canCreate && (
+            <button type="button" className="category-chip create" onClick={() => void createQuickCategory()}>
+              新增：其他 &gt; {queryText}
+            </button>
           )}
-          <select className={normalizedQuery ? "category-select filtered" : "category-select"} value={selectedCategory?.id ?? ""} onChange={(event) => chooseCategory(event.target.value)} required>
-            <option value="" disabled>{normalizedQuery ? "选择搜索结果" : "选择分类"}</option>
-            {selectOptions.map((category) => {
-              const usage = usageCounts.get(category.id) ?? 0;
-              return (
-                <option key={category.id} value={category.id}>
-                  {normalizedQuery && category.id === selectedCategory?.id && !matches.some((item) => item.id === category.id) ? "当前：" : ""}{categoryPath(category, categories)}{usage > 0 ? ` · 常用 ${usage}` : ""}
-                </option>
-              );
-            })}
-          </select>
         </div>
       )}
+      <div className="category-search-panel">
+        <div className="category-search">
+          <Search size={15} />
+          <input
+            value={query}
+            onChange={(event) => setQuery(event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key === "Enter") {
+                event.preventDefault();
+                if (matches[0]) chooseCategory(matches[0].id);
+                else if (canCreate) void createQuickCategory();
+              }
+              if (event.key === "Escape") setQuery("");
+            }}
+            placeholder="搜索分类，例如三餐、教育、停车"
+            enterKeyHint="search"
+            autoComplete="off"
+          />
+          {query && (
+            <button type="button" className="category-search-clear" onClick={() => setQuery("")} title="清空搜索">
+              <X size={14} />
+            </button>
+          )}
+        </div>
+        {normalizedQuery && (
+          <small className="category-search-meta">
+            {matches.length > 0 ? `找到 ${matches.length} 个匹配分类` : "没有匹配分类，可以新增到其他分类"}
+          </small>
+        )}
+        <select className={normalizedQuery ? "category-select filtered" : "category-select"} value={selectedCategory?.id ?? ""} onChange={(event) => chooseCategory(event.target.value)} required>
+          <option value="" disabled>{normalizedQuery ? "选择搜索结果" : "全部分类"}</option>
+          {selectOptions.map((category) => {
+            const usage = usageCounts.get(category.id) ?? 0;
+            return (
+              <option key={category.id} value={category.id}>
+                {normalizedQuery && category.id === selectedCategory?.id && !matches.some((item) => item.id === category.id) ? "当前：" : ""}{categoryPath(category, categories)}{usage > 0 ? ` · 常用 ${usage}` : ""}
+              </option>
+            );
+          })}
+        </select>
+      </div>
     </div>
   );
 }
