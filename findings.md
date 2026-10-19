@@ -433,3 +433,5 @@ docker logs personal-ledger-pwa-api-local-1 | tail     # 确认 prisma db push �
 - (2026-10-19) 移动端「输入时页面跳动」的固定元素来源：底部导航 `.sidebar`（position:fixed bottom）、FAB `.floating`、`.save-toast` 浮层、`.entry-actions`（sticky bottom）。键盘弹出时这些元素随可视视口上移盖住输入框/引发重排。统一方案：focusin/focusout 维护 `body.keyboard-open`，CSS 一处隐藏/取消 sticky（styles.css 940px 媒体查询），勿再逐页加监听。
 - (2026-10-19) 沙箱会话里 github.com 的 https 直推/代理推都可能被拦（CONNECT 502 / Empty reply），但 ssh 22 与 ssh.github.com:443 均可达 → push 改走 `git push git@github.com:...`。
 - (2026-10-19) dist 若未删除目录、只原地重建，caddy 绑定挂载不会悬空，无需 force-recreate caddy-local；只有 mv 掉 dist 再重建才必须 force-recreate。
+- (2026-10-19) 全界面换肤用 body 类（daily-limit-over / daily-limit-warn）+ 追加在 styles.css 末尾的高特异性选择器（body.xxx .panel 等）实现，覆盖主题基础色；全屏暗角层 body::after z-index 9、pointer-events:none，位于内容之上、导航(20)/FAB(10)/浮层(35)/全屏遮罩(999) 之下，不影响任何交互。
+- (2026-10-19) 限额两级状态语义：dailyLimitAlertTriggered（≥限额−误差线）=「达线」；今日实花>日限额 =「超支」。全屏遮罩用前者触发，常驻警示条/换肤两级都用。

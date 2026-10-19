@@ -647,3 +647,9 @@ typecheck ✓ vitest 11/11 ✓ build ✓ → caddy force-recreate → 200；待�
 - 无头 Chrome 390px/1280px 截图目验通过；typecheck + 31 冒烟 + build 全绿；dist 原地重建免 force-recreate，localhost:8443 已供新资源
 - git push：https（代理/直连）均被沙箱拦（CONNECT 502），改走 SSH 成功（025fa00..5f6b54e）
 - 待手机实测：系统键盘弹出手感；无快速分类时搜索/下拉是否够用；备注输入不再跳动
+
+## 2026-10-19 超限额全界面深红警示 — 已交付本地栈（33abe6b）
+- 需求：超日限额时除每次打开的红色全屏遮罩外，整个界面持续深红警示
+- 实现：常驻警示条（达线琥珀/超支深红，sticky 顶部）+ body 换肤（超支=深红纸底+全屏暗角+导航/卡片/标题/FAB 染红；达线=琥珀纸底+描边）
+- 无头 Chrome 390/1280 截图目验：深红氛围明显、正文仍可读；typecheck + 31 冒烟 + build 全绿；本地栈已供新资源；SSH push 成功
+- 待手机实测：暗角浓度是否合适；深红 FAB 是否显眼

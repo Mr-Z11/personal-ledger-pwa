@@ -4,7 +4,7 @@
 Eliminate the 2–10 second blank screen during iPhone home-screen PWA cold starts by rendering an immediate static shell, showing local data first, and keeping cloud synchronization off the critical rendering path; verify, push main, and deploy production.
 
 ## Current Phase
-Phase 30
+Phase 31
 
 ## Phases
 
@@ -337,3 +337,11 @@ Phase 30
 - [x] 验证：typecheck + 31 冒烟 + build（PWA 12 图校验通过）+ 无头 Chrome 390/1280 截图目验
 - [x] 部署：dist 原地重建（未 mv，caddy 挂载未悬空，免 force-recreate），localhost:8443 已确认提供新 JS/CSS；SSH push 成功（https 直推被沙箱代理 502 拦截）
 - **Status:** complete（待手机实测：系统键盘弹出手感、分类搜索常驻观感、备注输入不再跳动）
+
+### Phase 31: 超限额全界面警示（2026-10-19，33abe6b）
+- [x] widgets.tsx 新增 DailyLimitRibbon 常驻警示条（达线=琥珀、超支=深红，显示已花/限额/百分比）
+- [x] App.tsx：dailyLimitOver（今日实花>日限额且达线触发）；effect 实时切换 body.daily-limit-over / daily-limit-warn
+- [x] styles.css：超支深红换肤（纸底+全屏暗角+卡片/标题/导航/FAB 染红）；达线琥珀换肤（纸底+描边）；警示条样式
+- [x] 验证：typecheck + 31 冒烟 + build（PWA 12 图）+ 无头 Chrome 390/1280 截图目验；localhost:8443 已供新资源
+- [x] SSH push 成功（c09719a..33abe6b）
+- **Status:** complete（待手机实测：超支当天整体观感是否够「刺眼」，暗角是否影响可读性）
