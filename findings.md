@@ -139,7 +139,7 @@
 - API Prisma schema currently has User, Ledger, Account, Category, Transaction, Budget, AuditLog; no analysis note table.
 - Web IndexedDB currently stores accounts, categories, transactions, budgets, meta, and outbox.
 - Reports component lives in `apps/web/src/App.tsx` and already separates daily expenses from special expenses.
-- Quick entry keypad is `AmountKeypad` in `apps/web/src/App.tsx`; CSS lives under `.amount-keypad`, `.amount-keypad-grid`, `.amount-key`.
+- (2026-10-19) Quick entry keypad `AmountKeypad` was REMOVED (commit 5f6b54e): amount input uses the system keyboard via `inputMode="decimal"`; keypad CSS classes no longer exist.
 - API Docker image already runs `npm --workspace @ledger/api run prisma:push` before start, so the new table can be applied during normal lightweight server update.
 
 ## Technical Decisions
@@ -430,3 +430,6 @@ docker logs personal-ledger-pwa-api-local-1 | tail     # 确认 prisma db push �
 - **坑：Tailwind preflight 会把 h1-h6 打成 inherit（2026-10-18 实测）**：项目用 Tailwind，preflight 重置 `h1,h2,h3...{font-size:inherit;font-weight:inherit}`，而 body 是 1rem/400 → **任何没显式写 font-weight 的标题都渲染成 400**。审计发现「分析报表」「支出规划」两个 toolbar 标题、inline-form-head h2、settings 内部面板 h2 全是 400。教训：新增/改标题规则必须同时写 `font-size` 和 `font-weight`；怀疑标题加粗没生效时先查是不是根本没写字重（而不是找覆盖）
 - **全局字号基准（2026-10-18 定稿，全 App 通用）**：模块标题 **0.95rem/700**、标题副题 **0.75rem/700**、卡片标签 **0.72rem/700**、卡片数值 **0.95rem/700**、徽章/胶囊 **0.72rem/700**。副题用全局 `.chart-heading span:not(.info-tip)` 一条规则覆盖所有页面（排除 InfoTip 防误伤）；新模块直接套这五档，不要自造规格。反例收藏：1rem/900（旧 chart-heading）、1.04rem（固定支出/计划购买）、1.02rem（趋势面板）、0.92rem（表单头/顶栏/蓄水池）、0.9rem（设置内部/搜索 h3）、0.74-0.86rem/900（各处副题标签）——已全部清除
 - **跨页面字号审计方法（2026-10-18）**：写一个 playwright 脚本遍历所有导航页（总览/流水/搜索/报表/规划/设置），对每页导出 h2、副题（.chart-heading span 等）、标签、数值的 computed font-size/font-weight + 所在容器类名，与基准表逐行比对 → 产出不一致清单 → 定向改 → 复跑同一脚本验证全绿。脚本在 `~/.workbuddy/binaries/node/workspace/ledger-font-audit.mjs`，可复用于任何后续字号/间距审计
+- (2026-10-19) 移动端「输入时页面跳动」的固定元素来源：底部导航 `.sidebar`（position:fixed bottom）、FAB `.floating`、`.save-toast` 浮层、`.entry-actions`（sticky bottom）。键盘弹出时这些元素随可视视口上移盖住输入框/引发重排。统一方案：focusin/focusout 维护 `body.keyboard-open`，CSS 一处隐藏/取消 sticky（styles.css 940px 媒体查询），勿再逐页加监听。
+- (2026-10-19) 沙箱会话里 github.com 的 https 直推/代理推都可能被拦（CONNECT 502 / Empty reply），但 ssh 22 与 ssh.github.com:443 均可达 → push 改走 `git push git@github.com:...`。
+- (2026-10-19) dist 若未删除目录、只原地重建，caddy 绑定挂载不会悬空，无需 force-recreate caddy-local；只有 mv 掉 dist 再重建才必须 force-recreate。

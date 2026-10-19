@@ -4,7 +4,7 @@
 Eliminate the 2–10 second blank screen during iPhone home-screen PWA cold starts by rendering an immediate static shell, showing local data first, and keeping cloud synchronization off the critical rendering path; verify, push main, and deploy production.
 
 ## Current Phase
-Phase 29
+Phase 30
 
 ## Phases
 
@@ -327,3 +327,13 @@ Phase 29
 - [x] 报表 6 模块密度对齐设置页 + 字号加粗统一：模块头 0.5/0.85rem、折叠体 0.85/0.7rem、页面间距 0.6rem；标题统一 0.95rem/700（修 insights 未加粗）、小字 0.75rem/700、卡片标签 0.72rem/700、数值 0.95rem/700；修 insights 标题 strut 撑高；无头 Chrome 390px 实测 6 模块标题 15.2px/700 与设置一致；build + force-recreate caddy-local，commit 2d417e1 已推送 origin/main
 
 - [x] 全页面模块标题/内容字号对齐报表设置基准：无头 Chrome 390px 六页审计列不一致清单；标题统一 0.95rem/700（通用 h2、chart-heading h2 补 700、固定支出/计划购买/趋势面板、表单头删 0.92rem 覆盖）、副题统一 0.75rem/700（新增全局 chart-heading span 规则、report-toolbar、inline-form-head、趋势副题）、标签 0.72rem/700（quick-card、蓄水池、趋势、spending-split）、数值 0.95rem/700（quick-card、蓄水池、趋势）；4 处 h2 补 font-weight 700（Tailwind preflight 坑）；typecheck + 31 冒烟 + build + force-recreate caddy-local，五页复测全部达标，commit 0c63832 已推送 origin/main
+
+### Phase 30: 记账输入体验优化（2026-10-19，5f6b54e）
+- [x] 删除内置 AmountKeypad 数字键盘（组件 + appendAmountDigits/nextAmountValue/isAmountEntryKey + 全部 .amount-keypad/.amount-key 样式 + keyConfirmPulse）
+- [x] 金额输入改系统键盘（inputMode=decimal 保留），行内新增 × 清空按钮（entry-amount-clear）
+- [x] 分类搜索框 + 全部分类下拉常驻显示（去掉「搜索/收起」toggle），头部显示「共 N 个」
+- [x] 备注移出折叠区常显（entry-note-field），时间/商户仍折叠
+- [x] 键盘弹出 body.keyboard-open：隐藏底部导航/悬浮按钮/save-toast、entry-actions 取消 sticky、输入区 scroll-margin-block 5.5rem
+- [x] 验证：typecheck + 31 冒烟 + build（PWA 12 图校验通过）+ 无头 Chrome 390/1280 截图目验
+- [x] 部署：dist 原地重建（未 mv，caddy 挂载未悬空，免 force-recreate），localhost:8443 已确认提供新 JS/CSS；SSH push 成功（https 直推被沙箱代理 502 拦截）
+- **Status:** complete（待手机实测：系统键盘弹出手感、分类搜索常驻观感、备注输入不再跳动）
