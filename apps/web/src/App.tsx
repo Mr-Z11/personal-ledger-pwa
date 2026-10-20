@@ -2964,7 +2964,7 @@ function BudgetPanel({ budgets, categories, transactions, onSave, onDelete }: {
         ) : (
           <>
             <div className="budget-info">
-              <span className="budget-name">{budgetLabel(budget)}{tip ? <InfoTip text={tip} /> : null}</span>
+              <span className="budget-name"><span className="budget-name-text">{budgetLabel(budget)}</span>{tip ? <InfoTip text={tip} /> : null}</span>
               <span className="budget-amount">
                 ¥{centsToYuan(spent)} / ¥{centsToYuan(budget.amountCents)}
                 {over && <em className="budget-over">超</em>}

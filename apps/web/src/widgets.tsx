@@ -1,6 +1,7 @@
 import { centsToYuan, monthKey, yuanToCents, type Account, type Budget, type Category, type PlannedPurchase, type Transaction } from "@ledger/shared";
 import { BellRing, Check, Minus, Pencil, Plus, Search, ShoppingBag, Trash2, TrendingDown, TrendingUp, X } from "lucide-react";
-import { useEffect, useId, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
+import { useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
+import { createPortal } from "react-dom";
 import {
   beijingDateTimeParts,
   categoryPath,
@@ -20,14 +21,22 @@ import {
 /* 说明/备注文字统一组件：一个「?」按钮，点击弹出解释气泡，保持界面清爽          */
 /* ------------------------------------------------------------------ */
 
-/** 点击「?」显示说明气泡；点外部或 Esc 关闭。用于把较长的说明/备注文字收起来。 */
+/** 点击「?」显示说明气泡；点外部或 Esc 关闭。用于把较长的说明/备注文字收起来。
+ *  气泡用 portal 挂到 body 上并按视口定位：祖先容器（设置折叠区/面板/滚动区）常有
+ *  overflow:hidden，气泡若留在「?」旁边会被整块裁掉（折叠区没展开时什么都看不到）。 */
 export function InfoTip({ text, label = "查看说明" }: { text: ReactNode; label?: string }) {
   const [open, setOpen] = useState(false);
-  const ref = useRef<HTMLSpanElement>(null);
+  const [coords, setCoords] = useState<{ top: number; left: number } | null>(null);
+  const btnRef = useRef<HTMLButtonElement>(null);
+  const popRef = useRef<HTMLDivElement>(null);
+  const canPortal = typeof document !== "undefined";
+
   useEffect(() => {
     if (!open) return;
     const onPointerDown = (event: Event) => {
-      if (ref.current && !ref.current.contains(event.target as Node)) setOpen(false);
+      const target = event.target as Node;
+      if (btnRef.current?.contains(target) || popRef.current?.contains(target)) return;
+      setOpen(false);
     };
     const onKey = (event: KeyboardEvent) => {
       if (event.key === "Escape") setOpen(false);
@@ -41,9 +50,61 @@ export function InfoTip({ text, label = "查看说明" }: { text: ReactNode; lab
       document.removeEventListener("keydown", onKey);
     };
   }, [open]);
+
+  // 按按钮在视口中的实际位置定位：下方放不下就翻到上方，左右都夹在视口内；
+  // 滚动/旋转时跟着走，「?」滚出视口就关掉，避免留下孤立气泡
+  useLayoutEffect(() => {
+    if (!open) {
+      setCoords(null);
+      return;
+    }
+    const place = () => {
+      const button = btnRef.current;
+      const pop = popRef.current;
+      if (!button || !pop) return;
+      const rect = button.getBoundingClientRect();
+      if (rect.bottom < 0 || rect.top > window.innerHeight) {
+        setOpen(false);
+        return;
+      }
+      const gap = 8;
+      const edge = 8;
+      const width = pop.offsetWidth;
+      const height = pop.offsetHeight;
+      const roomBelow = window.innerHeight - rect.bottom;
+      const top = roomBelow >= height + gap || rect.top < height + gap
+        ? Math.min(rect.bottom + gap, window.innerHeight - height - edge)
+        : Math.max(edge, rect.top - height - gap);
+      const left = Math.min(
+        Math.max(edge, rect.left + rect.width / 2 - width / 2),
+        Math.max(edge, window.innerWidth - width - edge)
+      );
+      setCoords({ top: Math.max(edge, top), left });
+    };
+    place();
+    window.addEventListener("scroll", place, true);
+    window.addEventListener("resize", place);
+    return () => {
+      window.removeEventListener("scroll", place, true);
+      window.removeEventListener("resize", place);
+    };
+  }, [open]);
+
+  const pop = (
+    <div
+      className="info-tip-pop"
+      ref={popRef}
+      role="tooltip"
+      style={coords ? { top: coords.top, left: coords.left, visibility: "visible" as const } : { visibility: "hidden" as const }}
+    >
+      {text}
+    </div>
+  );
+
   return (
-    <span className="info-tip" ref={ref}>
+    <span className="info-tip">
       <button
+        ref={btnRef}
         type="button"
         className="info-tip-btn"
         aria-label={label}
@@ -56,11 +117,7 @@ export function InfoTip({ text, label = "查看说明" }: { text: ReactNode; lab
       >
         ?
       </button>
-      {open && (
-        <span className="info-tip-pop" role="tooltip">
-          {text}
-        </span>
-      )}
+      {open && (canPortal ? createPortal(pop, document.body) : pop)}
     </span>
   );
 }
