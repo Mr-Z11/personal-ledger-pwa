@@ -95,23 +95,18 @@ export async function sendPlanBuyReminder(userId: string, remainingCents: number
   });
 }
 
-/** 与前端 widgets.tsx praiseMessage 保持一致：低消费表扬文案 */
-function praiseContent(period: "am" | "pm", kind: "zero" | "thrifty"): string {
-  if (kind === "zero") {
-    return period === "am"
-      ? "上午一分钱没花，太赞了！守住钱包，应急资金越来越厚，压力也越来越小。"
-      : "到下午都还没花钱，克制得漂亮！存款在悄悄变厚，心里更踏实、选择更多。";
-  }
-  return period === "am"
-    ? "上午消费很节制，没有超支。保持这个节奏，月底更从容，应急资金也在增加。"
-    : "下午依然花得很稳，没有过度消费。省钱的日子，选择更多、压力更小。";
+/** 与前端 widgets.tsx praiseMessage 保持一致：低消费表扬文案（只剩傍晚一个时段） */
+function praiseContent(kind: "zero" | "thrifty"): string {
+  return kind === "zero"
+    ? "到今天都还没花钱，克制得漂亮！存款在悄悄变厚，心里更踏实、选择更多。"
+    : "今天花得很稳，没有过度消费。省钱的日子，选择更多、压力更小。";
 }
 
 export async function sendPraiseReminder(userId: string, period: "am" | "pm", kind: "zero" | "thrifty") {
   const title = kind === "zero" ? "🌱 表扬：今天很会守住钱" : "👏 表扬：今天消费很节制";
   return deliver(userId, {
     title,
-    body: praiseContent(period, kind),
+    body: praiseContent(kind),
     url: "/"
   });
 }
@@ -262,9 +257,10 @@ async function checkSpendingAlerts(log: FastifyBaseLogger) {
 
       // ---- 低消费表扬（不依赖预算即可发 zero 表扬；thrifty 需有日限额） ----
       // 开关对齐前端：主开关 dailyLimitEnabled（=设置页「当日限额提醒」）与子开关 praiseEnabled 同时开启才发
+      // 时段对齐前端：只在傍晚 18 点后发（用户反馈中午/下午就弹太早、没必要）
       const praiseOn = (setting?.dailyLimitEnabled ?? true) && (setting?.praiseEnabled ?? true);
       if (praiseOn) {
-        const period = today.hour >= 18 ? "pm" : today.hour >= 12 ? "am" : null;
+        const period = today.hour >= 18 ? "pm" : null;
         if (period) {
           let praise: { period: "am" | "pm"; kind: "zero" | "thrifty" } | null = null;
           if (spentTodayTotalCents <= 0) {

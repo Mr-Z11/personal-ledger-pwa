@@ -290,43 +290,44 @@ describe("搜索记录：关键词匹配与按月/年汇总", () => {
 });
 
 describe("低消费表扬：时段判定与文案", () => {
-  it("上午（12-17点）没花钱 → 表扬 zero", () => {
-    expect(noSpendPraiseDue(13, 0, 5000)).toEqual({ period: "am", kind: "zero" });
+  it("18 点之前（含上午/中午/下午）一律不提醒——用户反馈三四点就弹太早", () => {
+    expect(noSpendPraiseDue(9, 0, 5000)).toBeNull();
+    expect(noSpendPraiseDue(13, 0, 5000)).toBeNull();
+    expect(noSpendPraiseDue(14, 3000, 5000)).toBeNull();
+    expect(noSpendPraiseDue(17, 0, 5000)).toBeNull();
+    expect(noSpendPraiseDue(17, 3000, 5000)).toBeNull();
   });
 
-  it("下午（≥18点）没花钱 → 表扬 zero", () => {
+  it("傍晚（≥18点）没花钱 → 表扬 zero", () => {
+    expect(noSpendPraiseDue(18, 0, 5000)).toEqual({ period: "pm", kind: "zero" });
     expect(noSpendPraiseDue(20, 0, 5000)).toEqual({ period: "pm", kind: "zero" });
   });
 
-  it("低于日限额（未过度消费）→ 表扬 thrifty", () => {
-    expect(noSpendPraiseDue(14, 3000, 5000)).toEqual({ period: "am", kind: "thrifty" });
+  it("傍晚低于日限额（未过度消费）→ 表扬 thrifty", () => {
+    expect(noSpendPraiseDue(19, 3000, 5000)).toEqual({ period: "pm", kind: "thrifty" });
   });
 
-  it("上午花了一笔专项支出（日常=0、全部>0）→ 不再误判 zero，按日常口径判 thrifty", () => {
+  it("下午花了一笔专项支出（日常=0、全部>0）→ 不误判 zero，按日常口径判 thrifty", () => {
     // 第 4 个参数 totalSpentTodayCents 为今日全部支出（含专项）
-    expect(noSpendPraiseDue(13, 0, 5000, 3000)).toEqual({ period: "am", kind: "thrifty" });
+    expect(noSpendPraiseDue(19, 0, 5000, 3000)).toEqual({ period: "pm", kind: "thrifty" });
   });
 
-  it("上午花专项但无预算（limit=0）→ 不表扬（避免大额专项支出还被夸）", () => {
-    expect(noSpendPraiseDue(13, 0, 0, 3000)).toBeNull();
+  it("下午花专项但无预算（limit=0）→ 不表扬（避免大额专项支出还被夸）", () => {
+    expect(noSpendPraiseDue(19, 0, 0, 3000)).toBeNull();
   });
 
   it("今日全部支出真的为 0 → 表扬 zero", () => {
-    expect(noSpendPraiseDue(13, 0, 5000, 0)).toEqual({ period: "am", kind: "zero" });
+    expect(noSpendPraiseDue(19, 0, 5000, 0)).toEqual({ period: "pm", kind: "zero" });
   });
 
   it("达到/超过日限额 → 不表扬", () => {
-    expect(noSpendPraiseDue(14, 5000, 5000)).toBeNull();
-    expect(noSpendPraiseDue(14, 6000, 5000)).toBeNull();
-  });
-
-  it("中午之前不触发", () => {
-    expect(noSpendPraiseDue(9, 0, 5000)).toBeNull();
+    expect(noSpendPraiseDue(19, 5000, 5000)).toBeNull();
+    expect(noSpendPraiseDue(19, 6000, 5000)).toBeNull();
   });
 
   it("文案包含正向鼓励关键词", () => {
-    expect(praiseMessage("am", "zero")).toContain("应急资金");
-    expect(praiseMessage("pm", "thrifty")).toContain("压力");
+    expect(praiseMessage("zero")).toContain("存款");
+    expect(praiseMessage("thrifty")).toContain("压力");
   });
 });
 
