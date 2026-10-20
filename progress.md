@@ -661,3 +661,10 @@ typecheck ✓ vitest 11/11 ✓ build ✓ → caddy force-recreate → 200；待�
 - 无头 Chrome 390px 三场景点击验证通过；typecheck + 31 冒烟 + build 全绿；本地栈已供新资源
 - 推送：SSH/https 均被沙箱拦 → 新增 scripts/api-push-main.py（GitHub API 复刻推送），远端 SHA=本地 923e548 无分叉
 - 待手机实测：各页「?」气泡是否完整可读
+
+## 2026-10-20 低消费表扬改傍晚单发 — 前端已部署（f03991c）
+- 用户反馈每天三四点就开始提醒、太早没必要（确认是「低消费表扬」：中午 12 点起评 + 开 App 补发）
+- 前端：noSpendPraiseDue 18 点前一律 null；praiseMessage 单一傍晚文案；设置页文案同步；冒烟测试重写（30 passed）
+- 服务端：checkSpendingAlerts 表扬分支 hour>=18 + praiseContent 同步（需 CI 镜像）
+- typecheck + build 全绿；dist 原地重建已供新资源；API 镜像 CI 构建中，完成后 pull + 重启 api-local
+- 待手机实测：傍晚 18 点后只收到一条表扬

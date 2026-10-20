@@ -438,3 +438,5 @@ docker logs personal-ledger-pwa-api-local-1 | tail     # 确认 prisma db push �
 - (2026-10-20) InfoTip 气泡原来绝对定位于 `.info-tip` 内，被 `.settings-section`（以及大量 `overflow:hidden` 祖先）裁掉：折叠区没展开时点「?」整个气泡不可见，展开时也只露一截。修复=createPortal 到 body + fixed 视口定位 + 下翻上/左右夹边/滚动跟随/出屏关闭。今后凡「浮层/气泡/tooltip」一律 portal 到 body，不要再依赖祖先容器。
 - (2026-10-20) 行内「文字…?」组合被 `text-overflow:ellipsis` 吞掉尾部元素：容器改 flex，文字单独 span 承接省略号（`.budget-name` → `.budget-name-text`）。
 - (2026-10-20) 沙箱推送通道：SSH(22/443) 与 https 都可能被代理拦（`Connection closed by 127.0.0.1:10808` / CONNECT 502），但 api.github.com 通。`scripts/api-push-main.py` 用 Git Database API 按本地 commit 的 tree/author/committer/时间/消息逐字段复刻推送，远端 SHA 与本地一致（内容寻址，无分叉），树与 commit 双重核对、非快进即中止。
+- (2026-10-20) 表扬提醒时间阈值有两处必须同步改：web `widgets.tsx noSpendPraiseDue`（本地通知）与 api `notifications.ts checkSpendingAlerts` 表扬分支（web push）。用户已拍板：只在傍晚 18 点后发一条，中午/下午一律不发。
+- (2026-10-20) 已订阅 web push 的用户前端 maybePraiseNoSpend 直接 return（isPushSubscribed），推送完全由服务端 20 分钟轮询决定；本地通知只在未订阅时生效。

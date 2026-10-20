@@ -4,7 +4,7 @@
 Eliminate the 2–10 second blank screen during iPhone home-screen PWA cold starts by rendering an immediate static shell, showing local data first, and keeping cloud synchronization off the critical rendering path; verify, push main, and deploy production.
 
 ## Current Phase
-Phase 32
+Phase 33
 
 ## Phases
 
@@ -354,3 +354,13 @@ Phase 32
 - [x] typecheck + 31 冒烟 + build；dist 原地重建，localhost:8443 已供新资源
 - [x] 推送：SSH 与 https 均被沙箱代理拦 → 新增 scripts/api-push-main.py 走 GitHub API 复刻推送，SHA 与本地一致（923e548）
 - **Status:** complete（待手机实测：各页「?」气泡是否完整可读）
+
+### Phase 33: 低消费表扬改傍晚单发（2026-10-20，f03991c）
+- [x] 用户反馈：每天三四点就开始提醒（中午 12 点起评 + 开 App 补发），太早没必要
+- [x] noSpendPraiseDue：取消上午时段，hour>=18 才返回 pm，18 点前一律 null
+- [x] praiseMessage(kind) 收敛单一傍晚文案；maybePraiseNoSpend 每天最多一条
+- [x] 服务端 checkSpendingAlerts 表扬分支 hour>=18；praiseContent 同步；设置页文案同步
+- [x] 冒烟测试重写：18 点前一律不提醒 + 傍晚 zero/thrifty/专项误判/无预算不表扬（30 passed）
+- [x] typecheck + 30 冒烟 + build；前端 dist 原地重建已生效
+- [x] API 变更需 CI 镜像：等 docker-images 完成后 pull --platform linux/amd64 + compose up -d api-local
+- **Status:** 前端已部署；API 待 CI 镜像就位后热替换
