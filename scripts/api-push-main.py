@@ -1,10 +1,13 @@
 #!/usr/bin/env python3
 """SSH/https 都被沙箱网络拦住时，用 GitHub API 把本地 main 原样推到远端。
 
-要点（2026-10-20 验证）：按本地 commit 的 author/committer/时间/消息/tree/parent
+要点（2026-10-20 验证）：按本地每个 commit 的 author/committer/时间/消息/tree/parent
 逐一复刻，远端生成的 commit SHA 与本地完全一致（内容寻址），不会造成历史分叉；
-树自底向上重建后与 `git rev-parse HEAD^{tree}` 逐级核对，任何不一致都会中止。
+树自底向上重建后与 `git rev-parse <commit>^{tree}` 逐级核对，任何不一致都会中止。
 远端 main 若不是本地 HEAD 的祖先，直接中止（绝不做 force 推送）。
+
+支持一次推送多个 commit：从 remote..local 的 rev-list 里按时间正序逐个复刻，
+前一个的远端 SHA 作为后一个的 parent，最后一次性快进 ref。
 
 用法：在仓库根目录执行 `python3 scripts/api-push-main.py`。
 依赖：gh CLI（已登录，能走 api.github.com）。
@@ -47,39 +50,31 @@ def iso_from_git_date(value: str) -> str:
     return datetime.fromtimestamp(int(ts), tz=tz).isoformat()
 
 
-def main() -> None:
-    local_head = git("rev-parse", "HEAD")
-    remote_head = api("GET", f"repos/{REPO}/commits/{BRANCH}")["sha"]
-    print(f"本地 {BRANCH}: {local_head}")
-    print(f"远端 {BRANCH}: {remote_head}")
-    if remote_head == local_head:
-        print("已同步，无需推送。")
-        return
+def build_commit(remote_head: str, local_commit: str) -> str:
+    """把本地 local_commit 复刻到 remote_head 之上，返回远端 SHA（与本地一致才返回）。"""
+    parents = git("rev-list", "--parents", "-n", "1", local_commit).split()[1:]
+    if len(parents) != 1:
+        sys.exit(f"{local_commit[:7]} 是 merge commit（{len(parents)} 个父），本脚本不支持，已中止。")
 
-    ancestors = subprocess.run(["git", "merge-base", "--is-ancestor", remote_head, local_head]).returncode
-    if ancestors != 0:
-        sys.exit("远端 main 不是本地 HEAD 的祖先：非快进，已中止（本脚本绝不做 force 推送）。")
-
-    # 1) 收集相对远端的变更文件（含删除）
-    changed = git("diff", "--name-only", f"{remote_head}", local_head).splitlines()
+    # 1) 收集相对父 commit 的变更文件（含删除）
+    changed = git("diff", "--name-only", f"{local_commit}^", local_commit).splitlines()
     if not changed:
-        sys.exit("没有文件变更但 commit 不同？请人工检查。")
-    print(f"变更文件 {len(changed)} 个：{', '.join(changed)}")
+        sys.exit(f"{local_commit[:7]} 没有文件变更？请人工检查。")
 
     blobs: dict[str, str | None] = {}
     for path in changed:
-        exists = subprocess.run(["git", "cat-file", "-e", f"{local_head}:{path}"]).returncode == 0
+        exists = subprocess.run(["git", "cat-file", "-e", f"{local_commit}:{path}"]).returncode == 0
         if not exists:
             blobs[path] = None  # 删除
             continue
-        raw = subprocess.run(["git", "show", f"{local_head}:{path}"], capture_output=True).stdout.decode("utf-8")
+        raw = subprocess.run(["git", "show", f"{local_commit}:{path}"], capture_output=True).stdout.decode("utf-8")
         created = api("POST", f"repos/{REPO}/git/blobs", {"content": raw, "encoding": "utf-8"})
         local_blob = git("hash-object", path)
         if created["sha"] != local_blob:
             sys.exit(f"{path} blob 哈希不一致（远端 {created['sha']} / 本地 {local_blob}），已中止。")
         blobs[path] = created["sha"]
 
-    # 2) 按目录自底向上重建树（只重建有变更的目录链）
+    # 2) 按目录自底向上重建树（只重建有变更的目录链，基准取 remote_head 的树）
     dirs: set[str] = set()
     for path in changed:
         parts = path.split("/")[:-1]
@@ -87,11 +82,9 @@ def main() -> None:
             dirs.add("/".join(parts[: index + 1]))
 
     def remote_tree_for(directory: str) -> tuple[str, dict[str, dict]]:
-        """取远端某目录的树；根目录直接用 commit 的 tree。"""
+        """取 remote_head 某目录的树；根目录直接用 commit 的 tree。"""
         if not directory:
             return remote_head, tree_entries(api("GET", f"repos/{REPO}/commits/{remote_head}")["commit"]["tree"]["sha"])
-        node = api("GET", f"repos/{REPO}/git/trees/{remote_head}")
-        # 逐级下钻
         current = tree_entries(api("GET", f"repos/{REPO}/commits/{remote_head}")["commit"]["tree"]["sha"])
         sha = None
         for part in directory.split("/"):
@@ -129,7 +122,7 @@ def main() -> None:
 
     # 3) 根树
     root_entries = []
-    root_tree_sha, entries = remote_tree_for("")
+    _, entries = remote_tree_for("")
     for name, entry in entries.items():
         child = name
         sha = new_dir_trees.get(child, entry["sha"]) if entry["type"] == "tree" else entry["sha"]
@@ -148,13 +141,12 @@ def main() -> None:
             else:
                 root_entries.append({"path": name, "mode": "100644", "type": "blob", "sha": blob})
     new_root_tree = api("POST", f"repos/{REPO}/git/trees", {"tree": root_entries})["sha"]
-    local_tree = git("rev-parse", "HEAD^{tree}")
+    local_tree = git("rev-parse", f"{local_commit}^{{tree}}")
     if new_root_tree != local_tree:
-        sys.exit(f"重建的根树 {new_root_tree} 与本地 {local_tree} 不一致，已中止。")
-    print(f"树核对一致: {new_root_tree}")
+        sys.exit(f"重建的根树 {new_root_tree} 与本地 {local_tree}（{local_commit[:7]}）不一致，已中止。")
 
     # 4) 复刻 commit（作者/提交者/时间/消息全部对齐本地）
-    raw = subprocess.run(["git", "cat-file", "commit", local_head], capture_output=True, text=True).stdout
+    raw = subprocess.run(["git", "cat-file", "commit", local_commit], capture_output=True, text=True).stdout
     header, message = raw.split("\n\n", 1)
 
     def field(name: str) -> str:
@@ -170,14 +162,37 @@ def main() -> None:
         "author": {"name": "frori", "email": "mofrori@gmail.com", "date": iso_from_git_date(field("author"))},
         "committer": {"name": "frori", "email": "mofrori@gmail.com", "date": iso_from_git_date(field("committer"))}
     })
-    if created["sha"] != local_head:
-        sys.exit(f"远端 commit {created['sha']} 与本地 {local_head} 不一致，已中止（未动 ref）。")
-    print(f"commit SHA 完全一致: {created['sha']}")
+    if created["sha"] != local_commit:
+        sys.exit(f"远端 commit {created['sha']} 与本地 {local_commit} 不一致，已中止（未动 ref）。")
+    return created["sha"]
 
-    # 5) 快进 ref 并同步本地跟踪引用
-    api("PATCH", f"repos/{REPO}/git/refs/heads/{BRANCH}", {"sha": created["sha"], "force": False})
-    subprocess.run(["git", "update-ref", f"refs/remotes/origin/{BRANCH}", created["sha"]])
-    print(f"已推送并快进 origin/{BRANCH} -> {created['sha']}")
+
+def main() -> None:
+    local_head = git("rev-parse", "HEAD")
+    remote_head = api("GET", f"repos/{REPO}/commits/{BRANCH}")["sha"]
+    print(f"本地 {BRANCH}: {local_head}")
+    print(f"远端 {BRANCH}: {remote_head}")
+    if remote_head == local_head:
+        print("已同步，无需推送。")
+        return
+
+    ancestors = subprocess.run(["git", "merge-base", "--is-ancestor", remote_head, local_head]).returncode
+    if ancestors != 0:
+        sys.exit("远端 main 不是本地 HEAD 的祖先：非快进，已中止（本脚本绝不做 force 推送）。")
+
+    commits = git("rev-list", "--reverse", f"{remote_head}..{local_head}").splitlines()
+    print(f"待推送 {len(commits)} 个 commit：{', '.join(c[:7] for c in commits)}")
+
+    # 5) 按时间正序逐个复刻，前一个的远端 SHA 作为后一个的 parent
+    current = remote_head
+    for commit in commits:
+        current = build_commit(current, commit)
+        print(f"  {commit[:7]} 复刻一致")
+
+    # 6) 快进 ref 并同步本地跟踪引用
+    api("PATCH", f"repos/{REPO}/git/refs/heads/{BRANCH}", {"sha": current, "force": False})
+    subprocess.run(["git", "update-ref", f"refs/remotes/origin/{BRANCH}", current])
+    print(f"已推送并快进 origin/{BRANCH} -> {current}")
 
 
 if __name__ == "__main__":
