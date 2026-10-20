@@ -6,11 +6,12 @@
 
 ## 2. 已完成并部署的变更（2026-10-20 最新）
 
-最新 commit `969192d` 已构建并部署到**本地 Mac 栈**（云端服务器仍失效，见第 3 节；推送走 scripts/api-push-main.py）。
+最新 commit `c51692c` 已构建并部署到**本地 Mac 栈**（云端服务器仍失效，见第 3 节；推送走 scripts/api-push-main.py）。
 
 | Commit | 描述 | 关键文件 | 状态 |
 |--------|------|---------|------|
-| `969192d` | **修复保存流水后底部菜单栏延迟出现**：用户反馈每次记录消费后下方菜单栏要等一会儿才出现，修改流水同样问题。根因：`body.keyboard-open` 标记只由 focusin/focusout 驱动，而保存流水时聚焦中的输入框随表单一起被卸载（元素从 DOM 移除不触发 blur/focusout）、iOS 上点保存按钮也不保证让输入框失焦 → 标记残留，`body.keyboard-open .floating{display:none}` 把底部菜单栏卡住，直到下次焦点事件或切页才恢复。修复两层：① 治本——`syncKeyboardFlag` 增加 visualViewport 视口第二信号（`innerHeight - vv.height > 120`，门控 `(max-width: 940px) and (pointer: coarse)` 防桌面误判），键盘真正收起时即使没有焦点事件也自动清标记；visibilitychange 兜底；② 即时——EntryForm.submit 在 `await onSave` 前 `blurActiveElement()`、编辑分支保存后 350ms 兜底 sync、EntryForm 卸载 cleanup 清理表单内焦点（覆盖取消编辑）；BudgetPanel.resetForm（行内编辑保存/取消）、AccountPanel/CategoryPanel submit 同模式处理 | App.tsx | 已部署 |
+| `c51692c` | **保存后菜单栏立即恢复 + 去掉连记自动重弹键盘**：上一轮 `969192d` 用户实测仍「保存后菜单栏消失、需再点屏幕才出现」。根因双重——① 键盘标记清除依赖 visualViewport.resize 异步回调，该机 WKWebView 收起键盘不报 resize → 标记残留；② 上轮保留的保存后 `focusAmountInput(true)` 0ms/180ms 自动重弹金额键盘把菜单栏重新藏住。修复：`focusout` 时若 `event.relatedTarget` 不是 typing 元素（按钮/body/null）即乐观清软键盘标记 + 60ms 内清 `body.keyboard-open`，不再依赖视口异步回调（visualViewport 仅兜底漏报）；保存后不再自动重聚焦金额框，键盘收起后菜单栏立即恢复，连记改由用户主动点金额框（提示文案「要再记一笔点金额框即可」） | App.tsx | 已部署 |
+| `969192d` | **修复保存流水后底部菜单栏延迟出现（第一版，已被 c51692c 增强）**：`body.keyboard-open` 标记原只由 focusin/focusout 驱动，保存流水时输入框随表单卸载（不触发 blur）、iOS 点保存按钮不保证失焦 → 标记残留卡住菜单栏。加 visualViewport 视口第二信号 + 各 submit 主动 blur。c51692c 在此基础上改为 focusout 乐观清除并去掉连记自动重弹 | App.tsx | 已部署 |
 | `f03991c` | **低消费表扬改为傍晚单发**：用户反馈中午/下午就弹「太早没必要」。`noSpendPraiseDue` 取消上午时段（hour>=18 才评），18 点前一律 null；`praiseMessage` 收敛为单一傍晚文案；服务端 `checkSpendingAlerts` 表扬分支同步改 hour>=18，`praiseContent` 同步；设置页文案改「傍晚 18 点后没超支推送一条」；冒烟测试改为覆盖 18 点前一律不提醒 | widgets.tsx, widgets.smoke.test.tsx, apps/api/src/notifications.ts | 已部署 |
 | `923e548` | **修复「?」气泡被裁/被吞**：根因是 `.settings-section` 等大量祖先容器 `overflow:hidden`，气泡绝对定位在「?」旁被整块裁掉（折叠区没展开时点「?」什么都看不到）。InfoTip 气泡改 `createPortal` 挂 body + fixed 视口定位（下方空间不足自动上翻、左右夹视口、滚动跟随、「?」滚出视口自动关、max-height+内滚）；`.budget-name` 改 flex，省略号只吃名称文字，「?」始终完整可见 | widgets.tsx, App.tsx, styles.css | 已部署 |
 | `33abe6b` | **超日限额全界面深红警示**：新增 DailyLimitRibbon 常驻警示条（main 顶部 sticky，达线=琥珀「已到日限额」、超支=深红「今日已超日限额 ¥x」+ 已花/限额/百分比）；超支 body.daily-limit-over 换肤（深红纸底 + 全屏深红暗角 pointer-events:none + 卡片/顶栏徽章/h1/h2/侧边导航/记一笔 FAB 染红）；达线未超 body.daily-limit-warn（琥珀纸底 + 描边）；App effect 实时切换 body 类，关掉全屏遮罩后警示仍生效 | App.tsx, widgets.tsx, styles.css | 已部署 |
@@ -314,7 +315,8 @@
 - 账户/预算等「列表+编辑」用行内编辑（编辑态在行内展开表单），不要回到双列 grid（≤940px 塌成单列会把表单挤到列表下方）
 
 - **沙箱内 git push 走 https 被代理拦（CONNECT 502 / Empty reply）时，直接改走 SSH：`git push git@github.com:Mr-Z11/personal-ledger-pwa.git main`（ssh 22 与 ssh.github.com:443 都通，验证于 2026-10-19）**
-- 键盘弹出遮挡/跳动类问题统一用 `body.keyboard-open` 标记解决，但**标记必须是双信号**：输入框聚焦（focusin/focusout）**或** visualViewport 占屏（`innerHeight - vv.height > 120`，门控 `(max-width: 940px) and (pointer: coarse)`）。只信焦点事件会漏报——聚焦中的输入框随表单卸载不触发 blur、iOS 点提交按钮不保证输入框失焦，标记残留会把底部菜单栏卡住；表单 submit/卸载处还要 `blurActiveElement()` 主动收键盘
+- 键盘弹出遮挡/跳动类问题统一用 `body.keyboard-open` 标记解决，标记清除**不要只依赖 visualViewport.resize 异步回调**（部分 WKWebView 键盘收起不报 resize，标记会残留、菜单栏要再点一次屏幕）；正确做法：focusout 时若 `event.relatedTarget` 不是 typing 元素（按钮/body/null），乐观清 `softKeyboardVisible` 并 60ms 内清标记；visualViewport 仅作兜底漏报。标记清除不彻底会把 `body.keyboard-open .floating{display:none}` 卡住
+- 保存流水后**不要自动重弹金额键盘**连记：保存后 `focusAmountInput(true)` 重新聚焦金额框会让键盘立刻又弹起、菜单栏被重新藏住（用户两次反馈都指向此）；连记改由用户主动点金额框（金额框常显、一点即聚焦）。若用户后续明确要求恢复自动连记再考虑加回
 - 超限额警示分两级：达线未超=daily-limit-warn（琥珀）、真超支=daily-limit-over（深红），body 类由 App effect 维护；不要在页面里各自判断颜色
 - SSH/https 推送全被沙箱代理拦时用 `python3 scripts/api-push-main.py`：按本地 commit 逐字段复刻经 GitHub API 推送，远端 SHA 与本地完全一致（不会分叉），树/commit 双重核对 + 非快进即中止；作者信息硬编码 frori/mofrori@gmail.com
 - 表扬提醒只剩傍晚 18 点一条（用户明确要求中午/下午别弹）；若以后再要调时间，改 widgets.tsx `noSpendPraiseDue` 与 api notifications.ts 表扬分支**两处**（hour 阈值必须一致）
@@ -397,3 +399,12 @@
 - **连记体验兼容**：新记录保存后 `focusAmountInput(true)` 0ms/180ms 重新聚焦金额框——先 blur 再 focus 不闪菜单栏（focusout 的 sync 有 120ms 延迟，focusin 的 sync 立即执行，0ms 重聚焦直接赢）；iOS 手势链断裂 focus() 静默失败时键盘保持收起，符合「保存即收键盘」预期；Android/桌面连记体验不变
 - 验证：typecheck + 30 冒烟 + build（PWA 12 图）全绿；线上 bundle 含 `pointer: coarse`/`visualViewport`/`form.entry-form-grid`，无回归（daily-limit-over 在、amount-keypad 为 0）；dist 原地重建免 force-recreate，localhost:8443 已供新 bundle `App-CscQcrxK.js`
 - 待手机实测：保存/编辑流水后底部菜单栏是否立即恢复；连记时键盘是否照常弹起
+
+## 2026-10-20 保存后菜单栏立即恢复 + 去掉连记自动重弹键盘（c51692c，已部署本地栈）
+- 用户二次实测：点击保存后下方菜单栏消失，需再次点击屏幕才出现（猜测与同步有关）
+- **根因双重**：① 上轮 `969192d` 的键盘标记清除依赖 `visualViewport.resize` 异步回调，该机 WKWebView 键盘收起时不报/极快跳过 resize → `body.keyboard-open` 残留；② 上轮保留的保存后 `focusAmountInput(true)` 0ms/180ms 自动重弹金额键盘，保存后键盘立刻又弹起，`body.keyboard-open .floating{display:none}` 把菜单栏重新藏住。用户感知的「消失、需再点」正是这层——与同步本身无关，但保存触发写入/outbox 引起的界面状态变化被注意到了
+- **修复**：
+  - focusout 乐观清除：`onFocusOut(event)` 读 `event.relatedTarget`，若不是 typing 元素（按钮/body/null）立即 `softKeyboardVisible=false` + 60ms 内 `syncKeyboardFlag()` 清 `body.keyboard-open`；relatedTarget 是另一 input（Tab 切换）则保留标记。visualViewport.resize 降级为极个别漏报兜底
+  - 去掉连记自动重弹：删除 `focusAmountInput(true)` 0ms/180ms 定时器；保存后键盘收起、菜单栏立即恢复；连记改由用户点金额框（常显、点即聚焦）；保存提示文案改「要再记一笔点金额框即可」
+- 验证：typecheck + 30 冒烟 + build（PWA 12 图）全绿；线上 bundle `App-SR4N8AB4.js` 含 `relatedTarget` + 新文案，无回归（daily-limit-over 在、amount-keypad 为 0）；dist 原地重建免 force-recreate，localhost:8443 已供新 bundle
+- 待手机实测：保存/编辑流水后菜单栏是否立即出现；连记改手动点金额框是否顺手

@@ -374,3 +374,11 @@ Phase 34
 - [x] 验证：typecheck + 30 冒烟 + build（PWA 12 图）全绿；线上 bundle 含 `pointer: coarse`/`visualViewport`/`form.entry-form-grid`，旧 keyboard 逻辑无回归（daily-limit-over 仍在、amount-keypad 为 0）
 - [x] dist 原地重建（caddy 挂载未悬空，免 force-recreate），localhost:8443 已供新 bundle `App-CscQcrxK.js`
 - **Status:** complete（待手机实测：保存/编辑流水后菜单栏是否立即恢复）
+
+### Phase 35: 保存后菜单栏立即恢复 + 去掉连记自动重弹键盘（2026-10-20，c51692c）
+- [x] 用户二次实测反馈：点击保存后下方菜单栏消失，需再次点击屏幕才出现（上一轮 visualViewport 异步清除在其实机不可靠）
+- [x] 根因双重：① 键盘标记清除依赖 visualViewport.resize 异步回调，部分 WebView 不报 resize → 标记残留；② 上一轮保留了保存后 `focusAmountInput(true)` 0ms/180ms 自动重弹金额键盘的连记逻辑，保存后键盘立刻又弹起，菜单栏被重新藏住
+- [x] 修复：focusout 时若没有新的「会唤起键盘」的元素接手（relatedTarget 为按钮/body/null），乐观清除 softKeyboardVisible 并 60ms 内清 `body.keyboard-open`，不再依赖视口 resize 异步；visualViewport 仅作极个别漏报兜底
+- [x] 保存后不再自动重聚焦金额框：键盘收起后菜单栏立即恢复，连记改由用户主动点金额框；保存提示文案改为「要再记一笔点金额框即可」
+- [x] 验证：typecheck + 30 冒烟 + build（PWA 12 图）全绿；线上 bundle `App-SR4N8AB4.js` 含 relatedTarget + 新文案，无回归（daily-limit-over 在）
+- **Status:** complete（待手机实测：保存/编辑流水后菜单栏是否立即出现）

@@ -676,3 +676,10 @@ typecheck ✓ vitest 11/11 ✓ build ✓ → caddy force-recreate → 200；待�
 - 验证：typecheck + 30 冒烟 + build（PWA 12 图）全绿；线上 bundle 含 pointer:coarse/visualViewport/form.entry-form-grid，无回归（daily-limit-over 在、amount-keypad 为 0）
 - dist 原地重建免 force-recreate，localhost:8443 已供新 bundle App-CscQcrxK.js；commit 969192d 待推送
 - 待手机实测：保存/编辑流水后底部菜单栏是否立即恢复；连记时键盘是否照常弹起
+
+## 2026-10-20 保存后菜单栏立即恢复 + 去掉连记自动重弹键盘 — 已交付本地栈（c51692c）
+- 二次实测：点击保存后下方菜单栏消失，需再次点击屏幕才出现（用户猜测与同步有关）
+- 根因：① 上轮 visualViewport 异步清除在该机不可靠；② 上轮保留的保存后自动重弹金额键盘把菜单栏重新藏住
+- 修复：focusout 时若 relatedTarget 不是 typing 元素（按钮/body/null）乐观清软键盘标记 + 60ms 内清 body.keyboard-open；保存后不再自动重聚焦金额框（连记改手动），提示文案改「要再记一笔点金额框即可」
+- 验证：typecheck + 30 冒烟 + build 全绿；线上 App-SR4N8AB4.js 含 relatedTarget + 新文案，无回归
+- 待手机实测：保存/编辑流水后菜单栏是否立即出现
