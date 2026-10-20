@@ -824,9 +824,19 @@ export function App() {
   useEffect(() => {
     let blurTimer = 0;
     const sync = () => syncKeyboardFlag();
-    const onFocusOut = () => {
-      window.clearTimeout(blurTimer);
-      blurTimer = window.setTimeout(sync, 120);
+    const onFocusOut = (event: FocusEvent) => {
+      // 焦点离开输入框后，若没有新的「会唤起软键盘」的元素接手（焦点去了按钮/正文/body，
+      // relatedTarget 为 null 或 button 等），键盘必收起——乐观清除软键盘标记，不必等
+      // visualViewport.resize 的异步回调（个别 WebView 不报 resize，会导致标记残留、菜单栏要
+      // 用户再点一次屏幕才恢复）。isSoftKeyboardVisible 仅作为极个别漏报的兜底。
+      const related = event.relatedTarget as Element | null;
+      if (!isTypingElement(related)) {
+        softKeyboardVisible = false;
+        window.clearTimeout(blurTimer);
+        blurTimer = window.setTimeout(sync, 60);
+      } else {
+        sync();
+      }
     };
     const onViewportResize = () => {
       const wasVisible = softKeyboardVisible;
@@ -1550,8 +1560,7 @@ function EntryForm({ accounts, categories, transactions, onSave, onSaveCategory,
       setSaveFeedback(`${typeLabels[type]} ¥${centsToYuan(item.amountCents)} 已保存`);
       setSavedFlash(true);
       window.setTimeout(() => setSavedFlash(false), 720);
-      window.setTimeout(() => focusAmountInput(true), 0);
-      window.setTimeout(() => focusAmountInput(true), 180);
+      // 保存后不再自动重弹金额键盘（连记改由用户主动点金额框），让键盘收起、底部菜单栏立即恢复
     } else {
       // 编辑保存后表单随即卸载：兜底再同步一次键盘标记，
       // 覆盖个别 WebView 的 visualViewport 不报 resize 的情况
@@ -1592,7 +1601,7 @@ function EntryForm({ accounts, categories, transactions, onSave, onSaveCategory,
             <span className="confirm-mark">✓</span>
             <div>
               <strong>{saveFeedback}</strong>
-              <small>已加入流水，可以继续记下一笔</small>
+              <small>已加入流水，要再记一笔点金额框即可</small>
             </div>
           </div>
         )}
