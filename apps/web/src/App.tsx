@@ -817,7 +817,10 @@ export function App() {
   }, [view]);
 
   // 键盘弹出时给 body 打标记：隐藏底部导航/悬浮按钮、取消保存条的 sticky，
-  // 避免这些固定元素被键盘顶起来盖住正在输入的字段，造成页面跳动
+  // 避免这些固定元素被键盘顶起来盖住正在输入的字段，造成页面跳动。
+  // 标记 = 输入框聚焦 或 软键盘在占屏（visualViewport 高度差）：
+  // 仅靠焦点事件不可靠——聚焦中的输入框被卸载（保存后表单消失）不触发 blur，
+  // iOS 上点保存按钮也未必让输入框失焦，都会让标记残留、底部菜单栏迟迟不恢复
   useEffect(() => {
     let blurTimer = 0;
     const sync = () => syncKeyboardFlag();
@@ -825,13 +828,35 @@ export function App() {
       window.clearTimeout(blurTimer);
       blurTimer = window.setTimeout(sync, 120);
     };
+    const onViewportResize = () => {
+      const wasVisible = softKeyboardVisible;
+      softKeyboardVisible = isSoftKeyboardVisible();
+      if (softKeyboardVisible) {
+        sync();
+      } else if (wasVisible) {
+        // 键盘收起：稍等片刻再清标记，避开系统收起动画的中间态
+        window.clearTimeout(blurTimer);
+        blurTimer = window.setTimeout(sync, 80);
+      }
+    };
+    const onVisibility = () => {
+      if (document.hidden) return;
+      softKeyboardVisible = isSoftKeyboardVisible();
+      sync();
+    };
     document.addEventListener("focusin", sync);
     document.addEventListener("focusout", onFocusOut);
+    document.addEventListener("visibilitychange", onVisibility);
+    window.visualViewport?.addEventListener("resize", onViewportResize);
+    softKeyboardVisible = isSoftKeyboardVisible();
     sync();
     return () => {
       window.clearTimeout(blurTimer);
       document.removeEventListener("focusin", sync);
       document.removeEventListener("focusout", onFocusOut);
+      document.removeEventListener("visibilitychange", onVisibility);
+      window.visualViewport?.removeEventListener("resize", onViewportResize);
+      softKeyboardVisible = false;
       document.body.classList.remove("keyboard-open");
     };
   }, []);
@@ -1327,7 +1352,26 @@ function isTypingElement(element: Element | null) {
 
 function syncKeyboardFlag() {
   if (typeof document === "undefined") return;
-  document.body.classList.toggle("keyboard-open", isTypingElement(document.activeElement));
+  document.body.classList.toggle("keyboard-open", isTypingElement(document.activeElement) || softKeyboardVisible);
+}
+
+// 软键盘当前是否在占屏（视觉视口比布局视口矮一截即键盘高度）。
+// 焦点事件会漏报：聚焦中的输入框被直接从 DOM 移除（保存后表单卸载）不触发 blur，
+// iOS 上点提交按钮也未必让输入框失焦；视口高度差是独立于焦点的第二信号，键盘真正收起时自动恢复。
+let softKeyboardVisible = false;
+
+function isSoftKeyboardVisible() {
+  if (typeof window === "undefined" || !window.visualViewport) return false;
+  // 只信移动端触屏：桌面窗口缩放/双指缩放不算键盘
+  if (!window.matchMedia("(max-width: 940px) and (pointer: coarse)").matches) return false;
+  return window.innerHeight - window.visualViewport.height > 120;
+}
+
+// 主动收起系统键盘：让当前聚焦元素失焦，触发 focusout 与键盘退场，
+// 避免保存/取消后焦点元素被卸载导致 keyboard-open 标记残留
+function blurActiveElement() {
+  const active = document.activeElement;
+  if (active instanceof HTMLElement) active.blur();
 }
 
 function EntryForm({ accounts, categories, transactions, onSave, onSaveCategory, editing, onCancel, focusSignal = 0 }: {
@@ -1475,6 +1519,10 @@ function EntryForm({ accounts, categories, transactions, onSave, onSaveCategory,
 
   async function submit(event: React.FormEvent) {
     event.preventDefault();
+    // 先收起键盘再保存：iOS 上点保存按钮不保证让输入框失焦，
+    // 编辑保存后整个表单随即卸载、焦点元素被移除同样不触发 blur，
+    // 两种漏报都会让 keyboard-open 标记残留、底部菜单栏迟迟不恢复
+    blurActiveElement();
     const item: Transaction = {
       ...(editing ?? entityStamp()),
       type,
@@ -1504,8 +1552,19 @@ function EntryForm({ accounts, categories, transactions, onSave, onSaveCategory,
       window.setTimeout(() => setSavedFlash(false), 720);
       window.setTimeout(() => focusAmountInput(true), 0);
       window.setTimeout(() => focusAmountInput(true), 180);
+    } else {
+      // 编辑保存后表单随即卸载：兜底再同步一次键盘标记，
+      // 覆盖个别 WebView 的 visualViewport 不报 resize 的情况
+      window.setTimeout(syncKeyboardFlag, 350);
     }
   }
+
+  // 卸载时若焦点还留在表单内（取消编辑/保存后表单消失），主动 blur：
+  // 焦点元素被直接从 DOM 移除不会触发 focusout，键盘标记会残留
+  useEffect(() => () => {
+    const active = document.activeElement;
+    if (active instanceof HTMLElement && active.closest("form.entry-form-grid")) active.blur();
+  }, []);
 
   return (
     <section className={`panel entry-panel entry-panel-${type}`}>
@@ -2554,6 +2613,7 @@ function AccountsPanel({ accounts, onSave, onDelete }: { accounts: Account[]; on
 
   async function submit(event: React.FormEvent) {
     event.preventDefault();
+    blurActiveElement();
     const wasEditing = !!editing;
     await onSave({
       ...(editing ?? entityStamp()),
@@ -2713,6 +2773,7 @@ function CategoriesPanel({ categories, onSave, onDelete }: { categories: Categor
 
   async function submit(event: React.FormEvent) {
     event.preventDefault();
+    blurActiveElement();
     let nextParentId: string | null = parentId || null;
     if (!editing && parentId === "__other__") {
       let parent = otherCategory(activeCategories, kind);
@@ -2873,6 +2934,10 @@ function BudgetPanel({ budgets, categories, transactions, onSave, onDelete }: {
   }
 
   function resetForm() {
+    // 预算行内编辑保存/取消后表单卸载：先收键盘再兜底同步标记，
+    // 避免聚焦中的金额框被移除导致底部菜单栏被卡住
+    blurActiveElement();
+    window.setTimeout(syncKeyboardFlag, 350);
     setEditing(null);
     setBudgetKind("daily");
     setCategoryId("");
