@@ -668,3 +668,11 @@ typecheck ✓ vitest 11/11 ✓ build ✓ → caddy force-recreate → 200；待�
 - 服务端：checkSpendingAlerts 表扬分支 hour>=18 + praiseContent 同步（需 CI 镜像）
 - typecheck + build 全绿；dist 原地重建已供新资源；API 镜像 CI 构建中，完成后 pull + 重启 api-local
 - 待手机实测：傍晚 18 点后只收到一条表扬
+
+## 2026-10-20 保存流水后底部菜单栏延迟出现修复 — 已交付本地栈（969192d）
+- 用户反馈：每次记录消费后，下方菜单栏要等一会儿才出现；修改流水等操作同样问题
+- 根因：`body.keyboard-open` 只由 focusin/focusout 驱动；保存流水时聚焦中的输入框随表单卸载（元素移除不触发 blur）、iOS 点保存按钮不保证输入框失焦 → 标记残留，`.floating` 被 display:none 卡住，直到下次焦点事件/切页才恢复
+- 修复（两层）：① syncKeyboardFlag 增加 visualViewport 视口信号（innerHeight - vv.height > 120，门控移动端触屏），键盘真正收起即清标记，visibilitychange 兜底；② 各提交点主动收键盘——EntryForm.submit await 前 blurActiveElement、编辑分支 350ms 兜底 sync、EntryForm 卸载 cleanup 清表单内焦点；BudgetPanel.resetForm、AccountPanel/CategoryPanel submit 同步处理
+- 验证：typecheck + 30 冒烟 + build（PWA 12 图）全绿；线上 bundle 含 pointer:coarse/visualViewport/form.entry-form-grid，无回归（daily-limit-over 在、amount-keypad 为 0）
+- dist 原地重建免 force-recreate，localhost:8443 已供新 bundle App-CscQcrxK.js；commit 969192d 待推送
+- 待手机实测：保存/编辑流水后底部菜单栏是否立即恢复；连记时键盘是否照常弹起

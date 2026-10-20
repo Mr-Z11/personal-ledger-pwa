@@ -4,12 +4,13 @@
 
 维护个人记账 PWA 的日常迭代与数据安全。**云端服务器已于 2026-08-29 失效**，当前数据完全以本地 Mac 为中心（local-first 架构 + 本地 PostgreSQL）。云端重建与否待用户决策。
 
-## 2. 已完成并部署的变更（2026-10-19 最新）
+## 2. 已完成并部署的变更（2026-10-20 最新）
 
-最新 commit `f03991c` 已推送 GitHub main（SSH 通道；https 直推被沙箱代理 502 拦截）；前端已构建并部署到**本地 Mac 栈**（云端服务器仍失效，见第 3 节）。
+最新 commit `969192d` 已构建并部署到**本地 Mac 栈**（云端服务器仍失效，见第 3 节；推送走 scripts/api-push-main.py）。
 
 | Commit | 描述 | 关键文件 | 状态 |
 |--------|------|---------|------|
+| `969192d` | **修复保存流水后底部菜单栏延迟出现**：用户反馈每次记录消费后下方菜单栏要等一会儿才出现，修改流水同样问题。根因：`body.keyboard-open` 标记只由 focusin/focusout 驱动，而保存流水时聚焦中的输入框随表单一起被卸载（元素从 DOM 移除不触发 blur/focusout）、iOS 上点保存按钮也不保证让输入框失焦 → 标记残留，`body.keyboard-open .floating{display:none}` 把底部菜单栏卡住，直到下次焦点事件或切页才恢复。修复两层：① 治本——`syncKeyboardFlag` 增加 visualViewport 视口第二信号（`innerHeight - vv.height > 120`，门控 `(max-width: 940px) and (pointer: coarse)` 防桌面误判），键盘真正收起时即使没有焦点事件也自动清标记；visibilitychange 兜底；② 即时——EntryForm.submit 在 `await onSave` 前 `blurActiveElement()`、编辑分支保存后 350ms 兜底 sync、EntryForm 卸载 cleanup 清理表单内焦点（覆盖取消编辑）；BudgetPanel.resetForm（行内编辑保存/取消）、AccountPanel/CategoryPanel submit 同模式处理 | App.tsx | 已部署 |
 | `f03991c` | **低消费表扬改为傍晚单发**：用户反馈中午/下午就弹「太早没必要」。`noSpendPraiseDue` 取消上午时段（hour>=18 才评），18 点前一律 null；`praiseMessage` 收敛为单一傍晚文案；服务端 `checkSpendingAlerts` 表扬分支同步改 hour>=18，`praiseContent` 同步；设置页文案改「傍晚 18 点后没超支推送一条」；冒烟测试改为覆盖 18 点前一律不提醒 | widgets.tsx, widgets.smoke.test.tsx, apps/api/src/notifications.ts | 已部署 |
 | `923e548` | **修复「?」气泡被裁/被吞**：根因是 `.settings-section` 等大量祖先容器 `overflow:hidden`，气泡绝对定位在「?」旁被整块裁掉（折叠区没展开时点「?」什么都看不到）。InfoTip 气泡改 `createPortal` 挂 body + fixed 视口定位（下方空间不足自动上翻、左右夹视口、滚动跟随、「?」滚出视口自动关、max-height+内滚）；`.budget-name` 改 flex，省略号只吃名称文字，「?」始终完整可见 | widgets.tsx, App.tsx, styles.css | 已部署 |
 | `33abe6b` | **超日限额全界面深红警示**：新增 DailyLimitRibbon 常驻警示条（main 顶部 sticky，达线=琥珀「已到日限额」、超支=深红「今日已超日限额 ¥x」+ 已花/限额/百分比）；超支 body.daily-limit-over 换肤（深红纸底 + 全屏深红暗角 pointer-events:none + 卡片/顶栏徽章/h1/h2/侧边导航/记一笔 FAB 染红）；达线未超 body.daily-limit-warn（琥珀纸底 + 描边）；App effect 实时切换 body 类，关掉全屏遮罩后警示仍生效 | App.tsx, widgets.tsx, styles.css | 已部署 |
@@ -313,7 +314,7 @@
 - 账户/预算等「列表+编辑」用行内编辑（编辑态在行内展开表单），不要回到双列 grid（≤940px 塌成单列会把表单挤到列表下方）
 
 - **沙箱内 git push 走 https 被代理拦（CONNECT 502 / Empty reply）时，直接改走 SSH：`git push git@github.com:Mr-Z11/personal-ledger-pwa.git main`（ssh 22 与 ssh.github.com:443 都通，验证于 2026-10-19）**
-- 键盘弹出遮挡/跳动类问题统一用 `body.keyboard-open` 标记解决（focusin/focusout 维护），不要再逐页写 focus 监听
+- 键盘弹出遮挡/跳动类问题统一用 `body.keyboard-open` 标记解决，但**标记必须是双信号**：输入框聚焦（focusin/focusout）**或** visualViewport 占屏（`innerHeight - vv.height > 120`，门控 `(max-width: 940px) and (pointer: coarse)`）。只信焦点事件会漏报——聚焦中的输入框随表单卸载不触发 blur、iOS 点提交按钮不保证输入框失焦，标记残留会把底部菜单栏卡住；表单 submit/卸载处还要 `blurActiveElement()` 主动收键盘
 - 超限额警示分两级：达线未超=daily-limit-warn（琥珀）、真超支=daily-limit-over（深红），body 类由 App effect 维护；不要在页面里各自判断颜色
 - SSH/https 推送全被沙箱代理拦时用 `python3 scripts/api-push-main.py`：按本地 commit 逐字段复刻经 GitHub API 推送，远端 SHA 与本地完全一致（不会分叉），树/commit 双重核对 + 非快进即中止；作者信息硬编码 frori/mofrori@gmail.com
 - 表扬提醒只剩傍晚 18 点一条（用户明确要求中午/下午别弹）；若以后再要调时间，改 widgets.tsx `noSpendPraiseDue` 与 api notifications.ts 表扬分支**两处**（hour 阈值必须一致）
@@ -386,3 +387,13 @@
 - **关键坑：Tailwind preflight 把 h1-h6 的 font-size/font-weight 重置为 inherit**——本项目 body 是 1rem/400，所以任何没显式设 font-weight 的 h2 都会渲染成 400（审计发现「分析报表」「支出规划」两个 toolbar 标题是 400）。report-toolbar h2 / inline-form-head h2 / settings-section-body .panel h2 / edit-panel h2 共 4 处补 700。今后新增标题规则必须同时写 font-weight。
 - 保留不动的（设计使然，已在 commit message 列明）：hero 大数字、非报表 metric 1.45rem、交易详情标题 1.12rem、日限额全屏警报（1.5rem/2.6rem）、row 列表组件（全页共享规则，跨页已一致）、表单 label/输入控件、图表内部微字/脚注。
 - 验证：typecheck ✓ 31 冒烟 ✓ build 6.1s ✓ force-recreate caddy-local；无头 Chrome 390px 复测五页模块标题全部 15.2px/700、副题 12px/700、标签 11.52px/700、数值 15.2px/700；三页截图目验通过。
+
+## 2026-10-20 保存流水后底部菜单栏延迟出现修复（969192d，已部署本地栈）
+- 用户反馈：每次记录消费后，下方菜单栏要等一会儿才出现；修改流水等操作同样问题
+- **根因**：`body.keyboard-open`（键盘弹出时隐藏底部导航/悬浮按钮的标记）原仅由 focusin/focusout 维护。两个漏报场景：① 保存流水时 EntryForm 卸载，**聚焦中的输入框随表单一起从 DOM 移除——元素移除不触发 blur/focusout**；② iOS 上点保存按钮也不保证让输入框失焦。标记残留 → `body.keyboard-open .floating{display:none}` 把菜单栏卡住；view 未切换时切页 effect 的 `syncKeyboardFlag()` 兜底不触发，要等到下次焦点事件或切页才恢复——即用户感知的「等一会儿」
+- **修复（两层）**：
+  - 治本：`syncKeyboardFlag = isTypingElement(activeElement) || softKeyboardVisible`。`softKeyboardVisible` 由 `visualViewport.resize` 驱动（`innerHeight - visualViewport.height > 120` 视为键盘占屏；门控 `(max-width: 940px) and (pointer: coarse)` 防桌面窗口缩放/双指缩放误判）。键盘真正收起时视口恢复 → 即使没有任何焦点事件也自动清标记；`visibilitychange` 再兜底（后台恢复）
+  - 即时：EntryForm.submit 在 `await onSave` 前 `blurActiveElement()`（键盘立即开始退场，不等 350ms）；编辑分支保存后 350ms `syncKeyboardFlag` 兜底（覆盖个别 WebView 不报 visualViewport resize）；EntryForm 卸载 cleanup 清理表单内焦点（覆盖「取消编辑」路径）；BudgetPanel.resetForm（预算行内编辑保存/取消后表单卸载）blur + 350ms sync；AccountPanel/CategoryPanel submit 前 blur
+- **连记体验兼容**：新记录保存后 `focusAmountInput(true)` 0ms/180ms 重新聚焦金额框——先 blur 再 focus 不闪菜单栏（focusout 的 sync 有 120ms 延迟，focusin 的 sync 立即执行，0ms 重聚焦直接赢）；iOS 手势链断裂 focus() 静默失败时键盘保持收起，符合「保存即收键盘」预期；Android/桌面连记体验不变
+- 验证：typecheck + 30 冒烟 + build（PWA 12 图）全绿；线上 bundle 含 `pointer: coarse`/`visualViewport`/`form.entry-form-grid`，无回归（daily-limit-over 在、amount-keypad 为 0）；dist 原地重建免 force-recreate，localhost:8443 已供新 bundle `App-CscQcrxK.js`
+- 待手机实测：保存/编辑流水后底部菜单栏是否立即恢复；连记时键盘是否照常弹起

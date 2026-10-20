@@ -4,7 +4,7 @@
 Eliminate the 2–10 second blank screen during iPhone home-screen PWA cold starts by rendering an immediate static shell, showing local data first, and keeping cloud synchronization off the critical rendering path; verify, push main, and deploy production.
 
 ## Current Phase
-Phase 33
+Phase 34
 
 ## Phases
 
@@ -364,3 +364,13 @@ Phase 33
 - [x] typecheck + 30 冒烟 + build；前端 dist 原地重建已生效
 - [x] API 变更需 CI 镜像：等 docker-images 完成后 pull --platform linux/amd64 + compose up -d api-local
 - **Status:** 前端已部署；API 待 CI 镜像就位后热替换
+
+### Phase 34: 保存流水后底部菜单栏延迟出现修复（2026-10-20，969192d）
+- [x] 用户反馈：每次记录消费后，下方菜单栏要等一会儿才出现；修改流水等操作同样问题
+- [x] 根因定位：`body.keyboard-open` 标记只由 focusin/focusout 驱动，而保存流水时聚焦中的输入框随表单一起被卸载（元素从 DOM 移除不触发 blur/focusout），iOS 上点保存按钮也不保证让输入框失焦 → 标记残留，`.floating` 菜单栏被 `display:none` 卡住，直到下次焦点事件或切页才恢复（view 未变时 [view] effect 兜底不触发）
+- [x] 治本：`syncKeyboardFlag` 增加 visualViewport 视口第二信号（`innerHeight - vv.height > 120`，门控 `(max-width: 940px) and (pointer: coarse)` 防桌面误判）；键盘真正收起时即使无焦点事件也自动清标记；visibilitychange 兜底
+- [x] 即时：EntryForm.submit 在 `await onSave` 前 `blurActiveElement()`；编辑分支保存后 350ms 兜底 sync；EntryForm 卸载 cleanup 清理表单内焦点（覆盖取消编辑）
+- [x] 同模式顺带修：BudgetPanel.resetForm（行内编辑保存/取消后表单卸载）blur + 350ms sync；AccountPanel/CategoryPanel submit 前 blur
+- [x] 验证：typecheck + 30 冒烟 + build（PWA 12 图）全绿；线上 bundle 含 `pointer: coarse`/`visualViewport`/`form.entry-form-grid`，旧 keyboard 逻辑无回归（daily-limit-over 仍在、amount-keypad 为 0）
+- [x] dist 原地重建（caddy 挂载未悬空，免 force-recreate），localhost:8443 已供新 bundle `App-CscQcrxK.js`
+- **Status:** complete（待手机实测：保存/编辑流水后菜单栏是否立即恢复）
