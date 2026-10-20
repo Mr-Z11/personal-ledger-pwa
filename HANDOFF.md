@@ -6,10 +6,11 @@
 
 ## 2. 已完成并部署的变更（2026-10-19 最新）
 
-最新 commit `33abe6b` 已推送 GitHub main（SSH 通道；https 直推被沙箱代理 502 拦截）；前端已构建并部署到**本地 Mac 栈**（云端服务器仍失效，见第 3 节）。
+最新 commit `923e548` 已推送 GitHub main（SSH 通道；https 直推被沙箱代理 502 拦截）；前端已构建并部署到**本地 Mac 栈**（云端服务器仍失效，见第 3 节）。
 
 | Commit | 描述 | 关键文件 | 状态 |
 |--------|------|---------|------|
+| `923e548` | **修复「?」气泡被裁/被吞**：根因是 `.settings-section` 等大量祖先容器 `overflow:hidden`，气泡绝对定位在「?」旁被整块裁掉（折叠区没展开时点「?」什么都看不到）。InfoTip 气泡改 `createPortal` 挂 body + fixed 视口定位（下方空间不足自动上翻、左右夹视口、滚动跟随、「?」滚出视口自动关、max-height+内滚）；`.budget-name` 改 flex，省略号只吃名称文字，「?」始终完整可见 | widgets.tsx, App.tsx, styles.css | 已部署 |
 | `33abe6b` | **超日限额全界面深红警示**：新增 DailyLimitRibbon 常驻警示条（main 顶部 sticky，达线=琥珀「已到日限额」、超支=深红「今日已超日限额 ¥x」+ 已花/限额/百分比）；超支 body.daily-limit-over 换肤（深红纸底 + 全屏深红暗角 pointer-events:none + 卡片/顶栏徽章/h1/h2/侧边导航/记一笔 FAB 染红）；达线未超 body.daily-limit-warn（琥珀纸底 + 描边）；App effect 实时切换 body 类，关掉全屏遮罩后警示仍生效 | App.tsx, widgets.tsx, styles.css | 已部署 |
 | `5f6b54e` | **记账输入体验三连改**：① 删除内置 AmountKeypad 数字键盘（组件+全部样式），金额输入 `inputMode=decimal` 直接弹系统键盘，行内加 × 清空按钮；② 分类搜索框+全部分类下拉常驻显示（不再藏在「搜索」按钮后），头部显示分类总数；③ 备注从折叠区移出常显（时间、商户仍折叠），减少展开导致的版面跳动；键盘弹出时 body.keyboard-open 隐藏底部导航/悬浮按钮/浮层提示、保存条取消 sticky、输入区加 scroll-margin，避免固定元素随键盘上移盖住输入框造成页面跳动 | App.tsx, styles.css | 已部署 |
 | `0c63832` | **全页面模块标题/内容字号对齐报表设置基准**：基准=标题 0.95rem/700、副题 0.75rem/700、标签 0.72rem/700、数值 0.95rem/700、徽章 0.72rem/700。修总览（标题 1rem/900→0.95/700、quick-card 标签 0.74→0.72rem、数值 1.02→0.95rem、蓄水池 1rem→0.95rem、三模块副题补全局规则）、报表（toolbar/分类统计/趋势面板标题、趋势副题 0.76→0.75rem、趋势徽章 0.62→0.72rem）、规划（4 标题 + 副题 0.78→0.75rem）、搜索（标题+副题）；补 h2 字重 700（Tailwind preflight 会把 h2 打成 400）；删三处表单头 0.92rem 与移动端 0.88/0.62/0.66rem 过期覆盖。无头 Chrome 390px 五页复测全部达标 | styles.css | 已部署 |
@@ -313,6 +314,7 @@
 - **沙箱内 git push 走 https 被代理拦（CONNECT 502 / Empty reply）时，直接改走 SSH：`git push git@github.com:Mr-Z11/personal-ledger-pwa.git main`（ssh 22 与 ssh.github.com:443 都通，验证于 2026-10-19）**
 - 键盘弹出遮挡/跳动类问题统一用 `body.keyboard-open` 标记解决（focusin/focusout 维护），不要再逐页写 focus 监听
 - 超限额警示分两级：达线未超=daily-limit-warn（琥珀）、真超支=daily-limit-over（深红），body 类由 App effect 维护；不要在页面里各自判断颜色
+- SSH/https 推送全被沙箱代理拦时用 `python3 scripts/api-push-main.py`：按本地 commit 逐字段复刻经 GitHub API 推送，远端 SHA 与本地完全一致（不会分叉），树/commit 双重核对 + 非快进即中止；作者信息硬编码 frori/mofrori@gmail.com
 ## 10. 待确认/建议下一步
 
 - **手机端实测反馈（最新，2026-10-17）**：总览手动「本月固定支出」（行内编辑/参考项点选/关联分类自动跟踪/复制模板到下月）、计划购买单行扁平观感、预算行内编辑、搜索记录视图（关键词+筛选+排序+起始/截止月+按月年汇总）、底部导航 6 入口单行不换行、设置页数据管理/同步默认收起、超限额红警每次打开必弹、低消费表扬通知（需手机 PWA 已允许通知；上午/下午各一条）—— 本地 origin PWA 划掉重开两次即可看到

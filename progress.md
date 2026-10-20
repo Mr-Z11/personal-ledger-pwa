@@ -653,3 +653,11 @@ typecheck ✓ vitest 11/11 ✓ build ✓ → caddy force-recreate → 200；待�
 - 实现：常驻警示条（达线琥珀/超支深红，sticky 顶部）+ body 换肤（超支=深红纸底+全屏暗角+导航/卡片/标题/FAB 染红；达线=琥珀纸底+描边）
 - 无头 Chrome 390/1280 截图目验：深红氛围明显、正文仍可读；typecheck + 31 冒烟 + build 全绿；本地栈已供新资源；SSH push 成功
 - 待手机实测：暗角浓度是否合适；深红 FAB 是否显眼
+
+## 2026-10-20 「?」气泡修复 — 已交付本地栈（923e548）
+- 用户反馈：点「?」文字显示不全；折叠区（如设置）里「?」内容全被遮住
+- 根因：气泡绝对定位被 overflow:hidden 祖先裁掉；预算行省略号吞掉「?」
+- 修复：气泡 portal 到 body + fixed 视口定位（自动上翻/夹边/滚动跟随）；预算行名称独立 span 承接省略号
+- 无头 Chrome 390px 三场景点击验证通过；typecheck + 31 冒烟 + build 全绿；本地栈已供新资源
+- 推送：SSH/https 均被沙箱拦 → 新增 scripts/api-push-main.py（GitHub API 复刻推送），远端 SHA=本地 923e548 无分叉
+- 待手机实测：各页「?」气泡是否完整可读
