@@ -290,29 +290,30 @@ describe("搜索记录：关键词匹配与按月/年汇总", () => {
 });
 
 describe("低消费表扬：时段判定与文案", () => {
-  it("18 点之前（含上午/中午/下午）一律不提醒——用户反馈三四点就弹太早", () => {
+  it("19 点之前（含上午/中午/下午/傍晚）一律不提醒——用户要求只在晚上 19 点发一条", () => {
     expect(noSpendPraiseDue(9, 0, 5000)).toBeNull();
     expect(noSpendPraiseDue(13, 0, 5000)).toBeNull();
     expect(noSpendPraiseDue(14, 3000, 5000)).toBeNull();
     expect(noSpendPraiseDue(17, 0, 5000)).toBeNull();
     expect(noSpendPraiseDue(17, 3000, 5000)).toBeNull();
+    expect(noSpendPraiseDue(18, 0, 5000)).toBeNull();
   });
 
-  it("傍晚（≥18点）没花钱 → 表扬 zero", () => {
-    expect(noSpendPraiseDue(18, 0, 5000)).toEqual({ period: "pm", kind: "zero" });
+  it("晚上（≥19点）没花钱 → 表扬 zero", () => {
+    expect(noSpendPraiseDue(19, 0, 5000)).toEqual({ period: "pm", kind: "zero" });
     expect(noSpendPraiseDue(20, 0, 5000)).toEqual({ period: "pm", kind: "zero" });
   });
 
-  it("傍晚低于日限额（未过度消费）→ 表扬 thrifty", () => {
+  it("晚上低于日限额（未过度消费）→ 表扬 thrifty", () => {
     expect(noSpendPraiseDue(19, 3000, 5000)).toEqual({ period: "pm", kind: "thrifty" });
   });
 
-  it("下午花了一笔专项支出（日常=0、全部>0）→ 不误判 zero，按日常口径判 thrifty", () => {
+  it("晚上花了一笔专项支出（日常=0、全部>0）→ 不误判 zero，按日常口径判 thrifty", () => {
     // 第 4 个参数 totalSpentTodayCents 为今日全部支出（含专项）
     expect(noSpendPraiseDue(19, 0, 5000, 3000)).toEqual({ period: "pm", kind: "thrifty" });
   });
 
-  it("下午花专项但无预算（limit=0）→ 不表扬（避免大额专项支出还被夸）", () => {
+  it("晚上花专项但无预算（limit=0）→ 不表扬（避免大额专项支出还被夸）", () => {
     expect(noSpendPraiseDue(19, 0, 0, 3000)).toBeNull();
   });
 
