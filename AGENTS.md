@@ -17,26 +17,22 @@ Build and maintain a cloud-first, offline-capable personal ledger app inspired b
 ## Production
 
 - GitHub repo: `https://github.com/Mr-Z11/personal-ledger-pwa`
-- Production URL: `https://ledger.47.74.3.104.sslip.io`
-- Server app directory: `/root/personal-ledger-pwa`
-- Server data directory: `/root/personal-ledger-pwa/data/postgres`
-- Server backups: `/root/personal-ledger-pwa/backups`
-- Server logs: `/root/personal-ledger-pwa/logs`
+- **当前唯一活跃环境 = 本机 Mac 本地栈**（`docker-compose.local.yml`：postgres-local + api-local + caddy-local），入口 `https://localhost:8443/api`。完整 runbook 见 `HANDOFF.md`。
+- ⚠️ 原云端服务器 `47.74.3.104`（`https://ledger.47.74.3.104.sslip.io`、`/root/personal-ledger-pwa`）自 2026-08-29 起失效（80/443 全关、SSH host key 变更），`deploy/update-server.sh` 暂不可用；云端重建与否待用户决策。
 
-The server is small, about 2 GiB RAM. Never build Docker images on the server for routine updates.
+The (future) server is small, about 2 GiB RAM. Never build Docker images on it for routine updates.
 
-## Safe Update Flow
+## Safe Update Flow（本地栈）
 
 1. Change code locally.
-2. Run:
-   - `npm run typecheck`
-   - `npm run build`
-3. Commit and push to `main`.
-4. Wait for GitHub Actions CI to build/push GHCR images.
-5. Deploy on the server with:
-   - `cd /root/personal-ledger-pwa && bash deploy/update-server.sh`
+2. Run `npm run typecheck`、`npm --workspace @ledger/web run test`、`npm run build`.
+3. Commit; push with `python3 scripts/api-push-main.py`（沙箱代理会拦 `git push`；远端 SHA 与本地一致，绝不 force）。
+4. GitHub Actions CI builds/pushes GHCR images. 注意：改阈值/逻辑后务必先跑测试，否则 test 门禁会 skip 掉 docker-images、镜像不重建。
+5. Deploy to the local stack:
+   - 前端：`npm run build` 后由 caddy-local 供 `apps/web/dist`（原地重建免 `--force-recreate`）。
+   - 后端：`npm --workspace @ledger/api run build` → `docker compose -f docker-compose.local.yml --env-file .env.local up -d api-local`（bind-mount 直接生效，无需拉镜像）。
 
-`deploy/update-server.sh` must stay lightweight: fetch/reset code, pull prebuilt images, restart containers. Do not add server-side `npm install`, `npm run build`, or `docker compose up --build` to it.
+`deploy/update-server.sh`（仅当将来重建云端时用）必须保持轻量：只 fetch/reset 代码、拉预构建镜像、重启容器。不要加入服务器端 `npm install`、`npm run build` 或 `docker compose up --build`。
 
 ## Data Safety
 
@@ -73,9 +69,9 @@ Before finishing a code change:
 
 - Run `npm run typecheck`.
 - Run `npm run build` when web/API code changed.
-- For server-affecting changes, verify:
-  - `https://ledger.47.74.3.104.sslip.io/api/health`
-  - `docker compose ps` on the server.
+- For stack-affecting changes, verify:
+  - `https://localhost:8443/api/health`
+  - `docker compose -f docker-compose.local.yml ps`（local Mac stack）
 
 See `HANDOFF.md` for the live handoff (single active file); `.workbuddy/memory/MEMORY.md` for long-term distilled knowledge; `docs/codex-handoff.md` for the static project intro.
 

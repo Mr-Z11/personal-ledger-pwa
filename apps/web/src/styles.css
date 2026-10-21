@@ -7218,6 +7218,51 @@ body.daily-limit-lock {
   transform: translateY(1px);
 }
 
+/* 计划购买行内编辑：主区整体可点（按钮外观重置，不加宽度、不改两列结构）；
+   编辑态在原地把「名称 / 金额」换成输入框 + 保存/取消，排版保持不变 */
+.planbuy-main.planbuy-edit-trigger {
+  appearance: none;
+  border: 0;
+  background: transparent;
+  padding: 0;
+  margin: 0;
+  font: inherit;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.planbuy-main.planbuy-edit-trigger:active {
+  opacity: 0.7;
+}
+
+.planbuy-row.editing {
+  background: rgba(31, 95, 119, 0.07);
+  border-color: rgba(31, 95, 119, 0.32);
+}
+
+.planbuy-edit-name {
+  flex: 1 1 auto;
+  min-width: 0;
+  border: 1px solid rgba(49, 71, 58, 0.2);
+  border-radius: 0.45rem;
+  padding: 0.3rem 0.5rem;
+  background: #fffdf7;
+  color: #243127;
+  font-size: 0.84rem;
+}
+
+.planbuy-edit-amount {
+  width: 5.2rem;
+  flex: 0 0 auto;
+  border: 1px solid rgba(49, 71, 58, 0.2);
+  border-radius: 0.45rem;
+  padding: 0.3rem 0.45rem;
+  background: #fffdf7;
+  color: #243127;
+  font-size: 0.82rem;
+  text-align: right;
+}
+
 .planbuy-completed {
   margin-top: 0.7rem;
 }
@@ -7307,6 +7352,17 @@ body.daily-limit-lock {
   .planbuy-actions .icon-button {
     width: 1.7rem;
     min-height: 1.7rem;
+  }
+
+  .planbuy-edit-name {
+    padding: 0.24rem 0.4rem;
+    font-size: 0.8rem;
+  }
+
+  .planbuy-edit-amount {
+    width: 4.4rem;
+    padding: 0.24rem 0.35rem;
+    font-size: 0.78rem;
   }
 }
 

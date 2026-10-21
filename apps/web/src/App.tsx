@@ -1018,6 +1018,11 @@ export function App() {
               await saveLocalAndQueue("plannedPurchases", deleted);
               setToast(`已删除：${item.name}`);
             }}
+            onEditPlannedPurchase={async (item, name, amountCents) => {
+              const next = { ...item, name, amountCents, updatedAt: new Date().toISOString(), version: item.version + 1 };
+              await saveLocalAndQueue("plannedPurchases", next);
+              setToast(`已更新计划购买：${name}`);
+            }}
             todayLimitCents={todayLimitCents}
             todaySpentCents={todaySpentCents}
           />
@@ -1199,7 +1204,7 @@ function AuthScreen({ onAuth }: { onAuth: (result: Awaited<ReturnType<typeof api
   );
 }
 
-function Overview({ summary, budgetCents, totalBudgetCents, accounts, categories, transactions, plannedPurchases, todayRemainingCents, todayLimitCents, todaySpentCents, onAddPlannedPurchase, onTogglePlannedPurchase, onDeletePlannedPurchase }: {
+function Overview({ summary, budgetCents, totalBudgetCents, accounts, categories, transactions, plannedPurchases, todayRemainingCents, todayLimitCents, todaySpentCents, onAddPlannedPurchase, onTogglePlannedPurchase, onDeletePlannedPurchase, onEditPlannedPurchase }: {
   summary: { incomeCents: number; expenseCents: number; netCents: number };
   budgetCents: number;
   totalBudgetCents: number;
@@ -1213,6 +1218,7 @@ function Overview({ summary, budgetCents, totalBudgetCents, accounts, categories
   onAddPlannedPurchase: (name: string, amountCents: number) => void;
   onTogglePlannedPurchase: (item: PlannedPurchase) => void;
   onDeletePlannedPurchase: (item: PlannedPurchase) => void;
+  onEditPlannedPurchase: (item: PlannedPurchase, name: string, amountCents: number) => void;
 }) {
   const monthTransactions = transactions.filter((item) => item.occurredAt.startsWith(monthKey()));
   const prevMonthKey = offsetMonthKey(monthKey(), -1);
@@ -1281,6 +1287,7 @@ function Overview({ summary, budgetCents, totalBudgetCents, accounts, categories
         onAdd={onAddPlannedPurchase}
         onToggleComplete={onTogglePlannedPurchase}
         onDelete={onDeletePlannedPurchase}
+        onEdit={onEditPlannedPurchase}
       />
 
       <div className="overview-quick-grid">

@@ -1894,13 +1894,14 @@ function maybeNotifyPlanBuy(affordable: PlannedPurchase[], remainingCents: numbe
   }
 }
 
-export function PlannedPurchasePanel({ items, todayRemainingCents, onAdd, onToggleComplete, onDelete }: {
+export function PlannedPurchasePanel({ items, todayRemainingCents, onAdd, onToggleComplete, onDelete, onEdit }: {
   items: PlannedPurchase[];
   /** 今日预算余额（分）；null 表示未设日常预算，无法判断 */
   todayRemainingCents: number | null;
   onAdd: (name: string, amountCents: number) => void;
   onToggleComplete: (item: PlannedPurchase) => void;
   onDelete: (item: PlannedPurchase) => void;
+  onEdit: (item: PlannedPurchase, name: string, amountCents: number) => void;
 }) {
   const [nameInput, setNameInput] = useState("");
   const [amountInput, setAmountInput] = useState("");
@@ -1908,6 +1909,10 @@ export function PlannedPurchasePanel({ items, todayRemainingCents, onAdd, onTogg
     typeof Notification === "undefined" ? "unsupported" : Notification.permission
   );
   const [showAdd, setShowAdd] = useState(false);
+  // 行内编辑：默认只读，点行进入编辑；保存才写回，避免每敲一个字就落库
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editName, setEditName] = useState("");
+  const [editAmount, setEditAmount] = useState("");
 
   const pending = useMemo(
     () => items.filter((item) => !item.completedAt).sort((left, right) => left.amountCents - right.amountCents),
@@ -1940,6 +1945,36 @@ export function PlannedPurchasePanel({ items, todayRemainingCents, onAdd, onTogg
     setShowAdd(false);
   }
 
+  function startEdit(item: PlannedPurchase) {
+    setEditingId(item.id);
+    setEditName(item.name);
+    setEditAmount(centsToYuan(item.amountCents));
+  }
+
+  function cancelEdit() {
+    if (document.activeElement instanceof HTMLElement) document.activeElement.blur();
+    setEditingId(null);
+    setEditName("");
+    setEditAmount("");
+  }
+
+  function saveEdit(item: PlannedPurchase) {
+    const name = editName.trim();
+    if (!name) return;
+    let amountCents = item.amountCents;
+    try {
+      amountCents = yuanToCents(editAmount || "0");
+    } catch {
+      return;
+    }
+    if (amountCents <= 0) return;
+    if (document.activeElement instanceof HTMLElement) document.activeElement.blur();
+    onEdit(item, name, amountCents);
+    setEditingId(null);
+    setEditName("");
+    setEditAmount("");
+  }
+
   async function requestNotifyPermission() {
     if (typeof Notification === "undefined") return;
     setPermission(await Notification.requestPermission());
@@ -1948,7 +1983,7 @@ export function PlannedPurchasePanel({ items, todayRemainingCents, onAdd, onTogg
   return (
     <section className="panel planbuy-panel">
       <div className="chart-heading">
-        <h2>计划购买<InfoTip text="清单云端同步，多设备一致；余额够买时应用内高亮 + 手机推送提醒（每天一轮）。「买到手」移入已买列表；右侧垃圾桶才是删除。" /></h2>
+        <h2>计划购买<InfoTip text="清单云端同步，多设备一致；余额够买时应用内高亮 + 手机推送提醒（每天一轮）。点条目可编辑名称/预算；「买到手」移入已买列表；右侧垃圾桶才是删除。" /></h2>
         <span>
           {pending.length > 0
             ? `${pending.length} 项待买 · 合计 ¥${centsToYuan(pendingTotal)}`
@@ -2013,9 +2048,40 @@ export function PlannedPurchasePanel({ items, todayRemainingCents, onAdd, onTogg
               {pending.map((item) => {
                 const canBuy = todayRemainingCents !== null && item.amountCents <= todayRemainingCents;
                 const gap = todayRemainingCents !== null ? item.amountCents - todayRemainingCents : 0;
+                if (editingId === item.id) {
+                  return (
+                    <div className="planbuy-row editing" key={item.id}>
+                      <div className="planbuy-main">
+                        <input
+                          className="planbuy-edit-name"
+                          value={editName}
+                          placeholder="想买什么"
+                          maxLength={40}
+                          autoFocus
+                          onChange={(event) => setEditName(event.target.value)}
+                          onKeyDown={(event) => { if (event.key === "Enter") saveEdit(item); if (event.key === "Escape") cancelEdit(); }}
+                        />
+                      </div>
+                      <div className="planbuy-side">
+                        <input
+                          className="planbuy-edit-amount"
+                          value={editAmount}
+                          placeholder="预算 ¥"
+                          inputMode="decimal"
+                          onChange={(event) => setEditAmount(event.target.value)}
+                          onKeyDown={(event) => { if (event.key === "Enter") saveEdit(item); if (event.key === "Escape") cancelEdit(); }}
+                        />
+                        <div className="planbuy-actions">
+                          <button type="button" className="planbuy-mark" disabled={!editName.trim() || !editAmount.trim()} onClick={() => saveEdit(item)}>保存</button>
+                          <button type="button" className="link-button" onClick={cancelEdit}>取消</button>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                }
                 return (
                   <div className={`planbuy-row ${canBuy ? "affordable" : ""}`} key={item.id}>
-                    <div className="planbuy-main">
+                    <button type="button" className="planbuy-main planbuy-edit-trigger" title="点击编辑名称或预算" onClick={() => startEdit(item)}>
                       <strong>{item.name}</strong>
                       <span className={`planbuy-status ${canBuy ? "ok" : ""}`}>
                         {todayRemainingCents === null
@@ -2024,7 +2090,8 @@ export function PlannedPurchasePanel({ items, todayRemainingCents, onAdd, onTogg
                             ? "今日可买"
                             : `还差 ¥${centsToYuan(gap)}`}
                       </span>
-                    </div>
+                      <Pencil size={11} className="fe-edit-hint" />
+                    </button>
                     <div className="planbuy-side">
                       <strong>¥{centsToYuan(item.amountCents)}</strong>
                       <div className="planbuy-actions">
@@ -2045,25 +2112,59 @@ export function PlannedPurchasePanel({ items, todayRemainingCents, onAdd, onTogg
             <details className="planbuy-completed">
               <summary>已买 {completed.length} 项（点开查看/撤销）</summary>
               <div className="planbuy-list">
-                {completed.map((item) => (
-                  <div className="planbuy-row done" key={item.id}>
-                    <div className="planbuy-main">
-                      <strong>{item.name}</strong>
-                      <span className="planbuy-status done-badge">
-                        <Check size={12} />已买{item.completedAt ? ` · ${dateKey(item.completedAt).slice(5)}` : ""}
-                      </span>
-                    </div>
-                    <div className="planbuy-side">
-                      <strong>¥{centsToYuan(item.amountCents)}</strong>
-                      <div className="planbuy-actions">
-                        <button type="button" className="link-button" title="买错了？移回待买列表" onClick={() => onToggleComplete(item)}>撤销</button>
-                        <button type="button" className="icon-button" title="删除这条计划" aria-label="删除这条计划" onClick={() => onDelete(item)}>
-                          <Trash2 size={15} />
-                        </button>
+                {completed.map((item) => {
+                  if (editingId === item.id) {
+                    return (
+                      <div className="planbuy-row done editing" key={item.id}>
+                        <div className="planbuy-main">
+                          <input
+                            className="planbuy-edit-name"
+                            value={editName}
+                            placeholder="想买什么"
+                            maxLength={40}
+                            autoFocus
+                            onChange={(event) => setEditName(event.target.value)}
+                            onKeyDown={(event) => { if (event.key === "Enter") saveEdit(item); if (event.key === "Escape") cancelEdit(); }}
+                          />
+                        </div>
+                        <div className="planbuy-side">
+                          <input
+                            className="planbuy-edit-amount"
+                            value={editAmount}
+                            placeholder="预算 ¥"
+                            inputMode="decimal"
+                            onChange={(event) => setEditAmount(event.target.value)}
+                            onKeyDown={(event) => { if (event.key === "Enter") saveEdit(item); if (event.key === "Escape") cancelEdit(); }}
+                          />
+                          <div className="planbuy-actions">
+                            <button type="button" className="planbuy-mark" disabled={!editName.trim() || !editAmount.trim()} onClick={() => saveEdit(item)}>保存</button>
+                            <button type="button" className="link-button" onClick={cancelEdit}>取消</button>
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  }
+                  return (
+                    <div className="planbuy-row done" key={item.id}>
+                      <button type="button" className="planbuy-main planbuy-edit-trigger" title="点击编辑名称或预算" onClick={() => startEdit(item)}>
+                        <strong>{item.name}</strong>
+                        <span className="planbuy-status done-badge">
+                          <Check size={12} />已买{item.completedAt ? ` · ${dateKey(item.completedAt).slice(5)}` : ""}
+                        </span>
+                        <Pencil size={11} className="fe-edit-hint" />
+                      </button>
+                      <div className="planbuy-side">
+                        <strong>¥{centsToYuan(item.amountCents)}</strong>
+                        <div className="planbuy-actions">
+                          <button type="button" className="link-button" title="买错了？移回待买列表" onClick={() => onToggleComplete(item)}>撤销</button>
+                          <button type="button" className="icon-button" title="删除这条计划" aria-label="删除这条计划" onClick={() => onDelete(item)}>
+                            <Trash2 size={15} />
+                          </button>
+                        </div>
                       </div>
                     </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             </details>
           )}
