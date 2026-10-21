@@ -257,10 +257,10 @@ async function checkSpendingAlerts(log: FastifyBaseLogger) {
 
       // ---- 低消费表扬（不依赖预算即可发 zero 表扬；thrifty 需有日限额） ----
       // 开关对齐前端：主开关 dailyLimitEnabled（=设置页「当日限额提醒」）与子开关 praiseEnabled 同时开启才发
-      // 时段对齐前端：只在傍晚 18 点后发（用户反馈中午/下午就弹太早、没必要）
+      // 时段对齐前端：只在晚上 19 点后发一条（用户要求晚上 19 点主动发一条、不依赖打开 App，白天不发）
       const praiseOn = (setting?.dailyLimitEnabled ?? true) && (setting?.praiseEnabled ?? true);
       if (praiseOn) {
-        const period = today.hour >= 18 ? "pm" : null;
+        const period = today.hour >= 19 ? "pm" : null;
         if (period) {
           let praise: { period: "am" | "pm"; kind: "zero" | "thrifty" } | null = null;
           if (spentTodayTotalCents <= 0) {

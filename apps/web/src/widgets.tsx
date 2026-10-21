@@ -1547,7 +1547,7 @@ export type DailyLimitAlertSettings = {
   /** 误差金额（分）：当日消费达到「日限额 − 误差」即触发提醒 */
   toleranceCents: number;
   notify: boolean;
-  /** 低消费表扬：傍晚没过度消费就发一条鼓励推送（中午/下午不发） */
+  /** 低消费表扬：晚上 19 点后没过度消费就发一条鼓励推送（白天不发，服务端主动推送不依赖打开 App） */
   praiseEnabled: boolean;
 };
 
@@ -1675,29 +1675,29 @@ export function maybeNotifyDailyLimit(settings: DailyLimitAlertSettings, spentTo
   }
 }
 
-/** 低消费表扬是否到期：只在傍晚（18 点）起评。
- * 用户反馈中午/下午就弹「太早、没必要」，已取消上午时段——每天最多一条。
+/** 低消费表扬是否到期：只在晚上（19 点）起评。
+ * 用户要求晚上 19 点主动发一条（服务端 web push，不依赖打开 App）——每天最多一条。
  * 条件：
  * - zero：今天全部支出（含专项）=0，即真的「一分钱没花」；
  * - thrifty：设有日限额且今日日常消费低于限额（没超支）。
  * totalSpentTodayCents 为今日全部支出，缺省回退到日常支出以兼容旧调用。 */
 export function noSpendPraiseDue(hour: number, spentTodayCents: number, limitCents: number, totalSpentTodayCents: number = spentTodayCents): { period: "am" | "pm"; kind: "zero" | "thrifty" } | null {
-  const period = hour >= 18 ? "pm" : null;
+  const period = hour >= 19 ? "pm" : null;
   if (!period) return null;
   if (totalSpentTodayCents <= 0) return { period, kind: "zero" };
   if (limitCents > 0 && spentTodayCents < limitCents) return { period, kind: "thrifty" };
   return null;
 }
 
-/** 表扬文案：正向鼓励，强调应急资金变厚、压力变小。只剩傍晚一个时段（18 点起）。 */
+/** 表扬文案：正向鼓励，强调应急资金变厚、压力变小。只剩晚上一个时段（19 点起）。 */
 export function praiseMessage(kind: "zero" | "thrifty"): string {
   return kind === "zero"
     ? "到今天都还没花钱，克制得漂亮！存款在悄悄变厚，心里更踏实、选择更多。"
     : "今天花得很稳，没有过度消费。省钱的日子，选择更多、压力更小。";
 }
 
-/** 低消费表扬：傍晚（18 点后）没怎么花就发一条鼓励推送（每天最多一条）。
- * 中午/下午一律不发——用户反馈三四点就弹「太早、没必要」。 */
+/** 低消费表扬：晚上（19 点后）没怎么花就发一条鼓励推送（每天最多一条）。
+ * 白天一律不发——用户要求晚上 19 点主动发一条、不依赖打开 App。 */
 export function maybePraiseNoSpend(settings: DailyLimitAlertSettings, spentTodayCents: number, limitCents: number, totalSpentTodayCents?: number) {
   if (!settings.enabled || !settings.notify || settings.praiseEnabled === false) return;
   if (isPushSubscribed()) return; // 已订阅后台推送，避免与 web-push 重复弹窗
@@ -1839,7 +1839,7 @@ export function LocalDailyLimitAlertPanel({ value, onChange }: {
       </label>
       <label className="reminder-toggle">
         <input type="checkbox" checked={draft.praiseEnabled} onChange={(event) => setDraft((current) => ({ ...current, praiseEnabled: event.target.checked }))} />
-        低消费表扬：傍晚 18 点后没超支，就推送一条鼓励（应急资金越来越多、压力更小）
+        低消费表扬：晚上 19 点后没超支，就由服务端主动推送一条鼓励（不依赖打开 App，应急资金越来越多、压力更小）
       </label>
       <div className="data-actions">
         {draft.enabled ? (
