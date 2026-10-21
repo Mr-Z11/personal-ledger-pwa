@@ -4,15 +4,16 @@
 
 维护个人记账 PWA 的日常迭代与数据安全。**云端服务器已于 2026-08-29 失效**，当前数据完全以本地 Mac 为中心（local-first 架构 + 本地 PostgreSQL）。云端重建与否待用户决策。
 
-## 2. 已完成并部署的变更（2026-10-20 最新）
+## 2. 已完成并部署的变更（2026-10-21 最新）
 
-最新 commit `c51692c` 已构建并部署到**本地 Mac 栈**（云端服务器仍失效，见第 3 节；推送走 scripts/api-push-main.py）。
+最新 commit `4f30460` 已构建并部署到**本地 Mac 栈**（云端服务器仍失效，见第 3 节；推送走 scripts/api-push-main.py）。
 
 | Commit | 描述 | 关键文件 | 状态 |
 |--------|------|---------|------|
+| `4f30460` | **低消费表扬改晚上 19 点由服务端主动发一条（治「开 App 才收到」）**：用户两条要求——① 不能每次等打开 App 才给反馈；② 每天只一条，晚上 19 点主动发。现状核查：服务端 `notifications.ts checkSpendingAlerts` 已有走 web push 的表扬分支（`sendPraiseReminder`→`webpush.sendNotification`，20min 轮询，锁屏/App 关闭也能经 APNs 送达），DB `PushSubscription` 有 2 条记录、VAPID 已配、`ReminderSetting.dailyLimitEnabled=t & praiseEnabled=t` → 主动推送通道本就就绪，之前「开 App 才收到」只是 18 点旧阈值+时机问题。修复：两处 `hour>=18`→`hour>=19`（前端 `widgets.tsx noSpendPraiseDue` + 后端 `notifications.ts checkSpendingAlerts` 表扬分支），注释/设置页文案统一「晚上 19 点」；去重键 `${dayKey}:pm` 保证每天仅一条（服务端 `ReminderLog` + 前端 `localStorage ledger-no-spend-praise-notified` 双重去重）；前端已订阅 web push（`localStorage ledger-push-subscribed=1`）时 `maybePraiseNoSpend` 直接 return 不弹本地，避免重复。前端已部署；后端待 CI 构建 GHCR amd64 镜像 → `docker pull --platform linux/amd64` → `compose up -d api-local` | widgets.tsx, apps/api/src/notifications.ts | 前端已部署 / 后端待镜像 |
 | `c51692c` | **保存后菜单栏立即恢复 + 去掉连记自动重弹键盘**：上一轮 `969192d` 用户实测仍「保存后菜单栏消失、需再点屏幕才出现」。根因双重——① 键盘标记清除依赖 visualViewport.resize 异步回调，该机 WKWebView 收起键盘不报 resize → 标记残留；② 上轮保留的保存后 `focusAmountInput(true)` 0ms/180ms 自动重弹金额键盘把菜单栏重新藏住。修复：`focusout` 时若 `event.relatedTarget` 不是 typing 元素（按钮/body/null）即乐观清软键盘标记 + 60ms 内清 `body.keyboard-open`，不再依赖视口异步回调（visualViewport 仅兜底漏报）；保存后不再自动重聚焦金额框，键盘收起后菜单栏立即恢复，连记改由用户主动点金额框（提示文案「要再记一笔点金额框即可」） | App.tsx | 已部署 |
 | `969192d` | **修复保存流水后底部菜单栏延迟出现（第一版，已被 c51692c 增强）**：`body.keyboard-open` 标记原只由 focusin/focusout 驱动，保存流水时输入框随表单卸载（不触发 blur）、iOS 点保存按钮不保证失焦 → 标记残留卡住菜单栏。加 visualViewport 视口第二信号 + 各 submit 主动 blur。c51692c 在此基础上改为 focusout 乐观清除并去掉连记自动重弹 | App.tsx | 已部署 |
-| `f03991c` | **低消费表扬改为傍晚单发**：用户反馈中午/下午就弹「太早没必要」。`noSpendPraiseDue` 取消上午时段（hour>=18 才评），18 点前一律 null；`praiseMessage` 收敛为单一傍晚文案；服务端 `checkSpendingAlerts` 表扬分支同步改 hour>=18，`praiseContent` 同步；设置页文案改「傍晚 18 点后没超支推送一条」；冒烟测试改为覆盖 18 点前一律不提醒 | widgets.tsx, widgets.smoke.test.tsx, apps/api/src/notifications.ts | 已部署 |
+| `f03991c` | **低消费表扬改为傍晚单发（已被 4f30460 改为晚上 19 点）**：用户反馈中午/下午就弹「太早没必要」。`noSpendPraiseDue` 取消上午时段（当时 hour>=18 才评），18 点前一律 null；`praiseMessage` 收敛为单一傍晚文案；服务端 `checkSpendingAlerts` 表扬分支同步改 hour>=18，`praiseContent` 同步；设置页文案改「傍晚 18 点后没超支推送一条」；冒烟测试改为覆盖 18 点前一律不提醒。**4f30460 已把两处阈值统一上调为 hour>=19，见上** | widgets.tsx, widgets.smoke.test.tsx, apps/api/src/notifications.ts | 已部署 |
 | `923e548` | **修复「?」气泡被裁/被吞**：根因是 `.settings-section` 等大量祖先容器 `overflow:hidden`，气泡绝对定位在「?」旁被整块裁掉（折叠区没展开时点「?」什么都看不到）。InfoTip 气泡改 `createPortal` 挂 body + fixed 视口定位（下方空间不足自动上翻、左右夹视口、滚动跟随、「?」滚出视口自动关、max-height+内滚）；`.budget-name` 改 flex，省略号只吃名称文字，「?」始终完整可见 | widgets.tsx, App.tsx, styles.css | 已部署 |
 | `33abe6b` | **超日限额全界面深红警示**：新增 DailyLimitRibbon 常驻警示条（main 顶部 sticky，达线=琥珀「已到日限额」、超支=深红「今日已超日限额 ¥x」+ 已花/限额/百分比）；超支 body.daily-limit-over 换肤（深红纸底 + 全屏深红暗角 pointer-events:none + 卡片/顶栏徽章/h1/h2/侧边导航/记一笔 FAB 染红）；达线未超 body.daily-limit-warn（琥珀纸底 + 描边）；App effect 实时切换 body 类，关掉全屏遮罩后警示仍生效 | App.tsx, widgets.tsx, styles.css | 已部署 |
 | `5f6b54e` | **记账输入体验三连改**：① 删除内置 AmountKeypad 数字键盘（组件+全部样式），金额输入 `inputMode=decimal` 直接弹系统键盘，行内加 × 清空按钮；② 分类搜索框+全部分类下拉常驻显示（不再藏在「搜索」按钮后），头部显示分类总数；③ 备注从折叠区移出常显（时间、商户仍折叠），减少展开导致的版面跳动；键盘弹出时 body.keyboard-open 隐藏底部导航/悬浮按钮/浮层提示、保存条取消 sticky、输入区加 scroll-margin，避免固定元素随键盘上移盖住输入框造成页面跳动 | App.tsx, styles.css | 已部署 |
@@ -319,7 +320,7 @@
 - 保存流水后**不要自动重弹金额键盘**连记：保存后 `focusAmountInput(true)` 重新聚焦金额框会让键盘立刻又弹起、菜单栏被重新藏住（用户两次反馈都指向此）；连记改由用户主动点金额框（金额框常显、一点即聚焦）。若用户后续明确要求恢复自动连记再考虑加回
 - 超限额警示分两级：达线未超=daily-limit-warn（琥珀）、真超支=daily-limit-over（深红），body 类由 App effect 维护；不要在页面里各自判断颜色
 - SSH/https 推送全被沙箱代理拦时用 `python3 scripts/api-push-main.py`：按本地 commit 逐字段复刻经 GitHub API 推送，远端 SHA 与本地完全一致（不会分叉），树/commit 双重核对 + 非快进即中止；作者信息硬编码 frori/mofrori@gmail.com
-- 表扬提醒只剩傍晚 18 点一条（用户明确要求中午/下午别弹）；若以后再要调时间，改 widgets.tsx `noSpendPraiseDue` 与 api notifications.ts 表扬分支**两处**（hour 阈值必须一致）
+- 表扬提醒只剩**晚上 19 点一条**（用户明确要求不依赖打开 App、白天别弹）；服务端 `notifications.ts checkSpendingAlerts` 表扬分支走 web push 主动推送（20min 轮询，设备锁屏/App 关闭也能收），前端已订阅时 `maybePraiseNoSpend` 直接 return 不弹本地避免重复。若再要调时间，改 widgets.tsx `noSpendPraiseDue` 与 api notifications.ts 表扬分支**两处**（hour 阈值必须一致）
 ## 10. 待确认/建议下一步
 
 - **手机端实测反馈（最新，2026-10-17）**：总览手动「本月固定支出」（行内编辑/参考项点选/关联分类自动跟踪/复制模板到下月）、计划购买单行扁平观感、预算行内编辑、搜索记录视图（关键词+筛选+排序+起始/截止月+按月年汇总）、底部导航 6 入口单行不换行、设置页数据管理/同步默认收起、超限额红警每次打开必弹、低消费表扬通知（需手机 PWA 已允许通知；上午/下午各一条）—— 本地 origin PWA 划掉重开两次即可看到
@@ -408,3 +409,15 @@
   - 去掉连记自动重弹：删除 `focusAmountInput(true)` 0ms/180ms 定时器；保存后键盘收起、菜单栏立即恢复；连记改由用户点金额框（常显、点即聚焦）；保存提示文案改「要再记一笔点金额框即可」
 - 验证：typecheck + 30 冒烟 + build（PWA 12 图）全绿；线上 bundle `App-SR4N8AB4.js` 含 `relatedTarget` + 新文案，无回归（daily-limit-over 在、amount-keypad 为 0）；dist 原地重建免 force-recreate，localhost:8443 已供新 bundle
 - 待手机实测：保存/编辑流水后菜单栏是否立即出现；连记改手动点金额框是否顺手
+
+## 2026-10-21 低消费表扬改晚上 19 点服务端主动发一条（4f30460，前端已部署 / 后端待 CI 镜像）
+- **用户两条要求**：① 不能每次等打开 App 才给反馈；② 每天只一条，晚上 19 点主动发一条
+- **现状核查（为何之前「开 App 才收到」）**：服务端 `apps/api/src/notifications.ts checkSpendingAlerts` 本就有走 web push 的表扬分支（`sendPraiseReminder`→`webpush.sendNotification`），由 `startReminderScheduler` 每 20min 轮询触发，iOS 锁屏/App 关闭时经 APNs 也能送达。DB `PushSubscription` 已有 2 条记录（手机 PWA 已订阅）、`VAPID_*` 已配、`.env.local` 透传、`ReminderSetting.dailyLimitEnabled=t & praiseEnabled=t` → 主动推送通道本来就是通的。问题只出在阈值卡在 18 点（`today.hour>=18`），且前端 `maybePraiseNoSpend` 只在 App 运行期内评，导致「不打开 App 就不发/不发够」
+- **修复（两处阈值 18→19，保持一致）**：
+  - 前端 `apps/web/src/widgets.tsx noSpendPraiseDue`：`const period = hour >= 19 ? "pm" : null;`（18 点前一律 null 不评）
+  - 后端 `apps/api/src/notifications.ts checkSpendingAlerts` 表扬分支：`const period = today.hour >= 19 ? "pm" : null;`
+  - 注释 / 设置页文案统一改「晚上 19 点」；去重键 `${today.dayKey}:${praise.period}` 保证每天仅一条
+  - 前端 `maybePraiseNoSpend` 在已订阅 web push（`localStorage ledger-push-subscribed=1`）时直接 return，不弹本地 Notification，避免与后端重复送达
+- **部署状态**：前端 `4f30460` 已 `npm run build` + dist 原地重建（caddy 挂载不悬空，免 force-recreate），localhost:8443 已供新 bundle `App-BPuk_ajK.js`（grep 确认含 `>=19` 与新文案，旧 `18点/傍晚` 已清除 0 命中）。**后端 4f30460 尚未生效**：需 CI 构建 GHCR amd64 镜像 → `docker pull --platform linux/amd64 ghcr.io/mr-z11/personal-ledger-pwa-api:main` → `docker compose -f docker-compose.local.yml --env-file .env.local up -d api-local`（启动自动 `prisma db push`，迁移前先 `bash scripts/data-sync.sh backup-local`）
+- **验证**：typecheck + build（PWA 12 图）全绿；线上 App chunk 含 `>=19` + 新文案；旧 18点/傍晚 文案 0 命中
+- **待手机实测**：① 晚上 19 点**不打开 App** 是否自动收到一条正反馈（验证服务端 web push 主动推送）；② 已订阅时本地不再弹重复通知

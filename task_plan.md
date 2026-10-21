@@ -382,3 +382,12 @@ Phase 34
 - [x] 保存后不再自动重聚焦金额框：键盘收起后菜单栏立即恢复，连记改由用户主动点金额框；保存提示文案改为「要再记一笔点金额框即可」
 - [x] 验证：typecheck + 30 冒烟 + build（PWA 12 图）全绿；线上 bundle `App-SR4N8AB4.js` 含 relatedTarget + 新文案，无回归（daily-limit-over 在）
 - **Status:** complete（待手机实测：保存/编辑流水后菜单栏是否立即出现）
+
+### Phase 36: 低消费表扬改为晚上 19 点服务端主动发一条（2026-10-21，4f30460）
+- [x] 用户两条要求：① 不能每次等打开 App 才给反馈；② 每天只一条，晚上 19 点主动发一条
+- [x] 现状核查：服务端 notifications.ts 已有走 web push 的表扬分支（sendPraiseReminder→webpush.sendNotification，不依赖开 App），由 startReminderScheduler 每 20min 轮询触发；DB PushSubscription 有 2 条记录（已订阅）、VAPID 已配、ReminderSetting dailyLimitEnabled=t&praiseEnabled=t → 主动推送通道本就就绪（之前"开 App 才收到"是 18 点旧阈值+时机问题）
+- [x] 改两处阈值 18→19：widgets.tsx noSpendPraiseDue（hour>=19）、notifications.ts checkSpendingAlerts 表扬分支（today.hour>=19）；注释/设置页文案统一「晚上 19 点」
+- [x] 去重键 ${dayKey}:pm 保证每天仅一条（服务端 ReminderLog + 前端 localStorage 双重去重）；前端已订阅时 maybePraiseNoSpend 直接 return 不弹本地，避免重复
+- [x] 验证：typecheck + build（PWA 12 图）全绿；线上 bundle App-BPuk_ajK.js 含 >=19 + 新文案，旧 18点/傍晚 文案已清除
+- [x] 前端 dist 原地重建已部署；后端需 CI 构建 GHCR amd64 镜像 → pull --platform linux/amd64 → compose up -d api-local
+- **Status:** 前端已部署；后端待 CI 镜像就位后热替换（待手机实测：19 点不打开 App 是否收到一条）

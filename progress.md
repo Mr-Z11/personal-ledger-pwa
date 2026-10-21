@@ -683,3 +683,11 @@ typecheck ✓ vitest 11/11 ✓ build ✓ → caddy force-recreate → 200；待�
 - 修复：focusout 时若 relatedTarget 不是 typing 元素（按钮/body/null）乐观清软键盘标记 + 60ms 内清 body.keyboard-open；保存后不再自动重聚焦金额框（连记改手动），提示文案改「要再记一笔点金额框即可」
 - 验证：typecheck + 30 冒烟 + build 全绿；线上 App-SR4N8AB4.js 含 relatedTarget + 新文案，无回归
 - 待手机实测：保存/编辑流水后菜单栏是否立即出现
+
+## 2026-10-21 低消费表扬改晚上 19 点服务端主动发一条 — 前端已部署（4f30460）
+- 用户两条要求：① 不能每次等打开 App 才给反馈；② 每天只一条，晚上 19 点主动发
+- 现状核查：服务端 web push 表扬分支本就存在且通道就绪（PushSubscription 有 2 条、VAPID 已配、开关开）；之前"开 App 才收到"是 18 点旧阈值+时机问题
+- 修复：两处阈值 18→19（widgets.tsx noSpendPraiseDue + notifications.ts checkSpendingAlerts），文案/注释统一「晚上 19 点」，去重每天一条
+- 验证：typecheck + build 全绿；线上 App-BPuk_ajK.js 含 >=19 + 新文案，旧 18点/傍晚 已清除
+- 前端 dist 原地重建已部署；后端需 CI 镜像 → pull --platform linux/amd64 → compose up -d api-local
+- 待手机实测：晚上 19 点不打开 App 是否自动收到一条正反馈
