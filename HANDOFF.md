@@ -20,6 +20,7 @@
 | `59d5cd5` | 记录后端热补丁上线与镜像拉取被 CDN TLS 阻断 |
 | `4fb30fe` | **后端持久化**：`docker-compose.local.yml` 的 `api-local` 增只读卷 `./apps/api/dist:/app/apps/api/dist:ro`；删除过期 `PushSubscription` |
 | `060c939` | **计划购买行内编辑 + 文档校正**：计划购买已列出的项目（待买 + 已买两类行）支持**点行编辑名称/预算**——复用 `FixedExpenseRow` 范式，只读行主区整体可点（`<button class="planbuy-main planbuy-edit-trigger">` + 11px 内联铅笔，零额外宽度），编辑态在原地把名称/金额换成输入框 + 保存/取消，保持 `planbuy-main｜planbuy-side` 两列排版不变；Enter 存 / Esc 取消，保存前 blur 收键盘。纯前端，走既有 plannedPurchases 本地+outbox 同步（服务端无改动）。另重写 `docs/codex-handoff.md`、校正 `AGENTS.md` 的 Production/Safe Update Flow/Verification 三段过时云端描述为本地栈现实 |
+| `222bd58` | **消除同步完成时页面跳动与误点**：`.mobile-sync-bar`（≤940px）从 in-flow 改 `position:fixed` 顶部覆盖层——待同步 0→1 出现、1→0 消失均不再推动布局；容器 `pointer-events:none`（仅同步按钮与状态文字可交互）；`.save-toast` 加 `pointer-events:none`（纯提示不再盖住底部菜单）；`padding-top` 含 `env(safe-area-inset-top)` 适配刘海。纯 CSS，服务端零改，已部署 |
 
 ## 3. 发布流程（本地栈）
 
@@ -46,7 +47,7 @@
 
 ## 6. 当前待办 / 待确认
 
-- **手机实测（关键）**：晚上 19:00 **不打开 App** 是否自动收到一条正反馈（验证服务端 web push 主动推送）；已订阅时本地不再重复弹通知。若没收到，让用户在手机 PWA 设置→当日限额提醒里重新「开启手机推送」刷新订阅。
+- **手机实测（关键）**：① 晚上 19:00 **不打开 App** 是否自动收到一条正反馈（验证服务端 web push 主动推送）；已订阅时本地不再重复弹通知。若没收到，让用户在手机 PWA 设置→当日限额提醒里重新「开启手机推送」刷新订阅。② 记账后待同步 0→1、同步完成 1→0 时页面**不再上下窜动**，底部「同步完成」toast 不再挡住菜单按钮。
 - 可选：VM 网络恢复后 `docker pull` 正确 GHCR 镜像并移除 bind-mount（回归镜像部署）。
 - findings.md 里的 P0「reliable-sync 工作包」（串行化 syncNow、逐行 ack outbox、启动先 flush 再 pull）尚未实施，是后续可靠性改进首选。
 
