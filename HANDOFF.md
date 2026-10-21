@@ -19,6 +19,7 @@
 | `74d31d2` | 冒烟测试同步 18→19（`widgets.smoke.test.tsx`）——改阈值后**必须重跑冒烟**，否则 CI 挂在 `noSpendPraiseDue(18,…)` 断言、镜像不重建 |
 | `59d5cd5` | 记录后端热补丁上线与镜像拉取被 CDN TLS 阻断 |
 | `4fb30fe` | **后端持久化**：`docker-compose.local.yml` 的 `api-local` 增只读卷 `./apps/api/dist:/app/apps/api/dist:ro`；删除过期 `PushSubscription` |
+| `060c939` | **计划购买行内编辑 + 文档校正**：计划购买已列出的项目（待买 + 已买两类行）支持**点行编辑名称/预算**——复用 `FixedExpenseRow` 范式，只读行主区整体可点（`<button class="planbuy-main planbuy-edit-trigger">` + 11px 内联铅笔，零额外宽度），编辑态在原地把名称/金额换成输入框 + 保存/取消，保持 `planbuy-main｜planbuy-side` 两列排版不变；Enter 存 / Esc 取消，保存前 blur 收键盘。纯前端，走既有 plannedPurchases 本地+outbox 同步（服务端无改动）。另重写 `docs/codex-handoff.md`、校正 `AGENTS.md` 的 Production/Safe Update Flow/Verification 三段过时云端描述为本地栈现实 |
 
 ## 3. 发布流程（本地栈）
 
