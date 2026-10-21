@@ -77,16 +77,17 @@ Before finishing a code change:
   - `https://ledger.47.74.3.104.sslip.io/api/health`
   - `docker compose ps` on the server.
 
-See `docs/codex-handoff.md` for the longer handoff.
+See `HANDOFF.md` for the live handoff (single active file); `.workbuddy/memory/MEMORY.md` for long-term distilled knowledge; `docs/codex-handoff.md` for the static project intro.
 
-## Handoff Files Sync Rule
+## Handoff Files Sync Rule（2026-10-21 精简为单一活跃文件）
 
-每次会话结束更新交接文件时，以下 4 个文件必须**一起同步**，不得只更新其中部分：
+本项目**只维护一个活跃交接文件 `HANDOFF.md`**（含：当前状态 / 近期变更 / 发布流程 / 关键约束与坑 / 待办 / 文件地图）。原 `task_plan.md` / `findings.md` / `progress.md` 三件套已删除——内容已蒸馏进 `.workbuddy/memory/`，完整原文在 git 历史。**不要再按技能模板重建这三个文件**，否则会再次膨胀。
 
-- `task_plan.md` — 阶段计划、进度、错误表（技能管理）
-- `findings.md` — 研究发现、技术结论（技能管理）
-- `progress.md` — 会话日志（技能管理）
-- `HANDOFF.md` — 跨会话完整移交文档（项目自有）
+每次会话结束只做三件事：
 
-同步要点：新 commit 记入 `task_plan.md` Phase 与 `HANDOFF.md` 第 2 节；服务器 HEAD 更新到 `HANDOFF.md` 第 3 节；新发现的技术坑记入 `findings.md` 与 `HANDOFF.md` 第 4 节；"不要重复做的事" 新增到 `HANDOFF.md` 第 9 节。
+- 更新 `HANDOFF.md`：新 commit 记入「近期变更」表；新踩的坑记入「关键约束 & 不要重复踩的坑」；新待办记入「当前待办」。
+- 追加当日 `.workbuddy/memory/YYYY-MM-DD.md` 会话日志。
+- 有长期价值的结论蒸馏进 `.workbuddy/memory/MEMORY.md`。
+
+历史详情用 `git log` / `git show <commit>:findings.md` 查（删除前最后一次改动在 commit `24f8333`）。
 
