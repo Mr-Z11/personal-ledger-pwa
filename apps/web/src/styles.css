@@ -3887,6 +3887,8 @@ input[type="month"],
   justify-content: center;
   padding: 0 1rem;
   background: rgba(255, 250, 240, 0.98);
+  /* 纯提示条，无交互元素：不拦截点击，避免盖住底部菜单/按钮造成误点 */
+  pointer-events: none;
   color: #245f3d;
   box-shadow: 0 1rem 2rem rgba(36, 49, 39, 0.2);
   font-weight: 900;
@@ -4007,15 +4009,30 @@ input[type="month"],
 }
 
 @media (max-width: 940px) {
+  /* fixed 顶部覆盖层：彻底脱离布局流——出现/消失都不推动页面内容（消除“页面动一下”的窜动与误点）；
+     容器 pointer-events:none 保证不拦截对下方内容的点击，仅同步按钮与状态文字可交互 */
   .mobile-sync-bar {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    z-index: 30;
     display: flex;
     align-items: center;
     gap: 0.5rem;
-    padding: 0.38rem 0.8rem;
-    background: rgba(31, 95, 116, 0.08);
-    border-bottom: 1px solid rgba(31, 95, 116, 0.14);
+    padding: calc(0.3rem + env(safe-area-inset-top)) 0.8rem 0.3rem;
+    background: rgba(28, 43, 38, 0.96);
+    border-bottom: 1px solid rgba(31, 95, 116, 0.35);
+    box-shadow: 0 0.2rem 0.6rem rgba(31, 95, 116, 0.12);
     font-size: 0.72rem;
-    color: rgba(246, 241, 231, 0.88);
+    color: rgba(246, 241, 231, 0.92);
+    pointer-events: none;
+  }
+
+  /* 只有同步按钮可点；状态文字可横向拖动查看全文，其余区域点击穿透 */
+  .mobile-sync-bar .mobile-sync-btn,
+  .mobile-sync-bar .mobile-sync-text {
+    pointer-events: auto;
   }
 
   .mobile-sync-dot {
