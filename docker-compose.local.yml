@@ -37,6 +37,14 @@ services:
     depends_on:
       postgres-local:
         condition: service_healthy
+    # 本地构建的 api dist 直接挂进容器，覆盖镜像内的 dist。
+    # 作用：① 后端纯 JS 改动（如 19 点表扬阈值）只需 `npm --workspace @ledger/api run build`
+    #       再 `compose up -d api-local` 即可生效，无需从 GHCR 拉取 amd64 镜像
+    #       （本机 VM 网络对 GHCR blob CDN 偶发 TLS 握手超时，拉取不稳）；
+    #       ② 容器重建 / colima 重启后修复不回退。
+    # 注意：若后端新增 npm 依赖，需同步更新镜像内的 node_modules（pull 新镜像或本地 build）。
+    volumes:
+      - ./apps/api/dist:/app/apps/api/dist:ro
 
   caddy-local:
     image: caddy:2.10-alpine
