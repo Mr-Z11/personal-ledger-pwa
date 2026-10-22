@@ -231,16 +231,16 @@ describe("常规项支出与规划页", () => {
     expect(html).not.toContain("新项目（如：房租）");
   });
 
-  it("FixedExpenseOverview 渲染后备保障金：固定项合计 + 浮动金额 = 后备最低月支出", () => {
+  it("FixedExpenseOverview 渲染最低固定支出：固定项合计 + 浮动金额 = 每月最低支出", () => {
     saveFixedExpenses(monthKey(), [
       { id: "fx-r1", name: "房租", predictedCents: 300000, spentCents: 0 },
       { id: "fx-r2", name: "物业费", predictedCents: 50000, spentCents: 0 }
     ]);
-    // 浮动金额：3000 + 500 = 3500，再加浮动 2500 → 后备最低月支出 6000
+    // 浮动金额：3000 + 500 = 3500，再加浮动 2500 → 每月最低支出 6000
     localStorage.setItem("ledger-fixed-float-amount", "2500");
     const html = renderToString(<FixedExpenseOverview />);
-    expect(html).toContain("后备保障金");
-    expect(html).toContain("后备最低月支出");
+    expect(html).toContain("最低固定支出");
+    expect(html).toContain("每月最低支出");
     expect(html).toContain("¥6000.00");
     localStorage.removeItem("ledger-fixed-float-amount");
     saveFixedExpenses(monthKey(), []);

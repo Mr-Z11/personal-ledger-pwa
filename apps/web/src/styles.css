@@ -6419,8 +6419,8 @@ input[type="month"],
   color: #2f7d4f;
 }
 
-/* 后备保障金：基本固定项（砍掉大额后）+ 手动浮动金额 = 突发状况最低月支出 */
-.fixed-expense-reserve {
+/* 最低固定支出：基本固定项（砍掉大额后）+ 手动浮动金额 = 突发状况最低月支出 */
+.fixed-expense-min {
   display: grid;
   gap: 0.45rem;
   margin-bottom: 0.8rem;
@@ -6430,7 +6430,7 @@ input[type="month"],
   border-radius: 0.6rem;
 }
 
-.fixed-expense-reserve-head {
+.fixed-expense-min-head {
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -6438,7 +6438,7 @@ input[type="month"],
   flex-wrap: wrap;
 }
 
-.fixed-expense-reserve-head > span {
+.fixed-expense-min-head > span {
   display: inline-flex;
   align-items: center;
   gap: 0.3rem;
@@ -6447,7 +6447,7 @@ input[type="month"],
   color: #6b5836;
 }
 
-.fixed-expense-reserve-input {
+.fixed-expense-min-input {
   display: inline-flex;
   align-items: center;
   gap: 0.2rem;
@@ -6459,12 +6459,12 @@ input[type="month"],
   font-size: 0.75rem;
 }
 
-.fixed-expense-reserve-input em {
+.fixed-expense-min-input em {
   font-style: normal;
   font-weight: 700;
 }
 
-.fixed-expense-reserve-input input {
+.fixed-expense-min-input input {
   width: 6.5rem;
   border: none;
   outline: none;
@@ -6475,25 +6475,25 @@ input[type="month"],
   text-align: right;
 }
 
-.fixed-expense-reserve-total {
+.fixed-expense-min-total {
   display: flex;
   align-items: baseline;
   justify-content: space-between;
   gap: 0.6rem;
 }
 
-.fixed-expense-reserve-total span {
+.fixed-expense-min-total span {
   font-size: 0.72rem;
   color: #8a7154;
 }
 
-.fixed-expense-reserve-total strong {
+.fixed-expense-min-total strong {
   font-size: 1.15rem;
   color: #31473a;
   font-variant-numeric: tabular-nums;
 }
 
-.fixed-expense-reserve-hint {
+.fixed-expense-min-hint {
   font-size: 0.66rem;
   line-height: 1.5;
   color: #9a8663;
