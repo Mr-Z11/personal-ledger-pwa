@@ -1499,12 +1499,11 @@ export function FixedExpenseOverview({ transactions = [], categories = [] }: {
         </div>
         <div className="fixed-expense-min-sub">
           <span>固定 {items.length} 项 ¥{centsToYuan(totalPredicted)} + 浮动</span>
-          <label className="fixed-expense-min-input">
+          <label className="fixed-expense-min-input" title="点击填写浮动金额（如餐饮、交通等日常开销）">
             <em>¥</em>
             <input
               inputMode="decimal"
               value={floatInput}
-              placeholder="补充浮动开支"
               maxLength={12}
               onChange={(event) => saveFloatInput(event.target.value)}
               onBlur={() => {
