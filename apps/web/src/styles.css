@@ -4009,33 +4009,44 @@ input[type="month"],
 }
 
 @media (max-width: 940px) {
-  /* 右下角浮动胶囊：彻底脱离布局流（出现/消失不推动内容），且不遮挡顶部文字与底部菜单；
-     只在待同步 > 0 或离线时出现，整颗可点（点击立即同步），长按/hover 看完整状态 */
+  /* 同步状态 = 右上角标题徽章（.app-heading）上的角标：不悬浮、不遮文字，
+     也不占用右下角记账操作区；仅待同步 > 0 或离线时出现，整颗可点 = 立即同步 */
+  .app-heading {
+    position: relative;
+  }
+
   .mobile-sync-bar {
-    position: fixed;
-    right: max(1.25rem, env(safe-area-inset-right));
-    bottom: calc(6.2rem + env(safe-area-inset-bottom));
-    z-index: 30;
+    position: absolute;
+    top: -0.5rem;
+    right: -0.5rem;
+    z-index: 2;
     display: inline-flex;
     align-items: center;
-    gap: 0.4rem;
-    padding: 0.4rem 0.72rem;
-    border: 1px solid rgba(31, 95, 116, 0.32);
+    gap: 0.22rem;
+    padding: 0.14rem 0.36rem;
+    border: 1px solid rgba(31, 95, 116, 0.35);
     border-radius: 999px;
-    background: rgba(28, 43, 38, 0.92);
-    box-shadow: 0 0.5rem 1.2rem rgba(36, 49, 39, 0.22);
+    background: rgba(28, 43, 38, 0.94);
+    box-shadow: 0 0.2rem 0.5rem rgba(36, 49, 39, 0.28);
     font: inherit;
-    font-size: 0.72rem;
-    font-weight: 600;
-    line-height: 1.2;
+    font-size: 0.62rem;
+    font-weight: 700;
+    line-height: 1;
     color: rgba(246, 241, 231, 0.94);
     cursor: pointer;
     -webkit-tap-highlight-color: transparent;
     transition: transform 140ms ease, opacity 140ms ease;
   }
 
+  /* 透明扩大触摸区域（视觉大小不变，命中范围四周 ±0.55rem） */
+  .mobile-sync-bar::after {
+    content: "";
+    position: absolute;
+    inset: -0.55rem;
+  }
+
   .mobile-sync-bar:active {
-    transform: scale(0.95);
+    transform: scale(0.94);
   }
 
   .mobile-sync-bar:disabled {
@@ -4044,8 +4055,8 @@ input[type="month"],
   }
 
   .mobile-sync-dot {
-    width: 0.5rem;
-    height: 0.5rem;
+    width: 0.4rem;
+    height: 0.4rem;
     border-radius: 50%;
     flex-shrink: 0;
   }
@@ -4054,9 +4065,12 @@ input[type="month"],
   .mobile-sync-dot.offline { background: #f87171; }
   .mobile-sync-dot.local { background: #60a5fa; }
 
-  .mobile-sync-text {
-    white-space: nowrap;
+  .mobile-sync-count {
+    display: inline-block;
+    font-style: normal;
     font-variant-numeric: tabular-nums;
+    min-width: 0.5rem;
+    text-align: center;
   }
 
   .mobile-sync-bar svg {
@@ -4451,7 +4465,8 @@ input[type="month"],
     justify-self: end;
   }
 
-  .app-heading span {
+  /* 只收起标题文字 div 里的描述 span，不影响右上角同步角标内的圆点/数字 */
+  .app-heading > div span {
     display: none;
   }
 

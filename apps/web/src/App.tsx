@@ -956,26 +956,26 @@ export function App() {
         {dailyLimitHit && (
           <DailyLimitRibbon spentCents={todaySpentCents} limitCents={todayLimitCents} />
         )}
-        {(!isLocalPreview && (outboxCount > 0 || !navigator.onLine)) && (
-        <button
-          type="button"
-          className="mobile-sync-bar"
-          onClick={syncNow}
-          disabled={busy}
-          title={`${userName || "未登录"} · ${navigator.onLine ? "在线" : "离线"} · 待同步 ${outboxCount} · 最后同步 ${lastSync ? new Date(lastSync).toLocaleString() : "从未"}（点击立即同步）`}
-          aria-label="同步状态，点击立即同步"
-        >
-          <span className={`mobile-sync-dot ${navigator.onLine ? "online" : "offline"}`} />
-          <span className="mobile-sync-text">{navigator.onLine ? `待同步 ${outboxCount}` : "离线"}</span>
-          <RefreshCw size={13} className={busy ? "spin" : ""} />
-        </button>
-        )}
         <header className="topbar">
           <div className="page-heading">
             <span className="eyebrow">{currentMonth}</span>
             <h1>{viewTitle(view)}</h1>
           </div>
           <div className="app-heading">
+            {(!isLocalPreview && (outboxCount > 0 || !navigator.onLine)) && (
+              <button
+                type="button"
+                className="mobile-sync-bar"
+                onClick={syncNow}
+                disabled={busy}
+                title={`${userName || "未登录"} · ${navigator.onLine ? "在线" : "离线"} · 待同步 ${outboxCount} · 最后同步 ${lastSync ? new Date(lastSync).toLocaleString() : "从未"}（点击立即同步）`}
+                aria-label="同步状态，点击立即同步"
+              >
+                <span className={`mobile-sync-dot ${navigator.onLine ? "online" : "offline"}`} />
+                {outboxCount > 0 && <span className="mobile-sync-count">{outboxCount > 99 ? "99+" : outboxCount}</span>}
+                <RefreshCw size={11} className={busy ? "spin" : ""} />
+              </button>
+            )}
             <div className="app-heading-mark">{(() => { const HeadingIcon = viewHeadingMap[view]?.icon ?? Home; return <HeadingIcon size={18} />; })()}</div>
             <div>
               <strong>{viewHeadingMap[view]?.strong ?? "总览"}</strong>
