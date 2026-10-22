@@ -4009,30 +4009,38 @@ input[type="month"],
 }
 
 @media (max-width: 940px) {
-  /* fixed 顶部覆盖层：彻底脱离布局流——出现/消失都不推动页面内容（消除“页面动一下”的窜动与误点）；
-     容器 pointer-events:none 保证不拦截对下方内容的点击，仅同步按钮与状态文字可交互 */
+  /* 右下角浮动胶囊：彻底脱离布局流（出现/消失不推动内容），且不遮挡顶部文字与底部菜单；
+     只在待同步 > 0 或离线时出现，整颗可点（点击立即同步），长按/hover 看完整状态 */
   .mobile-sync-bar {
     position: fixed;
-    top: 0;
-    left: 0;
-    right: 0;
+    right: max(1.25rem, env(safe-area-inset-right));
+    bottom: calc(6.2rem + env(safe-area-inset-bottom));
     z-index: 30;
-    display: flex;
+    display: inline-flex;
     align-items: center;
-    gap: 0.5rem;
-    padding: calc(0.3rem + env(safe-area-inset-top)) 0.8rem 0.3rem;
-    background: rgba(28, 43, 38, 0.96);
-    border-bottom: 1px solid rgba(31, 95, 116, 0.35);
-    box-shadow: 0 0.2rem 0.6rem rgba(31, 95, 116, 0.12);
+    gap: 0.4rem;
+    padding: 0.4rem 0.72rem;
+    border: 1px solid rgba(31, 95, 116, 0.32);
+    border-radius: 999px;
+    background: rgba(28, 43, 38, 0.92);
+    box-shadow: 0 0.5rem 1.2rem rgba(36, 49, 39, 0.22);
+    font: inherit;
     font-size: 0.72rem;
-    color: rgba(246, 241, 231, 0.92);
-    pointer-events: none;
+    font-weight: 600;
+    line-height: 1.2;
+    color: rgba(246, 241, 231, 0.94);
+    cursor: pointer;
+    -webkit-tap-highlight-color: transparent;
+    transition: transform 140ms ease, opacity 140ms ease;
   }
 
-  /* 只有同步按钮可点；状态文字可横向拖动查看全文，其余区域点击穿透 */
-  .mobile-sync-bar .mobile-sync-btn,
-  .mobile-sync-bar .mobile-sync-text {
-    pointer-events: auto;
+  .mobile-sync-bar:active {
+    transform: scale(0.95);
+  }
+
+  .mobile-sync-bar:disabled {
+    opacity: 0.72;
+    cursor: default;
   }
 
   .mobile-sync-dot {
@@ -4047,40 +4055,12 @@ input[type="month"],
   .mobile-sync-dot.local { background: #60a5fa; }
 
   .mobile-sync-text {
-    flex: 1;
-    min-width: 0;
-    overflow-x: auto;
     white-space: nowrap;
-    -webkit-overflow-scrolling: touch;
-    scrollbar-width: none;
-    font-weight: 600;
+    font-variant-numeric: tabular-nums;
   }
 
-  .mobile-sync-text::-webkit-scrollbar {
-    display: none;
-  }
-
-  .mobile-sync-btn {
+  .mobile-sync-bar svg {
     flex-shrink: 0;
-    display: grid;
-    place-items: center;
-    width: 1.8rem;
-    height: 1.8rem;
-    border: none;
-    border-radius: 0.5rem;
-    background: rgba(31, 95, 116, 0.2);
-    color: rgba(246, 241, 231, 0.88);
-    cursor: pointer;
-    -webkit-tap-highlight-color: transparent;
-  }
-
-  .mobile-sync-btn:active {
-    background: rgba(31, 95, 116, 0.35);
-  }
-
-  .mobile-sync-btn:disabled {
-    opacity: 0.5;
-    cursor: default;
   }
 
   .shell {
@@ -4438,7 +4418,8 @@ input[type="month"],
      直接隐藏它们；保存条也不再吸底，避免输入时版面来回跳 */
   body.keyboard-open .sidebar,
   body.keyboard-open .floating,
-  body.keyboard-open .save-toast {
+  body.keyboard-open .save-toast,
+  body.keyboard-open .mobile-sync-bar {
     display: none;
   }
 
@@ -6436,6 +6417,86 @@ input[type="month"],
   font-style: normal;
   font-size: 0.66rem;
   color: #2f7d4f;
+}
+
+/* 后备保障金：基本固定项（砍掉大额后）+ 手动浮动金额 = 突发状况最低月支出 */
+.fixed-expense-reserve {
+  display: grid;
+  gap: 0.45rem;
+  margin-bottom: 0.8rem;
+  padding: 0.6rem 0.75rem;
+  background: linear-gradient(180deg, #f3efe4, #efe8d6);
+  border: 1px dashed #c9b788;
+  border-radius: 0.6rem;
+}
+
+.fixed-expense-reserve-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.6rem;
+  flex-wrap: wrap;
+}
+
+.fixed-expense-reserve-head > span {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  font-size: 0.78rem;
+  font-weight: 700;
+  color: #6b5836;
+}
+
+.fixed-expense-reserve-input {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.2rem;
+  padding: 0.28rem 0.5rem;
+  background: #fffdf6;
+  border: 1px solid #d8c9a3;
+  border-radius: 0.45rem;
+  color: #8a7154;
+  font-size: 0.75rem;
+}
+
+.fixed-expense-reserve-input em {
+  font-style: normal;
+  font-weight: 700;
+}
+
+.fixed-expense-reserve-input input {
+  width: 6.5rem;
+  border: none;
+  outline: none;
+  background: transparent;
+  font: inherit;
+  font-weight: 700;
+  color: #31473a;
+  text-align: right;
+}
+
+.fixed-expense-reserve-total {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.6rem;
+}
+
+.fixed-expense-reserve-total span {
+  font-size: 0.72rem;
+  color: #8a7154;
+}
+
+.fixed-expense-reserve-total strong {
+  font-size: 1.15rem;
+  color: #31473a;
+  font-variant-numeric: tabular-nums;
+}
+
+.fixed-expense-reserve-hint {
+  font-size: 0.66rem;
+  line-height: 1.5;
+  color: #9a8663;
 }
 
 .fixed-expense-list {

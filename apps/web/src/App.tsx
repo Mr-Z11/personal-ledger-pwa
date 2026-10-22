@@ -957,15 +957,18 @@ export function App() {
           <DailyLimitRibbon spentCents={todaySpentCents} limitCents={todayLimitCents} />
         )}
         {(!isLocalPreview && (outboxCount > 0 || !navigator.onLine)) && (
-        <div className="mobile-sync-bar">
+        <button
+          type="button"
+          className="mobile-sync-bar"
+          onClick={syncNow}
+          disabled={busy}
+          title={`${userName || "未登录"} · ${navigator.onLine ? "在线" : "离线"} · 待同步 ${outboxCount} · 最后同步 ${lastSync ? new Date(lastSync).toLocaleString() : "从未"}（点击立即同步）`}
+          aria-label="同步状态，点击立即同步"
+        >
           <span className={`mobile-sync-dot ${navigator.onLine ? "online" : "offline"}`} />
-          <span className="mobile-sync-text">
-            {userName || "未登录"} · {navigator.onLine ? "在线" : "离线"} · 待同步 {outboxCount} · 最后同步 {lastSync ? `${new Date(lastSync).toLocaleDateString()} ${new Date(lastSync).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}` : "从未"}
-          </span>
-          <button className="mobile-sync-btn" onClick={syncNow} disabled={busy} title="立即同步">
-            <RefreshCw size={16} className={busy ? "spin" : ""} />
-          </button>
-        </div>
+          <span className="mobile-sync-text">{navigator.onLine ? `待同步 ${outboxCount}` : "离线"}</span>
+          <RefreshCw size={13} className={busy ? "spin" : ""} />
+        </button>
         )}
         <header className="topbar">
           <div className="page-heading">

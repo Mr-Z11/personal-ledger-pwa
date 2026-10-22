@@ -662,6 +662,8 @@ export function TrendFocusCards({ month, transactions, categories, budgetCents }
 /* ------------------------------------------------------------------ */
 
 const BIG_EXPENSE_THRESHOLD_KEY = "ledger-big-expense-threshold";
+/** 后备保障金浮动金额：固定支出页手动维护，测算突发状况下的最低月支出 */
+const FIXED_FLOAT_AMOUNT_KEY = "ledger-fixed-float-amount";
 
 function median(values: number[]) {
   if (values.length === 0) return 0;
@@ -1314,6 +1316,8 @@ export function FixedExpenseOverview({ transactions = [], categories = [] }: {
   const [copiedMsg, setCopiedMsg] = useState(false);
   const [showSuggest, setShowSuggest] = useState(false);
   const [showAdd, setShowAdd] = useState(false);
+  /** 后备保障金的浮动金额：用户手动编辑，仅存本机（同类设置见大额阈值） */
+  const [floatInput, setFloatInput] = useState(() => localStorage.getItem(FIXED_FLOAT_AMOUNT_KEY) ?? "");
 
   useEffect(() => {
     setItems(loadFixedExpenses(currentKey));
@@ -1379,6 +1383,18 @@ export function FixedExpenseOverview({ transactions = [], categories = [] }: {
   const totalSpent = items.reduce((sum, item) => sum + effectiveSpent(item), 0);
   const totalRemaining = Math.max(0, totalPredicted - totalSpent);
   const donePct = totalPredicted > 0 ? Math.min(100, Math.round((totalSpent / totalPredicted) * 100)) : 0;
+
+  /* 后备保障金：突发状况下砍掉大额与弹性消费后，每月至少要备好的钱
+     = 本月全部固定项（生活 + 贷款等刚性支出）+ 用户手动补充的浮动金额 */
+  const floatCents = (() => {
+    try { return Math.max(0, yuanToCents(floatInput.trim() || "0")); } catch { return 0; }
+  })();
+  const reserveCents = totalPredicted + floatCents;
+
+  function saveFloatInput(value: string) {
+    setFloatInput(value);
+    try { localStorage.setItem(FIXED_FLOAT_AMOUNT_KEY, value.trim()); } catch { /* 存储不可用时仅内存生效 */ }
+  }
 
   return (
     <section className="panel fixed-expense-overview">
@@ -1471,6 +1487,38 @@ export function FixedExpenseOverview({ transactions = [], categories = [] }: {
           <div className="bar"><i style={{ width: `${Math.max(2, donePct)}%` }} /></div>
           <em>已支出 {donePct}%</em>
         </div>
+      </div>
+
+      <div className="fixed-expense-reserve">
+        <div className="fixed-expense-reserve-head">
+          <span>
+            后备保障金（浮动金额）
+            <InfoTip text="突发状况下的最低月度准备：本月全部固定支出（房租、水电、贷款等刚性支出）+ 你手动补充的浮动金额（餐饮、交通等日常开销）。突发时砍掉大额消费与弹性开支后，这就是每月至少要备好的钱。浮动金额可随时修改，只保存在本机。" />
+          </span>
+          <label className="fixed-expense-reserve-input">
+            <em>¥</em>
+            <input
+              inputMode="decimal"
+              value={floatInput}
+              placeholder="补充浮动开支"
+              maxLength={12}
+              onChange={(event) => saveFloatInput(event.target.value)}
+              onBlur={() => {
+                try {
+                  const cents = yuanToCents(floatInput.trim() || "0");
+                  saveFloatInput(cents > 0 ? centsToYuan(cents) : "");
+                } catch { /* 输入不合法时保留原样，不打断编辑 */ }
+              }}
+            />
+          </label>
+        </div>
+        <div className="fixed-expense-reserve-total">
+          <span>后备最低月支出</span>
+          <strong>{`¥${centsToYuan(reserveCents)}`}</strong>
+        </div>
+        <small className="fixed-expense-reserve-hint">
+          固定项合计 ¥{centsToYuan(totalPredicted)}（{items.length} 项）+ 浮动 ¥{centsToYuan(floatCents)} · 砍掉大额与弹性消费后，每月至少备这么多
+        </small>
       </div>
 
       {suggestions.length > 0 && (

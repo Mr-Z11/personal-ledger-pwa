@@ -231,6 +231,21 @@ describe("常规项支出与规划页", () => {
     expect(html).not.toContain("新项目（如：房租）");
   });
 
+  it("FixedExpenseOverview 渲染后备保障金：固定项合计 + 浮动金额 = 后备最低月支出", () => {
+    saveFixedExpenses(monthKey(), [
+      { id: "fx-r1", name: "房租", predictedCents: 300000, spentCents: 0 },
+      { id: "fx-r2", name: "物业费", predictedCents: 50000, spentCents: 0 }
+    ]);
+    // 浮动金额：3000 + 500 = 3500，再加浮动 2500 → 后备最低月支出 6000
+    localStorage.setItem("ledger-fixed-float-amount", "2500");
+    const html = renderToString(<FixedExpenseOverview />);
+    expect(html).toContain("后备保障金");
+    expect(html).toContain("后备最低月支出");
+    expect(html).toContain("¥6000.00");
+    localStorage.removeItem("ledger-fixed-float-amount");
+    saveFixedExpenses(monthKey(), []);
+  });
+
   it("dailyLimitCents 为动态限额：当日消费不影响当日限额，昨日消费才计入", () => {
     const month = monthKey();
     const budgets: Budget[] = [{ ...stamp, id: "b-daily", month, categoryId: null, amountCents: yuanToCents(3000), scope: "daily" }];
