@@ -240,7 +240,7 @@ describe("常规项支出与规划页", () => {
     localStorage.setItem("ledger-fixed-float-amount", "2500");
     const html = renderToString(<FixedExpenseOverview />);
     expect(html).toContain("最低固定支出");
-    expect(html).toContain("每月最低支出");
+    expect(html).toContain("砍掉大额与弹性消费后");
     expect(html).toContain("¥6000.00");
     localStorage.removeItem("ledger-fixed-float-amount");
     saveFixedExpenses(monthKey(), []);

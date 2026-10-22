@@ -962,18 +962,20 @@ export function App() {
             <h1>{viewTitle(view)}</h1>
           </div>
           <div className="app-heading">
-            {(!isLocalPreview && (outboxCount > 0 || !navigator.onLine)) && (
+            {!isLocalPreview && (
               <button
                 type="button"
-                className="mobile-sync-bar"
+                className={`mobile-sync-bar${outboxCount > 0 || !navigator.onLine || busy ? " alert" : ""}`}
                 onClick={syncNow}
                 disabled={busy}
                 title={`${userName || "未登录"} · ${navigator.onLine ? "在线" : "离线"} · 待同步 ${outboxCount} · 最后同步 ${lastSync ? new Date(lastSync).toLocaleString() : "从未"}（点击立即同步）`}
                 aria-label="同步状态，点击立即同步"
               >
                 <span className={`mobile-sync-dot ${navigator.onLine ? "online" : "offline"}`} />
-                {outboxCount > 0 && <span className="mobile-sync-count">{outboxCount > 99 ? "99+" : outboxCount}</span>}
-                <RefreshCw size={11} className={busy ? "spin" : ""} />
+                {(outboxCount > 0 || !navigator.onLine) && (
+                  <span className="mobile-sync-count">{navigator.onLine ? (outboxCount > 99 ? "99+" : outboxCount) : "离线"}</span>
+                )}
+                {(outboxCount > 0 || busy) && <RefreshCw size={11} className={busy ? "spin" : ""} />}
               </button>
             )}
             <div className="app-heading-mark">{(() => { const HeadingIcon = viewHeadingMap[view]?.icon ?? Home; return <HeadingIcon size={18} />; })()}</div>

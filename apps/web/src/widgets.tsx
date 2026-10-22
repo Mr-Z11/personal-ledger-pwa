@@ -1490,11 +1490,15 @@ export function FixedExpenseOverview({ transactions = [], categories = [] }: {
       </div>
 
       <div className="fixed-expense-min">
-        <div className="fixed-expense-min-head">
-          <span>
-            最低固定支出（浮动金额）
+        <div className="fixed-expense-min-row">
+          <span className="fixed-expense-min-label">
+            最低固定支出
             <InfoTip text="突发状况下的最低月度花费：本月全部固定支出（房租、水电、贷款等刚性支出）+ 你手动补充的浮动金额（餐饮、交通等日常开销）。突发时砍掉大额消费与弹性开支后，这就是每月至少必须花出去的钱。浮动金额可随时修改，只保存在本机。" />
           </span>
+          <strong className="fixed-expense-min-value">{`¥${centsToYuan(minFixedCents)}`}</strong>
+        </div>
+        <div className="fixed-expense-min-sub">
+          <span>固定 {items.length} 项 ¥{centsToYuan(totalPredicted)} + 浮动</span>
           <label className="fixed-expense-min-input">
             <em>¥</em>
             <input
@@ -1511,14 +1515,8 @@ export function FixedExpenseOverview({ transactions = [], categories = [] }: {
               }}
             />
           </label>
+          <span>· 砍掉大额与弹性消费后，每月至少花这么多</span>
         </div>
-        <div className="fixed-expense-min-total">
-          <span>每月最低支出</span>
-          <strong>{`¥${centsToYuan(minFixedCents)}`}</strong>
-        </div>
-        <small className="fixed-expense-min-hint">
-          固定项合计 ¥{centsToYuan(totalPredicted)}（{items.length} 项）+ 浮动 ¥{centsToYuan(floatCents)} · 砍掉大额与弹性消费后，每月至少花这么多
-        </small>
       </div>
 
       {suggestions.length > 0 && (
