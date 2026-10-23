@@ -31,6 +31,7 @@
 | `ed9f6eb` | **吸顶标题条最终改 JS 方案**：clip 修复后用户真机反馈仍不生效（iOS 对 body overflow 环境下 sticky 支持就是坏的，桌面永远测不出）→ 新增 `useStickyHeading` hook（widgets.tsx）：scroll/resize 监听（passive+rAF 节流），面板顶部滚出视口且底部未离开时给标题条加 `.heading-stuck`（`position:fixed;top:0`，JS 按面板实时几何设 left/width，inline margin:0 覆盖负 margin）；卸载清 class/style。`position:fixed` 本项目已验证可靠（sync 胶囊/toast/FAB），与 body class 完全解耦。两个长模块共用 |
 | `04ad337` | **计划购买添加即提示删除 + 剩余天数按实际日历 + 版本号根治旧版争议**：① 删除「余额够时添加计划购买即弹本地通知」（`maybeNotifyPlanBuy` 全套）——根因：`affordable` 数组每次渲染新引用 → useEffect 每次渲染触发；② `BudgetReservoir.daysLeft` 从 `totalDays - today + 1`（含今天）改为 `totalDays - today`（实际日历剩余，`Math.max(1,…)`）；③ **vite define 注入 `__APP_VERSION__`（git 短 hash）+ `__BUILD_TIME__`**，设置页新增「关于与更新」区块（版本号+构建时间+「检查更新」按钮调 `registration.update()`）；④ main.tsx 冷启动 `registration.update()` + `controllerchange` 自动 reload（首次安装不触发）。用 playwright-core + 本机 `chromium_headless_shell-1208` 移动视口 390×844 复现验证吸顶：`{"stuck":true,"pos":"fixed","top":0}`、滚出正确释放——代码在 Chromium 完全正常，判定用户手机为旧版 PWA，靠版本号+检查更新根治「是否旧版」争议。冒烟 31 通过，已部署 |
 | `fdb20dc` | **修复吸顶标题条切换抖动**（用户确认吸顶已生效后反馈「固定支出→计划购买切换过程画面抖动」）：根因是标题条切 `position:fixed` 脱离文档流→下方内容瞬移一个标题条高度（~81px）→ `panel.bottom` 跟着跳→而吸顶判断恰依赖 `panel.bottom`→边界处「吸上→内容跳→判定松开→内容跳回」振荡。修复：`useStickyHeading` 增加**占位元素**（`.chart-heading-spacer`，React 渲染在标题条前）——切换时先量标题条在流中时下方内容位置、加 fixed class 后再量，差值设为占位高度（同步完成无绘制中间态），切换前后布局零变化，振荡根除；另有吸顶中标题条自身高度变化（文字换行）自动重量、resize 回自然布局重量。playwright 390×844 验证：189 步慢滚**布局零位移**（marker 每步精确跟随滚动量）、class 翻转 2 次无振荡、fixed/top:0/占位 81px；**负面对照**（旧代码构建到 :8444）：9 处 ~81px 跳动 + 边界 6 连抖。已部署已推送 |
+| `af23740` | **吸顶方案从 JS `position:fixed` 彻底改为原生 CSS `position:sticky`**（用户反馈上一版「翻到最底部慢速上滑卡住、页面在底部跳动、快速滑无碍」）：根因是 `position:fixed` 标题条在底部进出时，iOS Safari 的滚动锚定/橡皮筋会对文档高度变化做重锚定 re-pin，慢速上滑被困在底部反复跳（Chromium 不复现，纯 iOS 行为）。修复：**整段删除 `useStickyHeading` hook + `.chart-heading-spacer` 占位 + fixed 方案**，标题条直接 `position:sticky;top:0`（在文档流内，零布局位移、零文档高度变化、零重锚定）。依赖 `html/body` 的 `overflow-x:clip`（`@supports` 启用，不建滚动容器，sticky 正常——这正是 `0a39f19` 修好的前提）。playwright 390×844 验证：`fe/pb` 两标题条 `position:sticky`、吸顶+释放区间正常、**全程文档高度变化 0**、**底部慢速上滑回跳 0**、零控制台错误。彻底同时根除「跨模块切换抖动」与「底部跳动」两类问题。已部署已推送 |
 
 ## 3. 发布流程（本地栈）
 
@@ -58,7 +59,7 @@
 
 ## 6. 当前待办 / 待确认
 
-- **手机实测（关键）**：① **吸顶抖动修复回访**（版本 `fdb20dc`）：从本月固定支出慢速滚到计划购买，确认标题条切换时画面不再抖动（内部已验证：旧版每跳 81px、边界 6 连抖 → 新版零位移）。② 晚上 19:00 **不打开 App** 是否自动收到一条正反馈（验证服务端 web push 主动推送）；已订阅时本地不再重复弹通知。若没收到，让用户在手机 PWA 设置→当日限额提醒里重新「开启手机推送」刷新订阅。③ 记账后右上角标题徽章出现同步小角标（绿点+待同步数量），同步完成后消失；点角标能立即同步；记账全流程（金额输入/选分类/保存）不受任何浮层影响。④ 固定支出页「最低固定支出」：填一个浮动金额，确认「每月最低支出 = 固定项合计 + 浮动金额」实时变化、刷新后不丢。⑤ 日常/总开支两卡的剩余天数应为实际日历口径（今天 10/23 → 8 天，含今天会显示 9）。
+- **手机实测（关键）**：① **底部慢速上滑回访**（版本 `af23740`，吸顶改原生 CSS `position:sticky`）：翻到最底部→慢慢往上滑，确认不再卡在底部跳动、页面可顺畅上滑（已用无头 Chromium 验证：全程文档高度变化 0、底部慢速上滑回跳 0）。同时确认固定支出↔计划购买切换时标题条吸顶+释放正常、无抖动。② 晚上 19:00 **不打开 App** 是否自动收到一条正反馈（验证服务端 web push 主动推送）；已订阅时本地不再重复弹通知。若没收到，让用户在手机 PWA 设置→当日限额提醒里重新「开启手机推送」刷新订阅。③ 记账后右上角标题徽章出现同步小角标（绿点+待同步数量），同步完成后消失；点角标能立即同步；记账全流程（金额输入/选分类/保存）不受任何浮层影响。④ 固定支出页「最低固定支出」：填一个浮动金额，确认「每月最低支出 = 固定项合计 + 浮动金额」实时变化、刷新后不丢。⑤ 日常/总开支两卡的剩余天数应为实际日历口径（今天 10/23 → 8 天，含今天会显示 9）。
 - 可选：VM 网络恢复后 `docker pull` 正确 GHCR 镜像并移除 bind-mount（回归镜像部署）。
 - findings.md 里的 P0「reliable-sync 工作包」（串行化 syncNow、逐行 ack outbox、启动先 flush 再 pull）尚未实施，是后续可靠性改进首选。
 
