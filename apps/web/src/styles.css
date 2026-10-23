@@ -3281,22 +3281,38 @@ input[type="month"],
 }
 
 /* 总览模块互相区分：标题前彩色竖条 + 标题下细分隔线 + 极淡底色 */
+/* 长模块（固定支出 / 计划购买）主题化：金棕 vs 蓝青，三重区分——
+   ① 面板左侧 3px 主题色粗边（滚动时最强的模块标识）
+   ② 标题条 sticky 吸顶：滚到列表中段抬头即见当前模块名 + 主题底色
+   ③ 标题文字/小色条用主题色 */
 .fixed-expense-overview {
   --module-accent: #8a7154;
+  --module-heading-bg: rgba(248, 243, 231, 0.98);
+  --module-accent-line: rgba(138, 113, 84, 0.38);
   background: rgba(255, 252, 245, 0.96);
+  border-left: 3px solid #a8874f;
 }
 
 .planbuy-panel {
   --module-accent: #1f5f74;
+  --module-heading-bg: rgba(238, 245, 248, 0.98);
+  --module-accent-line: rgba(31, 95, 116, 0.32);
   background: rgba(247, 251, 252, 0.96);
+  border-left: 3px solid #1f5f74;
 }
 
 .fixed-expense-overview > .chart-heading,
 .planbuy-panel > .chart-heading {
+  position: sticky;
+  top: 0;
+  z-index: 5;
   align-items: baseline;
-  padding-bottom: 0.45rem;
-  margin-bottom: 0.3rem;
-  border-bottom: 1px solid rgba(49, 71, 58, 0.12);
+  gap: 0.55rem;
+  /* 负 margin 把标题条拉满 panel 宽度（抵消 .panel 的 0.72rem 内边距），吸顶时底色不断裂 */
+  margin: 0 -0.72rem 0.3rem;
+  padding: 0.45rem 0.72rem;
+  border-bottom: 1px solid var(--module-accent-line);
+  background: var(--module-heading-bg);
 }
 
 .fixed-expense-overview > .chart-heading h2,
@@ -3308,12 +3324,20 @@ input[type="month"],
   font-weight: 700;
 }
 
+.fixed-expense-overview > .chart-heading h2 {
+  color: #7d6535;
+}
+
+.planbuy-panel > .chart-heading h2 {
+  color: #1a5568;
+}
+
 .fixed-expense-overview > .chart-heading h2::before,
 .planbuy-panel > .chart-heading h2::before {
   content: "";
   flex: 0 0 auto;
-  width: 0.26rem;
-  height: 1rem;
+  width: 0.34rem;
+  height: 1.05rem;
   border-radius: 999px;
   background: var(--module-accent);
 }
