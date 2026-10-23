@@ -25,50 +25,88 @@ import {
  *  iOS Safari 在 body 带 overflow 的环境下 CSS position:sticky 不可靠（桌面 Chrome 却正常，
  *  本地测不出），故用 scroll 监听切 position:fixed：面板顶部滚出视口且底部未离开时，
  *  标题条 fixed 吸顶（JS 直接按面板几何设 left/width，100% 可控）。
- *  用法：panel 元素挂 panelRef，其内部标题条（第一个子元素）挂 headingRef。 */
+ *  防抖关键（2026-10-23）：标题条切 fixed 会脱离文档流，下方内容瞬间上跳、panel.bottom
+ *  也跟着跳，而吸顶判断恰好依赖 panel.bottom——边界处会「吸上→内容跳→判定松开→内容跳回」
+ *  来回振荡，两个长模块切换时尤其明显（用户反馈的画面抖动）。解法：标题条前放一个占位
+ *  元素，把标题条在文档流里占的空间原样顶住，切换前后布局零变化，几何稳定，振荡根除。
+ *  用法：panel 元素挂 panelRef，标题条（panel 第一个有效子元素）挂 headingRef，
+ *  标题条前渲染占位 div 挂 spacerRef。 */
 function useStickyHeading() {
   const panelRef = useRef<HTMLElement | null>(null);
   const headingRef = useRef<HTMLDivElement | null>(null);
+  const spacerRef = useRef<HTMLDivElement | null>(null);
   useEffect(() => {
     const panel = panelRef.current;
     const heading = headingRef.current;
-    if (!panel || !heading) return;
+    const spacer = spacerRef.current;
+    if (!panel || !heading || !spacer) return;
     let raf = 0;
+    let lastStuckHeight = 0;
+    const release = () => {
+      heading.classList.remove("heading-stuck");
+      heading.style.margin = "";
+      heading.style.left = "";
+      heading.style.width = "";
+      spacer.style.height = "";
+    };
+    const stick = (rect: DOMRect) => {
+      const next = heading.nextElementSibling;
+      // 先量标题条在文档流中时下方内容的位置，再加 fixed class 量脱离流后的位置，
+      // 差值即标题条占的布局空间。两步同步完成、不经过绘制，用户看不到中间态。
+      const before = next ? next.getBoundingClientRect().top : 0;
+      heading.classList.add("heading-stuck");
+      heading.style.margin = "0";
+      heading.style.left = `${rect.left}px`;
+      heading.style.width = `${rect.width}px`;
+      lastStuckHeight = heading.offsetHeight;
+      const shift = next ? before - next.getBoundingClientRect().top : 0;
+      if (shift > 0) spacer.style.height = `${shift}px`;
+    };
     const update = () => {
       raf = 0;
       const rect = panel.getBoundingClientRect();
       const stuck = rect.top < -0.5 && rect.bottom > heading.offsetHeight + 16;
       if (stuck) {
-        if (!heading.classList.contains("heading-stuck")) {
-          heading.classList.add("heading-stuck");
-          heading.style.margin = "0";
+        if (heading.classList.contains("heading-stuck")) {
+          if (Math.abs(heading.offsetHeight - lastStuckHeight) > 0.5) {
+            // 吸顶中标题条自身高度变了（文字换行/内容更新）：先回自然布局再量，
+            // 保证占位高度与新几何一致。两步同步完成，无绘制中间态。
+            release();
+            stick(rect);
+          } else {
+            heading.style.left = `${rect.left}px`;
+            heading.style.width = `${rect.width}px`;
+          }
+        } else {
+          stick(rect);
         }
-        heading.style.left = `${rect.left}px`;
-        heading.style.width = `${rect.width}px`;
       } else if (heading.classList.contains("heading-stuck")) {
-        heading.classList.remove("heading-stuck");
-        heading.style.margin = "";
-        heading.style.left = "";
-        heading.style.width = "";
+        release();
       }
     };
     const onScroll = () => {
       if (!raf) raf = requestAnimationFrame(update);
     };
+    // 旋转/窗口尺寸变化：吸顶中标题条宽度与换行会变，先回自然布局再量，占位高度按新几何重算
+    const onResize = () => {
+      if (!raf) {
+        raf = requestAnimationFrame(() => {
+          if (heading.classList.contains("heading-stuck")) release();
+          update();
+        });
+      }
+    };
     update();
     window.addEventListener("scroll", onScroll, { passive: true });
-    window.addEventListener("resize", onScroll);
+    window.addEventListener("resize", onResize);
     return () => {
       window.removeEventListener("scroll", onScroll);
-      window.removeEventListener("resize", onScroll);
+      window.removeEventListener("resize", onResize);
       if (raf) cancelAnimationFrame(raf);
-      heading.classList.remove("heading-stuck");
-      heading.style.margin = "";
-      heading.style.left = "";
-      heading.style.width = "";
+      release();
     };
   }, []);
-  return { panelRef, headingRef };
+  return { panelRef, headingRef, spacerRef };
 }
 
 /** 点击「?」显示说明气泡；点外部或 Esc 关闭。用于把较长的说明/备注文字收起来。
@@ -1448,10 +1486,11 @@ export function FixedExpenseOverview({ transactions = [], categories = [] }: {
     try { localStorage.setItem(FIXED_FLOAT_AMOUNT_KEY, value.trim()); } catch { /* 存储不可用时仅内存生效 */ }
   }
 
-  const { panelRef, headingRef } = useStickyHeading();
+  const { panelRef, headingRef, spacerRef } = useStickyHeading();
 
   return (
     <section className="panel fixed-expense-overview" ref={panelRef}>
+      <div className="chart-heading-spacer" ref={spacerRef} aria-hidden="true" />
       <div className="chart-heading" ref={headingRef}>
         <h2>本月固定支出<InfoTip text="手动维护，不依赖交易记录；从参考项目添加且关联了分类时，已支出会随当月该分类的实际消费自动更新（显示「自动」）。导入 AI 后可由消费记录全自动生成，此处改为只读对照。" /></h2>
         <div className="fe-head-right">
@@ -2032,10 +2071,11 @@ export function PlannedPurchasePanel({ items, todayRemainingCents, onAdd, onTogg
     setEditAmount("");
   }
 
-  const { panelRef, headingRef } = useStickyHeading();
+  const { panelRef, headingRef, spacerRef } = useStickyHeading();
 
   return (
     <section className="panel planbuy-panel" ref={panelRef}>
+      <div className="chart-heading-spacer" ref={spacerRef} aria-hidden="true" />
       <div className="chart-heading" ref={headingRef}>
         <h2>计划购买<InfoTip text="清单云端同步，多设备一致；余额够买时应用内高亮 + 手机推送提醒（每天一轮）。点条目可编辑名称/预算；「买到手」移入已买列表；右侧垃圾桶才是删除。" /></h2>
         <span>

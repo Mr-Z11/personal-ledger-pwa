@@ -3325,7 +3325,8 @@ input[type="month"],
    ① 面板左侧 3px 主题色粗边（滚动时最强的模块标识）
    ② 标题条吸顶：滚到列表中段抬头即见当前模块名 + 主题底色
      （吸顶态由 JS useStickyHeading 切 .heading-stuck——iOS Safari 上
-       CSS sticky 在 body 带 overflow 的环境不可靠，position:fixed 才 100% 可控）
+      CSS sticky 在 body 带 overflow 的环境不可靠，position:fixed 才 100% 可控；
+      标题条前的 .chart-heading-spacer 占位元素顶住其文档流空间，切换零布局变化防抖）
    ③ 标题文字/小色条用主题色 */
 .fixed-expense-overview {
   --module-accent: #8a7154;
@@ -3352,6 +3353,12 @@ input[type="month"],
   padding: 0.45rem 0.72rem;
   border-bottom: 1px solid var(--module-accent-line);
   background: var(--module-heading-bg);
+}
+
+/* 标题条吸顶占位：常态高度 0 不占布局；JS 在切 fixed 时按其原文档流空间设高，
+   保证标题条进出吸顶态时下方内容零位移（否则内容瞬移会反馈进吸顶判断导致边界振荡） */
+.chart-heading-spacer {
+  height: 0;
 }
 
 /* 吸顶态：JS 按面板几何设置 left/width，inline margin:0 覆盖上面的负 margin */
