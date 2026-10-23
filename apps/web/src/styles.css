@@ -3323,10 +3323,7 @@ input[type="month"],
 /* 总览模块互相区分：标题前彩色竖条 + 标题下细分隔线 + 极淡底色 */
 /* 长模块（固定支出 / 计划购买）主题化：金棕 vs 蓝青，三重区分——
    ① 面板左侧 3px 主题色粗边（滚动时最强的模块标识）
-   ② 标题条吸顶：滚到列表中段抬头即见当前模块名 + 主题底色
-     （吸顶态由 JS useStickyHeading 切 .heading-stuck——iOS Safari 上
-      CSS sticky 在 body 带 overflow 的环境不可靠，position:fixed 才 100% 可控；
-      标题条前的 .chart-heading-spacer 占位元素顶住其文档流空间，切换零布局变化防抖）
+   ② 标题条吸顶：原生 position:sticky（在文档流内，零布局位移，不触发 iOS 滚动重锚定）
    ③ 标题文字/小色条用主题色 */
 .fixed-expense-overview {
   --module-accent: #8a7154;
@@ -3355,16 +3352,13 @@ input[type="month"],
   background: var(--module-heading-bg);
 }
 
-/* 标题条吸顶占位：常态高度 0 不占布局；JS 在切 fixed 时按其原文档流空间设高，
-   保证标题条进出吸顶态时下方内容零位移（否则内容瞬移会反馈进吸顶判断导致边界振荡） */
-.chart-heading-spacer {
-  height: 0;
-}
-
-/* 吸顶态：JS 按面板几何设置 left/width，inline margin:0 覆盖上面的负 margin */
-.fixed-expense-overview > .chart-heading.heading-stuck,
-.planbuy-panel > .chart-heading.heading-stuck {
-  position: fixed;
+/* 标题条吸顶：原生 position:sticky（标题条始终留在文档流，零布局位移、零高度变化，
+   不触发 iOS 滚动锚定/橡皮筋重锚定——彻底规避 fixed 方案的底部跳动与跨模块振荡）。
+   依赖 html/body 的 overflow-x:clip（已通过 @supports 启用，不创建滚动容器，sticky 正常；
+   旧浏览器回退 overflow-x:hidden 会破坏 sticky，但现代 iOS/macOS 均支持 clip）。 */
+.fixed-expense-overview > .chart-heading,
+.planbuy-panel > .chart-heading {
+  position: sticky;
   top: 0;
   z-index: 5;
   box-shadow: 0 0.3rem 0.6rem rgba(36, 49, 39, 0.08);
