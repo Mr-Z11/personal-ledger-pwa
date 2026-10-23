@@ -21,6 +21,56 @@ import {
 /* 说明/备注文字统一组件：一个「?」按钮，点击弹出解释气泡，保持界面清爽          */
 /* ------------------------------------------------------------------ */
 
+/** 长模块标题条吸顶（保底实现）：
+ *  iOS Safari 在 body 带 overflow 的环境下 CSS position:sticky 不可靠（桌面 Chrome 却正常，
+ *  本地测不出），故用 scroll 监听切 position:fixed：面板顶部滚出视口且底部未离开时，
+ *  标题条 fixed 吸顶（JS 直接按面板几何设 left/width，100% 可控）。
+ *  用法：panel 元素挂 panelRef，其内部标题条（第一个子元素）挂 headingRef。 */
+function useStickyHeading() {
+  const panelRef = useRef<HTMLElement | null>(null);
+  const headingRef = useRef<HTMLDivElement | null>(null);
+  useEffect(() => {
+    const panel = panelRef.current;
+    const heading = headingRef.current;
+    if (!panel || !heading) return;
+    let raf = 0;
+    const update = () => {
+      raf = 0;
+      const rect = panel.getBoundingClientRect();
+      const stuck = rect.top < -0.5 && rect.bottom > heading.offsetHeight + 16;
+      if (stuck) {
+        if (!heading.classList.contains("heading-stuck")) {
+          heading.classList.add("heading-stuck");
+          heading.style.margin = "0";
+        }
+        heading.style.left = `${rect.left}px`;
+        heading.style.width = `${rect.width}px`;
+      } else if (heading.classList.contains("heading-stuck")) {
+        heading.classList.remove("heading-stuck");
+        heading.style.margin = "";
+        heading.style.left = "";
+        heading.style.width = "";
+      }
+    };
+    const onScroll = () => {
+      if (!raf) raf = requestAnimationFrame(update);
+    };
+    update();
+    window.addEventListener("scroll", onScroll, { passive: true });
+    window.addEventListener("resize", onScroll);
+    return () => {
+      window.removeEventListener("scroll", onScroll);
+      window.removeEventListener("resize", onScroll);
+      if (raf) cancelAnimationFrame(raf);
+      heading.classList.remove("heading-stuck");
+      heading.style.margin = "";
+      heading.style.left = "";
+      heading.style.width = "";
+    };
+  }, []);
+  return { panelRef, headingRef };
+}
+
 /** 点击「?」显示说明气泡；点外部或 Esc 关闭。用于把较长的说明/备注文字收起来。
  *  气泡用 portal 挂到 body 上并按视口定位：祖先容器（设置折叠区/面板/滚动区）常有
  *  overflow:hidden，气泡若留在「?」旁边会被整块裁掉（折叠区没展开时什么都看不到）。 */
@@ -1396,9 +1446,11 @@ export function FixedExpenseOverview({ transactions = [], categories = [] }: {
     try { localStorage.setItem(FIXED_FLOAT_AMOUNT_KEY, value.trim()); } catch { /* 存储不可用时仅内存生效 */ }
   }
 
+  const { panelRef, headingRef } = useStickyHeading();
+
   return (
-    <section className="panel fixed-expense-overview">
-      <div className="chart-heading">
+    <section className="panel fixed-expense-overview" ref={panelRef}>
+      <div className="chart-heading" ref={headingRef}>
         <h2>本月固定支出<InfoTip text="手动维护，不依赖交易记录；从参考项目添加且关联了分类时，已支出会随当月该分类的实际消费自动更新（显示「自动」）。导入 AI 后可由消费记录全自动生成，此处改为只读对照。" /></h2>
         <div className="fe-head-right">
           <span>{monthLabel(currentKey)} · {items.length} 项 · 手动维护</span>
@@ -2025,9 +2077,11 @@ export function PlannedPurchasePanel({ items, todayRemainingCents, onAdd, onTogg
     setPermission(await Notification.requestPermission());
   }
 
+  const { panelRef, headingRef } = useStickyHeading();
+
   return (
-    <section className="panel planbuy-panel">
-      <div className="chart-heading">
+    <section className="panel planbuy-panel" ref={panelRef}>
+      <div className="chart-heading" ref={headingRef}>
         <h2>计划购买<InfoTip text="清单云端同步，多设备一致；余额够买时应用内高亮 + 手机推送提醒（每天一轮）。点条目可编辑名称/预算；「买到手」移入已买列表；右侧垃圾桶才是删除。" /></h2>
         <span>
           {pending.length > 0
