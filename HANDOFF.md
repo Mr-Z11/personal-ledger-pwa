@@ -28,6 +28,7 @@
 | `3118bc1` | 浮动金额输入框极简化：白底圆角框 → 透明底 + 淡虚线下划线（宽 3.2rem、字号 0.64rem 与副标题齐平），placeholder 移入 title |
 | `f15673f` | **固定支出/计划购买双模块主题化**（用户反馈长列表滚到后面分不清模块边界）：① 面板左侧 3px 主题粗边（固定支出金棕 `#a8874f` / 计划购买蓝青 `#1f5f74`）；② 标题条 `position:sticky` 吸顶 + 各模块不透明主题浅底 + 负 margin 拉满 panel 宽；③ 标题文字染色、小色条加粗 0.34rem、分隔线主题色淡版。纯 CSS，JSX 零改 |
 | `0a39f19` | **修复 iOS Safari 下 sticky 全失效**：`html/body` 的 `overflow-x:hidden` 把另一轴强制 auto、使 body 成滚动容器——桌面 Chrome 因视口传播差异不受影响（本地测不出），iOS 上杀死所有 sticky（用户反馈「吸顶没有实现」）。`@supports (overflow: clip)` 下改 `overflow-x: clip`（不建滚动容器，sticky 正常；Chrome 90+/FF 81+/Safari 16+），旧浏览器兜底 hidden |
+| `ed9f6eb` | **吸顶标题条最终改 JS 方案**：clip 修复后用户真机反馈仍不生效（iOS 对 body overflow 环境下 sticky 支持就是坏的，桌面永远测不出）→ 新增 `useStickyHeading` hook（widgets.tsx）：scroll/resize 监听（passive+rAF 节流），面板顶部滚出视口且底部未离开时给标题条加 `.heading-stuck`（`position:fixed;top:0`，JS 按面板实时几何设 left/width，inline margin:0 覆盖负 margin）；卸载清 class/style。`position:fixed` 本项目已验证可靠（sync 胶囊/toast/FAB），与 body class 完全解耦。两个长模块共用 |
 
 ## 3. 发布流程（本地栈）
 
