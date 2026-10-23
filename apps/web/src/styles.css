@@ -1448,6 +1448,35 @@ input[type="month"],
   color: rgba(36, 49, 39, 0.58);
 }
 
+/* 关于与更新：版本号 / 构建时间两行 + 检查更新按钮 */
+.app-version-panel {
+  gap: 0.55rem;
+}
+
+.app-version-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.6rem;
+  padding: 0.5rem 0.75rem;
+  border-radius: 0.55rem;
+  background: rgba(31, 95, 116, 0.05);
+  border: 1px solid rgba(31, 95, 116, 0.1);
+  font-size: 0.8rem;
+  color: rgba(36, 49, 39, 0.72);
+}
+
+.app-version-row code {
+  font-family: "SF Mono", "Menlo", monospace;
+  font-size: 0.78rem;
+  font-weight: 700;
+  color: #243127;
+}
+
+.app-version-panel > button {
+  justify-self: start;
+}
+
 .sync-actions {
   display: flex;
   flex-wrap: wrap;

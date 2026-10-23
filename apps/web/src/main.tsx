@@ -1,6 +1,23 @@
 const STARTUP_RELOAD_KEY = "ledger-startup-reload-at";
 let recoveryStarted = false;
 
+/* ServiceWorker 更新通道（iOS PWA 上 autoUpdate 需重开才生效，这里补两个主动机制）：
+   1. 每次冷启动主动 update() 一次——不等 iOS 自己的检查时机
+   2. 新 SW 通过 clientsClaim 接管已打开的页面时自动 reload——
+      「检查更新」按钮点了立刻生效，不用再教用户划掉重开几次 */
+if ("serviceWorker" in navigator) {
+  const hadController = Boolean(navigator.serviceWorker.controller);
+  let reloaded = false;
+  navigator.serviceWorker.addEventListener("controllerchange", () => {
+    if (!hadController || reloaded) return; // 首次安装（null → sw）不触发热重载
+    reloaded = true;
+    window.location.reload();
+  });
+  void navigator.serviceWorker.ready.then((registration) => {
+    void registration.update().catch(() => undefined);
+  });
+}
+
 async function startApp() {
   const [React, ReactDOM, { App }] = await Promise.all([
     import("react"),

@@ -1,8 +1,23 @@
 import react from "@vitejs/plugin-react";
+import { execSync } from "node:child_process";
 import { defineConfig } from "vite";
 import { VitePWA } from "vite-plugin-pwa";
 
+/** 构建版本：git 短 hash（CI 构建时是远端 commit）。用于设置页版本显示，
+ *  排查「用户手机是否还是旧版」——iOS PWA 的 ServiceWorker 更新需重开生效，不可见时先对版本号 */
+function buildVersion() {
+  try {
+    return execSync("git rev-parse --short HEAD").toString().trim();
+  } catch {
+    return "dev";
+  }
+}
+
 export default defineConfig({
+  define: {
+    __APP_VERSION__: JSON.stringify(buildVersion()),
+    __BUILD_TIME__: JSON.stringify(new Date().toISOString())
+  },
   plugins: [
     react(),
     VitePWA({

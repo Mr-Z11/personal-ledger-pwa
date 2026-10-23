@@ -401,7 +401,9 @@ export function BudgetReservoir({ title, note, spentCents, budgetCents, accent, 
   const over = budgetCents > 0 && spentCents > budgetCents;
   const today = Number(beijingDateTimeParts().day);
   const totalDays = daysInMonth(monthKey());
-  const daysLeft = Math.max(1, totalDays - today + 1);
+  // 按实际日历数剩余天数（不含今天——今天的额度由「今日限额」单独管理）；
+  // daysInMonth 取当月真实天数（2 月 28/29、小月 30、大月 31），非写死 30
+  const daysLeft = Math.max(1, totalDays - today);
   const remainingCents = Math.max(0, budgetCents - spentCents);
   const allowanceCents = budgetCents > 0 ? Math.round(remainingCents / daysLeft) : 0;
   const waterY = 224 - (fillPct / 100) * 210;
@@ -1954,42 +1956,8 @@ export function LocalDailyLimitAlertPanel({ value, onChange }: {
 }
 
 /* ------------------------------------------------------------------ */
-/* 计划购买（想买清单）：预算余额够买时提醒，买完点已完成                     */
+/* 计划购买（想买清单）：余额够买时行内高亮，买完点已完成                     */
 /* ------------------------------------------------------------------ */
-
-const PLAN_BUY_NOTIFY_KEY = "ledger-planbuy-notified";
-
-function planBuyNotifiedToday(): { date: string; ids: string[] } {
-  try {
-    const raw = localStorage.getItem(PLAN_BUY_NOTIFY_KEY);
-    if (!raw) return { date: "", ids: [] };
-    const parsed = JSON.parse(raw) as { date?: string; ids?: string[] };
-    return { date: typeof parsed.date === "string" ? parsed.date : "", ids: Array.isArray(parsed.ids) ? parsed.ids : [] };
-  } catch {
-    return { date: "", ids: [] };
-  }
-}
-
-/** 今日预算余额够买某项时发一条本地系统通知（每天每项最多一条） */
-function maybeNotifyPlanBuy(affordable: PlannedPurchase[], remainingCents: number) {
-  if (affordable.length === 0) return;
-  const todayKey = dateKey(new Date().toISOString());
-  const record = planBuyNotifiedToday();
-  const notifiedIds = record.date === todayKey ? record.ids : [];
-  const fresh = affordable.filter((item) => !notifiedIds.includes(item.id));
-  if (fresh.length === 0) return;
-  try {
-    if (typeof Notification === "undefined" || Notification.permission !== "granted") return;
-    const names = fresh.slice(0, 3).map((item) => item.name).join("、");
-    const more = fresh.length > 3 ? ` 等 ${fresh.length} 项` : "";
-    new Notification("今日预算有余额，可以安排计划购买", {
-      body: `今日预算余额 ¥${centsToYuan(remainingCents)}，够买：${names}${more}。`
-    });
-    localStorage.setItem(PLAN_BUY_NOTIFY_KEY, JSON.stringify({ date: todayKey, ids: [...notifiedIds, ...fresh.map((item) => item.id)] }));
-  } catch {
-    // 不支持本地通知时忽略（服务端推送会兜底）
-  }
-}
 
 export function PlannedPurchasePanel({ items, todayRemainingCents, onAdd, onToggleComplete, onDelete, onEdit }: {
   items: PlannedPurchase[];
@@ -2002,9 +1970,6 @@ export function PlannedPurchasePanel({ items, todayRemainingCents, onAdd, onTogg
 }) {
   const [nameInput, setNameInput] = useState("");
   const [amountInput, setAmountInput] = useState("");
-  const [permission, setPermission] = useState<NotificationPermission | "unsupported">(
-    typeof Notification === "undefined" ? "unsupported" : Notification.permission
-  );
   const [showAdd, setShowAdd] = useState(false);
   // 行内编辑：默认只读，点行进入编辑；保存才写回，避免每敲一个字就落库
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -2020,11 +1985,6 @@ export function PlannedPurchasePanel({ items, todayRemainingCents, onAdd, onTogg
     [items]
   );
   const pendingTotal = pending.reduce((sum, item) => sum + item.amountCents, 0);
-  const affordable = todayRemainingCents === null ? [] : pending.filter((item) => item.amountCents <= todayRemainingCents);
-
-  useEffect(() => {
-    maybeNotifyPlanBuy(affordable, todayRemainingCents ?? 0);
-  }, [affordable, todayRemainingCents]);
 
   function addItem() {
     const name = nameInput.trim();
@@ -2070,11 +2030,6 @@ export function PlannedPurchasePanel({ items, todayRemainingCents, onAdd, onTogg
     setEditingId(null);
     setEditName("");
     setEditAmount("");
-  }
-
-  async function requestNotifyPermission() {
-    if (typeof Notification === "undefined") return;
-    setPermission(await Notification.requestPermission());
   }
 
   const { panelRef, headingRef } = useStickyHeading();
@@ -2130,12 +2085,6 @@ export function PlannedPurchasePanel({ items, todayRemainingCents, onAdd, onTogg
 
       {todayRemainingCents === null && pending.length > 0 && (
         <p className="reminder-hint">未设日常消费预算，无法判断今日余额（设置 → 预算管理）。</p>
-      )}
-      {permission === "default" && pending.length > 0 && (
-        <p className="reminder-hint">
-          想在余额够买时收到手机提醒？
-          <button type="button" className="link-button" onClick={() => void requestNotifyPermission()}>点这里开启通知</button>
-        </p>
       )}
 
       {pending.length === 0 && completed.length === 0 ? (

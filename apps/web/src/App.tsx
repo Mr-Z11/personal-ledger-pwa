@@ -2359,6 +2359,9 @@ function SettingsPanel({
       <SettingsSection title="数据同步" description="切换云端/本地同步地址，服务器到期后用本地电脑保存数据。">
         <SyncSettingsPanel />
       </SettingsSection>
+      <SettingsSection title="关于与更新" description="当前应用版本（git 短 hash）与更新检查。iOS 上自动更新需重开生效，点「检查更新」可立即拉取。">
+        <AppVersionPanel onToast={onToast} />
+      </SettingsSection>
       <SettingsSection title="账户管理" description="维护储蓄卡、消费卡和额度。">
         <AccountsPanel accounts={accounts} onSave={onSaveAccount} onDelete={onDeleteAccount} />
       </SettingsSection>
@@ -2507,6 +2510,61 @@ function SettingsSection({ title, description, children, defaultOpen = false }: 
       </summary>
       <div className="settings-section-body">{children}</div>
     </details>
+  );
+}
+
+/** 版本与更新：显示构建版本（git 短 hash + 构建时间），支持手动检查更新。
+ *  排查「手机是不是旧版」的权威依据——iOS PWA 的 ServiceWorker 自动更新
+ *  要重开才生效，用户反馈「功能没实现」时先对这里的版本号。 */
+function AppVersionPanel({ onToast }: { onToast: (message: string) => void }) {
+  const [checking, setChecking] = useState(false);
+  const [msg, setMsg] = useState("");
+
+  const buildTime = (() => {
+    try {
+      const date = new Date(__BUILD_TIME__);
+      const pad = (value: number) => String(value).padStart(2, "0");
+      return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}`;
+    } catch {
+      return "";
+    }
+  })();
+
+  async function checkUpdate() {
+    if (!("serviceWorker" in navigator)) {
+      onToast("当前环境不支持自动更新");
+      return;
+    }
+    setChecking(true);
+    setMsg("");
+    try {
+      const registration = await navigator.serviceWorker.ready;
+      await registration.update();
+      setMsg("检查完成；若有新版本会自动下载并刷新（无新版本则保持现状）");
+    } catch {
+      setMsg("检查失败，请稍后重试");
+    } finally {
+      setChecking(false);
+    }
+  }
+
+  return (
+    <div className="form-stack app-version-panel">
+      <div className="app-version-row">
+        <span>当前版本</span>
+        <code>{__APP_VERSION__}</code>
+      </div>
+      <div className="app-version-row">
+        <span>构建时间</span>
+        <code>{buildTime}</code>
+      </div>
+      <button className="ghost" type="button" onClick={() => void checkUpdate()} disabled={checking}>
+        <RefreshCw size={15} className={checking ? "spin" : ""} />
+        {checking ? "检查中…" : "检查更新"}
+      </button>
+      {msg && <small className="sync-hint">{msg}</small>}
+      <small className="sync-hint">更新为自动下载：点「检查更新」后若拉到新版本会自动刷新；没反应的话把应用划掉重开一次。</small>
+    </div>
   );
 }
 
