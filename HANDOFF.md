@@ -3,14 +3,14 @@
 > 本文件是本项目**唯一需要每次会话维护的活跃交接/计划文档**（已合并原 task_plan.md / findings.md / progress.md / HANDOFF.md 四个增长型文件）。
 > 长期蒸馏知识看 `.workbuddy/memory/MEMORY.md`；逐日会话历史看 `.workbuddy/memory/YYYY-MM-DD.md`；架构与数据安全看 `AGENTS.md`（会被 IDE 自动注入）；静态项目说明看 `docs/codex-handoff.md`。更早的完整历史在 git 记录里（`git log` / `git show <commit>:findings.md`）。
 
-## 1. 当前状态（2026-10-21）
+## 1. 当前状态（2026-10-23）
 
 - **云端 47.74.3.104 自 2026-08-29 失效**（80/443 全关、SSH host key 变更，归属待确认）→ `deploy/update-server.sh` 暂不可用。**本地 Mac 栈是当前唯一活跃环境**。
 - 本地栈 `docker-compose.local.yml` = `postgres-local` + `api-local` + `caddy-local`；入口 `https://localhost:8443/api`（Caddy 自签证书，需一次性装 `~/Desktop/Caddy-Local-CA.crt` 到钥匙串，否则浏览器 fetch 被 TLS 拦）。
 - 三容器当前均 Up；`api-local` 用**只读 bind-mount** 挂本机 `apps/api/dist`（见 §3）。
 - git：远端 `origin/main` 与本地一致（HEAD 见 `git log -1`）。推送走 `python3 scripts/api-push-main.py`（见 §5）。
 
-## 2. 近期变更（2026-10-20 ~ 21，均已推送 origin/main）
+## 2. 近期变更（2026-10-20 ~ 23，均已推送 origin/main）
 
 | Commit | 内容 |
 |--------|------|
@@ -29,6 +29,7 @@
 | `f15673f` | **固定支出/计划购买双模块主题化**（用户反馈长列表滚到后面分不清模块边界）：① 面板左侧 3px 主题粗边（固定支出金棕 `#a8874f` / 计划购买蓝青 `#1f5f74`）；② 标题条 `position:sticky` 吸顶 + 各模块不透明主题浅底 + 负 margin 拉满 panel 宽；③ 标题文字染色、小色条加粗 0.34rem、分隔线主题色淡版。纯 CSS，JSX 零改 |
 | `0a39f19` | **修复 iOS Safari 下 sticky 全失效**：`html/body` 的 `overflow-x:hidden` 把另一轴强制 auto、使 body 成滚动容器——桌面 Chrome 因视口传播差异不受影响（本地测不出），iOS 上杀死所有 sticky（用户反馈「吸顶没有实现」）。`@supports (overflow: clip)` 下改 `overflow-x: clip`（不建滚动容器，sticky 正常；Chrome 90+/FF 81+/Safari 16+），旧浏览器兜底 hidden |
 | `ed9f6eb` | **吸顶标题条最终改 JS 方案**：clip 修复后用户真机反馈仍不生效（iOS 对 body overflow 环境下 sticky 支持就是坏的，桌面永远测不出）→ 新增 `useStickyHeading` hook（widgets.tsx）：scroll/resize 监听（passive+rAF 节流），面板顶部滚出视口且底部未离开时给标题条加 `.heading-stuck`（`position:fixed;top:0`，JS 按面板实时几何设 left/width，inline margin:0 覆盖负 margin）；卸载清 class/style。`position:fixed` 本项目已验证可靠（sync 胶囊/toast/FAB），与 body class 完全解耦。两个长模块共用 |
+| `04ad337` | **计划购买添加即提示删除 + 剩余天数按实际日历 + 版本号根治旧版争议**：① 删除「余额够时添加计划购买即弹本地通知」（`maybeNotifyPlanBuy` 全套）——根因：`affordable` 数组每次渲染新引用 → useEffect 每次渲染触发；② `BudgetReservoir.daysLeft` 从 `totalDays - today + 1`（含今天）改为 `totalDays - today`（实际日历剩余，`Math.max(1,…)`）；③ **vite define 注入 `__APP_VERSION__`（git 短 hash）+ `__BUILD_TIME__`**，设置页新增「关于与更新」区块（版本号+构建时间+「检查更新」按钮调 `registration.update()`）；④ main.tsx 冷启动 `registration.update()` + `controllerchange` 自动 reload（首次安装不触发）。用 playwright-core + 本机 `chromium_headless_shell-1208` 移动视口 390×844 复现验证吸顶：`{"stuck":true,"pos":"fixed","top":0}`、滚出正确释放——代码在 Chromium 完全正常，判定用户手机为旧版 PWA，靠版本号+检查更新根治「是否旧版」争议。冒烟 31 通过，已部署 |
 
 ## 3. 发布流程（本地栈）
 
@@ -36,6 +37,7 @@
 - **后端（现行，bind-mount）**：改 `apps/api` 源码 → `npm --workspace @ledger/api run build`（managed node；`prisma generate && tsc`）→ `docker compose -f docker-compose.local.yml --env-file .env.local up -d api-local`。容器直接跑本机 dist，**无需从 GHCR 拉镜像**。启动自动 `prisma db push`（改 schema 前先 `bash scripts/data-sync.sh backup-local`）。
 - **推送**：见 §5。
 - 手机端：本地 origin 的 PWA 划掉重开两次即更新；云端 origin 的 PWA 收不到更新，须从 `https://FrorideMacBook-Air.local:8443` 重装。
+- 版本核对（2026-10-23 新增）：bundle 注入 `__APP_VERSION__`（git 短 hash，如 `04ad337`）+ `__BUILD_TIME__`，设置页「关于与更新」可见；main.tsx 冷启动自动 `registration.update()`，controllerchange 自动 reload（首次安装不触发热载）。用户反馈功能「没生效」时先让其在设置页核对版本号，避免旧版争议。
 
 ## 4. 关键约束 & 不要重复踩的坑（详表见 MEMORY.md）
 
@@ -55,7 +57,7 @@
 
 ## 6. 当前待办 / 待确认
 
-- **手机实测（关键）**：① 晚上 19:00 **不打开 App** 是否自动收到一条正反馈（验证服务端 web push 主动推送）；已订阅时本地不再重复弹通知。若没收到，让用户在手机 PWA 设置→当日限额提醒里重新「开启手机推送」刷新订阅。② 记账后右上角标题徽章出现同步小角标（绿点+待同步数量），同步完成后消失；点角标能立即同步；记账全流程（金额输入/选分类/保存）不受任何浮层影响。③ 固定支出页「最低固定支出」：填一个浮动金额，确认「每月最低支出 = 固定项合计 + 浮动金额」实时变化、刷新后不丢。
+- **手机实测（关键）**：① **先在设置页「关于与更新」核对版本号 = `04ad337`**（吸顶第三次反馈仍未生效，Chromium 复现证明代码正常 → 疑旧版 PWA；版本号+「检查更新」按钮+启动 update+controllerchange reload 已上线，iOS PWA 需划掉重开两次）。若版本正确后吸顶仍不生效，需排查其设备 Safari/PWA 环境。② 晚上 19:00 **不打开 App** 是否自动收到一条正反馈（验证服务端 web push 主动推送）；已订阅时本地不再重复弹通知。若没收到，让用户在手机 PWA 设置→当日限额提醒里重新「开启手机推送」刷新订阅。③ 记账后右上角标题徽章出现同步小角标（绿点+待同步数量），同步完成后消失；点角标能立即同步；记账全流程（金额输入/选分类/保存）不受任何浮层影响。④ 固定支出页「最低固定支出」：填一个浮动金额，确认「每月最低支出 = 固定项合计 + 浮动金额」实时变化、刷新后不丢。⑤ 日常/总开支两卡的剩余天数应为实际日历口径（今天 10/23 → 8 天，含今天会显示 9）。
 - 可选：VM 网络恢复后 `docker pull` 正确 GHCR 镜像并移除 bind-mount（回归镜像部署）。
 - findings.md 里的 P0「reliable-sync 工作包」（串行化 syncNow、逐行 ack outbox、启动先 flush 再 pull）尚未实施，是后续可靠性改进首选。
 
