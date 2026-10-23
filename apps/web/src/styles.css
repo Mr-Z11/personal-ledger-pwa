@@ -36,6 +36,17 @@ body {
     #f6f1e7;
 }
 
+/* overflow-x: hidden 会把另一轴强制为 auto，使 body 成为滚动容器——
+   iOS Safari 上这会杀死内部所有 position:sticky（桌面 Chrome 因视口传播差异不受影响，
+   导致本地测不出、手机上空转，典型如固定支出/计划购买的吸顶标题条）。
+   clip 同样裁掉横向溢出且不创建滚动容器，sticky 正常；旧浏览器 @supports 兜底 hidden。 */
+@supports (overflow: clip) {
+  html,
+  body {
+    overflow-x: clip;
+  }
+}
+
 button,
 input,
 select {
