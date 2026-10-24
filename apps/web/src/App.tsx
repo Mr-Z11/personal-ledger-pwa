@@ -21,9 +21,11 @@ import {
   Bell,
   BellRing,
   CalendarClock,
+  ChevronLeft,
   ChevronRight,
   Cloud,
   CloudOff,
+  Database,
   Download,
   FolderPlus,
   Home,
@@ -116,7 +118,7 @@ import {
 } from "./widgets";
 import { PlanView } from "./plan";
 
-type View = "overview" | "entry" | "transactions" | "reports" | "plan" | "search" | "settings" | "trash";
+type View = "overview" | "entry" | "transactions" | "reports" | "plan" | "search" | "settings" | "trash" | "data";
 type LedgerGroupMode = "day" | "month" | "year";
 type ReportPeriod = "month" | "year";
 type ExportFormat = "ledger" | "portable" | "suishouji" | "qianji";
@@ -393,6 +395,7 @@ function otherCategory(categories: Category[], kind: Category["kind"]) {
 function viewTitle(view: View) {
   if (view === "entry") return "记一笔";
   if (view === "trash") return "回收站";
+  if (view === "data") return "数据管理";
   return navItems.find((item) => item.id === view)?.label ?? "总览";
 }
 
@@ -404,7 +407,8 @@ const viewHeadingMap: Record<View, { strong: string; span: string; icon: typeof 
   reports: { strong: "消费分析", span: "趋势、预算、支出结构", icon: PieChartIcon },
   plan: { strong: "支出规划", span: "未来消费与总支出预测（去年同期为主）", icon: CalendarClock },
   settings: { strong: "账户设置", span: "账户、分类、预算、数据", icon: Settings2 },
-  trash: { strong: "回收站", span: "已删除流水可恢复", icon: Undo2 }
+  trash: { strong: "回收站", span: "已删除流水可恢复", icon: Undo2 },
+  data: { strong: "数据管理", span: "导出、导入与数据同步", icon: Database }
 };
 
 function accountLimitText(account: Account) {
@@ -987,8 +991,16 @@ export function App() {
         )}
         <header className="topbar">
           <div className="page-heading">
-            <span className="eyebrow">{currentMonth}</span>
-            <h1>{viewTitle(view)}</h1>
+            {(view === "trash" || view === "data") && (
+              <button type="button" className="back-button" onClick={() => setView("settings")} title="返回设置">
+                <ChevronLeft size={16} />
+                <span>返回</span>
+              </button>
+            )}
+            <div className="page-heading-text">
+              <span className="eyebrow">{currentMonth}</span>
+              <h1>{viewTitle(view)}</h1>
+            </div>
           </div>
           <div className="app-heading">
             {!isLocalPreview && (
@@ -1115,14 +1127,6 @@ export function App() {
             categories={activeCategories}
             transactions={activeTransactions}
             budgets={activeBudgets}
-            exportFormat={exportFormat}
-            exportFileType={exportFileType}
-            onExportFormatChange={setExportFormat}
-            onExportFileTypeChange={setExportFileType}
-            onExport={() => void exportData(token, exportFormat, exportFileType, activeAccounts, activeCategories, activeTransactions)}
-            onImportFile={(file) => importCsv(file, activeAccounts, activeCategories, saveLocalAndQueue)}
-            onImported={(count) => setToast(`已导入 ${count} 笔流水`)}
-            onImportError={(error) => setToast(error instanceof Error ? error.message : "导入失败")}
             onSaveAccount={async (item) => {
               await saveLocalAndQueue("accounts", item);
               setToast("账户已保存");
@@ -1159,8 +1163,24 @@ export function App() {
             onToast={setToast}
             trashCount={deletedTransactions.length}
             onOpenTrash={() => setView("trash")}
+            onOpenData={() => setView("data")}
             onSaveCategory={(item) => saveLocalAndQueue("categories", item)}
             onDeleteCategories={(items) => saveManyLocalAndQueue("categories", items)}
+          />
+        )}
+        {view === "data" && (
+          <DataView
+            accounts={activeAccounts}
+            categories={activeCategories}
+            transactions={activeTransactions}
+            exportFormat={exportFormat}
+            exportFileType={exportFileType}
+            onExportFormatChange={setExportFormat}
+            onExportFileTypeChange={setExportFileType}
+            onExport={() => void exportData(token, exportFormat, exportFileType, activeAccounts, activeCategories, activeTransactions)}
+            onImportFile={(file) => importCsv(file, activeAccounts, activeCategories, saveLocalAndQueue)}
+            onImported={(count) => setToast(`已导入 ${count} 笔流水`)}
+            onImportError={(error) => setToast(error instanceof Error ? error.message : "导入失败")}
           />
         )}
         {view === "trash" && (
@@ -2312,14 +2332,6 @@ function SettingsPanel({
   categories,
   transactions,
   budgets,
-  exportFormat,
-  exportFileType,
-  onExportFormatChange,
-  onExportFileTypeChange,
-  onExport,
-  onImportFile,
-  onImported,
-  onImportError,
   onSaveAccount,
   onDeleteAccount,
   onSaveBudget,
@@ -2333,20 +2345,13 @@ function SettingsPanel({
   token,
   onToast,
   trashCount,
-  onOpenTrash
+  onOpenTrash,
+  onOpenData
 }: {
   accounts: Account[];
   categories: Category[];
   transactions: Transaction[];
   budgets: Budget[];
-  exportFormat: ExportFormat;
-  exportFileType: ExportFileType;
-  onExportFormatChange: (format: ExportFormat) => void;
-  onExportFileTypeChange: (fileType: ExportFileType) => void;
-  onExport: () => void;
-  onImportFile: (file: File) => Promise<number>;
-  onImported: (count: number) => void;
-  onImportError: (error: unknown) => void;
   onSaveAccount: (item: Account) => Promise<void>;
   onDeleteAccount: (item: Account) => Promise<void>;
   onSaveBudget: (item: Budget) => Promise<void>;
@@ -2361,19 +2366,13 @@ function SettingsPanel({
   onToast: (message: string) => void;
   trashCount: number;
   onOpenTrash: () => void;
+  onOpenData: () => void;
 }) {
-  // 手风琴：同一时刻只展开一个分区（清爽，也避免长页面）；顶部工具卡点击时展开对应分区并滚动到位
+  // 手风琴：同一时刻只展开一个分区（清爽，也避免长页面）
   const [openRow, setOpenRow] = useState<string | null>(null);
 
   function toggleRow(id: string) {
     setOpenRow((current) => (current === id ? null : id));
-  }
-
-  function openRowAndScroll(id: string) {
-    setOpenRow(id);
-    window.setTimeout(() => {
-      document.getElementById(`settings-row-${id}`)?.scrollIntoView({ block: "start", behavior: "smooth" });
-    }, 80);
   }
 
   return (
@@ -2385,20 +2384,10 @@ function SettingsPanel({
           <small>可恢复历史删除流水</small>
           {trashCount > 0 && <span className="settings-tool-badge">{trashCount > 99 ? "99+" : trashCount}</span>}
         </button>
-        <button type="button" className="settings-tool-card tone-teal" onClick={() => openRowAndScroll("data")}>
-          <span className="settings-tool-icon"><Download size={18} /></span>
-          <strong>数据导出</strong>
-          <small>一键导出流水报表</small>
-        </button>
-        <button type="button" className="settings-tool-card tone-green" onClick={() => openRowAndScroll("data")}>
-          <span className="settings-tool-icon"><Upload size={18} /></span>
-          <strong>数据导入</strong>
-          <small>支付宝、微信等账单</small>
-        </button>
-        <button type="button" className="settings-tool-card tone-gold" onClick={() => openRowAndScroll("sync")}>
-          <span className="settings-tool-icon"><RefreshCw size={18} /></span>
-          <strong>数据同步</strong>
-          <small>云端/本地地址切换</small>
+        <button type="button" className="settings-tool-card tone-teal" onClick={onOpenData}>
+          <span className="settings-tool-icon"><Database size={18} /></span>
+          <strong>数据管理</strong>
+          <small>导出、导入与数据同步</small>
         </button>
       </div>
 
@@ -2425,7 +2414,51 @@ function SettingsPanel({
             <PushAlertPanel token={token} onToast={onToast} />
           </div>
         </SettingsRow>
-        <SettingsRow id="data" icon={Download} tone="teal" title="数据管理" subtitle="导入、导出和数据统计" open={openRow === "data"} onToggle={toggleRow}>
+        <SettingsRow id="about" icon={Info} tone="green" title="关于与更新" subtitle="当前版本与更新检查" open={openRow === "about"} onToggle={toggleRow}>
+          <AppVersionPanel onToast={onToast} />
+        </SettingsRow>
+      </div>
+    </section>
+  );
+}
+
+/** 数据管理子模块（二级页）：数据导出 / 数据导入 / 数据同步 三个分区，顶栏「返回」回设置页 */
+function DataView({
+  accounts,
+  categories,
+  transactions,
+  exportFormat,
+  exportFileType,
+  onExportFormatChange,
+  onExportFileTypeChange,
+  onExport,
+  onImportFile,
+  onImported,
+  onImportError
+}: {
+  accounts: Account[];
+  categories: Category[];
+  transactions: Transaction[];
+  exportFormat: ExportFormat;
+  exportFileType: ExportFileType;
+  onExportFormatChange: (format: ExportFormat) => void;
+  onExportFileTypeChange: (fileType: ExportFileType) => void;
+  onExport: () => void;
+  onImportFile: (file: File) => Promise<number>;
+  onImported: (count: number) => void;
+  onImportError: (error: unknown) => void;
+}) {
+  return (
+    <section className="settings-stack">
+      <div className="settings-section data-section">
+        <div className="data-section-head">
+          <span className="settings-row-icon tone-teal"><Download size={16} /></span>
+          <span className="settings-row-text">
+            <strong>数据导出</strong>
+            <small>一键导出流水与报表数据</small>
+          </span>
+        </div>
+        <div className="settings-section-body">
           <div className="form-stack data-tools-panel">
             <label>导出格式
               <select value={exportFormat} onChange={(event) => onExportFormatChange(event.target.value as ExportFormat)}>
@@ -2440,17 +2473,6 @@ function SettingsPanel({
             </label>
             <div className="data-actions">
               <button className="primary" type="button" onClick={onExport}><Download size={17} />导出账单</button>
-              <label className="primary import-button">
-                <Upload size={17} />
-                导入账单
-                <input type="file" accept=".csv,.tsv,.txt,.xls,.xlsx,.xlsm,text/csv,text/tab-separated-values,text/plain,text/html,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" hidden onChange={(event) => {
-                  const file = event.currentTarget.files?.[0];
-                  if (file) {
-                    void onImportFile(file).then(onImported).catch(onImportError);
-                  }
-                  event.currentTarget.value = "";
-                }} />
-              </label>
             </div>
             <div className="data-stat-strip">
               <span>{transactions.length} 笔流水</span>
@@ -2458,13 +2480,46 @@ function SettingsPanel({
               <span>{categories.length} 个分类</span>
             </div>
           </div>
-        </SettingsRow>
-        <SettingsRow id="sync" icon={RefreshCw} tone="gold" title="数据同步" subtitle="切换云端/本地同步地址" open={openRow === "sync"} onToggle={toggleRow}>
+        </div>
+      </div>
+
+      <div className="settings-section data-section">
+        <div className="data-section-head">
+          <span className="settings-row-icon tone-green"><Upload size={16} /></span>
+          <span className="settings-row-text">
+            <strong>数据导入</strong>
+            <small>支持支付宝、微信等账单</small>
+          </span>
+        </div>
+        <div className="settings-section-body">
+          <div className="form-stack data-tools-panel">
+            <label className="primary import-button">
+              <Upload size={17} />
+              选择账单文件导入
+              <input type="file" accept=".csv,.tsv,.txt,.xls,.xlsx,.xlsm,text/csv,text/tab-separated-values,text/plain,text/html,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" hidden onChange={(event) => {
+                const file = event.currentTarget.files?.[0];
+                if (file) {
+                  void onImportFile(file).then(onImported).catch(onImportError);
+                }
+                event.currentTarget.value = "";
+              }} />
+            </label>
+            <small className="sync-hint">支持 CSV / Excel 账单（支付宝、微信、随手记兼容格式等），导入的流水会进入正常流水列表。</small>
+          </div>
+        </div>
+      </div>
+
+      <div className="settings-section data-section">
+        <div className="data-section-head">
+          <span className="settings-row-icon tone-gold"><RefreshCw size={16} /></span>
+          <span className="settings-row-text">
+            <strong>数据同步</strong>
+            <small>切换云端/本地同步地址</small>
+          </span>
+        </div>
+        <div className="settings-section-body">
           <SyncSettingsPanel />
-        </SettingsRow>
-        <SettingsRow id="about" icon={Info} tone="green" title="关于与更新" subtitle="当前版本与更新检查" open={openRow === "about"} onToggle={toggleRow}>
-          <AppVersionPanel onToast={onToast} />
-        </SettingsRow>
+        </div>
       </div>
     </section>
   );
@@ -2602,7 +2657,7 @@ function SettingsRow({ id, icon: Icon, tone, title, subtitle, open, onToggle, ch
   return (
     <div className={`settings-section settings-row tone-${tone}${open ? " open" : ""}`} id={`settings-row-${id}`}>
       <button type="button" className="settings-row-head" aria-expanded={open} onClick={() => onToggle(id)}>
-        <span className="settings-row-icon"><Icon size={17} /></span>
+        <span className={`settings-row-icon tone-${tone}`}><Icon size={17} /></span>
         <span className="settings-row-text">
           <strong>{title}</strong>
           <small>{subtitle}</small>

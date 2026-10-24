@@ -190,6 +190,38 @@ main {
 .page-heading {
   flex: 1 1 12rem;
   min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+}
+
+.page-heading-text {
+  min-width: 0;
+}
+
+/* 二级子模块返回按钮（回收站/数据管理）：顶栏标题左侧，回设置页 */
+.back-button {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.1rem;
+  min-height: 2.2rem;
+  padding: 0.3rem 0.68rem 0.3rem 0.5rem;
+  border: 1px solid rgba(31, 95, 116, 0.18);
+  border-radius: 999px;
+  background: rgba(255, 252, 245, 0.72);
+  color: #1f5f74;
+  font-size: 0.82rem;
+  font-weight: 800;
+  transition: transform 0.12s ease, border-color 0.12s ease;
+}
+
+.back-button:hover {
+  border-color: rgba(31, 95, 116, 0.32);
+}
+
+.back-button:active {
+  transform: scale(0.95);
 }
 
 .app-heading {
@@ -1935,11 +1967,11 @@ input[type="month"],
   border-radius: 0.62rem;
 }
 
-.settings-row.tone-danger .settings-row-icon { background: rgba(212, 91, 63, 0.13); color: #c4512f; }
-.settings-row.tone-teal .settings-row-icon { background: rgba(31, 95, 116, 0.12); color: #1f5f74; }
-.settings-row.tone-green .settings-row-icon { background: rgba(47, 125, 79, 0.12); color: #2f7d4f; }
-.settings-row.tone-gold .settings-row-icon { background: rgba(214, 178, 94, 0.2); color: #a8874f; }
-.settings-row.tone-purple .settings-row-icon { background: rgba(138, 95, 176, 0.12); color: #8a5fb0; }
+.settings-row-icon.tone-danger { background: rgba(212, 91, 63, 0.13); color: #c4512f; }
+.settings-row-icon.tone-teal { background: rgba(31, 95, 116, 0.12); color: #1f5f74; }
+.settings-row-icon.tone-green { background: rgba(47, 125, 79, 0.12); color: #2f7d4f; }
+.settings-row-icon.tone-gold { background: rgba(214, 178, 94, 0.2); color: #a8874f; }
+.settings-row-icon.tone-purple { background: rgba(138, 95, 176, 0.12); color: #8a5fb0; }
 
 .settings-row-text {
   display: grid;
@@ -1964,6 +1996,16 @@ input[type="month"],
 
 .settings-row.open .settings-row-chevron {
   transform: rotate(90deg);
+}
+
+/* 数据管理子模块的分区头（图标 + 标题 + 副标题，常展开） */
+.data-section-head {
+  min-height: 3.1rem;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  gap: 0.7rem;
+  padding: 0.65rem 0.85rem 0.3rem;
 }
 
 .settings-section-body {
