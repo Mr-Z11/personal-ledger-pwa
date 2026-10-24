@@ -4,10 +4,14 @@ import { defineConfig } from "vite";
 import { VitePWA } from "vite-plugin-pwa";
 
 /** 构建版本：git 短 hash（CI 构建时是远端 commit）。用于设置页版本显示，
- *  排查「用户手机是否还是旧版」——iOS PWA 的 ServiceWorker 更新需重开生效，不可见时先对版本号 */
+ *  排查「用户手机是否还是旧版」——iOS PWA 的 ServiceWorker 更新需重开生效，不可见时先对版本号。
+ *  工作区有未提交改动时追加 -dirty：防止「先部署后提交」让版本号显示上一个 commit
+ *  （2026-10-24 踩过：部署的是新代码、版本号却是 21d8475，用户对不上号） */
 function buildVersion() {
   try {
-    return execSync("git rev-parse --short HEAD").toString().trim();
+    const hash = execSync("git rev-parse --short HEAD").toString().trim();
+    const dirty = execSync("git status --porcelain --untracked-files=no").toString().trim().length > 0;
+    return dirty ? `${hash}-dirty` : hash;
   } catch {
     return "dev";
   }

@@ -170,6 +170,7 @@ import {
   dayOfYear,
   daysInMonth,
   daysInYear,
+  entryChunkFromIndexHtml,
   inferCategoryIcon,
   isPlaceholderCategoryIcon,
   monthBudgetTotal,
@@ -221,6 +222,7 @@ import {
   type SalarySettings
 } from "./widgets";
 import { PlanView } from "./plan";
+import { SWIPE_EASE, useTabSwipe } from "./swipe";
 
 type View = "overview" | "entry" | "transactions" | "reports" | "plan" | "search" | "settings";
 type LedgerGroupMode = "day" | "month" | "year";
@@ -1760,8 +1762,6 @@ function triggerHaptic(pattern: VibratePattern = 8) {
  * 视觉提示：左侧滑入的箭头（EdgeBackHint），随手指位移淡入。
  */
 const EDGE_SWIPE = { EDGE: 32, START: 12, RATIO: 1.3, THRESHOLD: 72, MAX: 64, COMMIT: 260, CANCEL: 320 };
-/** iOS 默认的减速/弹性曲线（cubic-bezier(.32,.72,0,1)），松手后的滑入/回弹都用它 */
-const SWIPE_EASE = "cubic-bezier(.32,.72,0,1)";
 
 function useEdgeSwipeBack({ enabled, onBack }: { enabled: boolean; onBack: () => void }) {
   const ref = useRef<HTMLElement | null>(null);
@@ -3842,8 +3842,14 @@ function SettingsRow({ icon: Icon, tone, title, subtitle, onClick }: {
 }
 
 /** 版本与更新：显示构建版本（git 短 hash + 构建时间），支持手动检查更新。
- *  排查「手机是不是旧版」的权威依据——iOS PWA 的 ServiceWorker 自动更新
- *  要重开才生效，用户反馈「功能没实现」时先对这里的版本号。 */
+ *  排查「手机是不是旧版」的权威依据——用户反馈「功能没实现」时先对这里的版本号。
+ *
+ *  为什么需要「硬更新」兜底：iOS PWA 的 ServiceWorker 更新有节流，冷启动自动 update()
+ *  常常拉不到新 sw.js，表现为「部署了新版本、重开 N 次也还是旧版」（2026-10-24 实测：
+ *  两次部署都没到达手机）。所以按钮点击后：先探测服务器最新入口 chunk 与当前运行版对比，
+ *  有新版则先走软路径（update() 等新 SW 激活，由 main.tsx 的 controllerchange 自动刷新），
+ *  软路径 2.6 秒没等到就直接硬更新——注销 SW + 清缓存 + 刷新，重开后重新预缓存新版，
+ *  一次点击彻底替代「划掉重开两次」。 */
 function AppVersionPanel({ onToast }: { onToast: (message: string) => void }) {
   const [checking, setChecking] = useState(false);
   const [msg, setMsg] = useState("");
@@ -3858,21 +3864,45 @@ function AppVersionPanel({ onToast }: { onToast: (message: string) => void }) {
     }
   })();
 
+  /** 当前页面正在运行的入口 chunk 文件名：页面可能正被旧 ServiceWorker 的预缓存 serve，
+   *  DOM 里的 script src 就是旧版铁证（与「服务器最新入口名」对比即可判定要不要更新） */
+  const runningEntryName = () => {
+    const script = document.querySelector<HTMLScriptElement>('script[src*="/assets/index-"]');
+    return script?.getAttribute("src")?.split("/").pop() ?? null;
+  };
+
   async function checkUpdate() {
     if (!("serviceWorker" in navigator)) {
       onToast("当前环境不支持自动更新");
       return;
     }
     setChecking(true);
-    setMsg("");
+    setMsg("正在检查更新…");
     try {
+      // 带 query 的 fetch 绕过 SW 预缓存（precache 只精确匹配无 query 的 URL），拿到服务器最新 index.html
+      const probe = await fetch(`/index.html?update-probe=${Date.now()}`, { cache: "no-store" });
+      if (!probe.ok) throw new Error(`probe ${probe.status}`);
+      const latestEntry = entryChunkFromIndexHtml(await probe.text());
+      const runningEntry = runningEntryName();
+      if (latestEntry && runningEntry && latestEntry === runningEntry) {
+        setChecking(false);
+        setMsg(`已是最新版本（${__APP_VERSION__}）`);
+        return;
+      }
       const registration = await navigator.serviceWorker.ready;
-      await registration.update();
-      setMsg("检查完成；若有新版本会自动下载并刷新（无新版本则保持现状）");
+      // 软路径：让浏览器拉取最新 sw.js，装好后 main.tsx 的 controllerchange 会自动刷新
+      const foundNewWorker = await waitForNewWorker(registration, 2600);
+      if (foundNewWorker) {
+        setMsg("发现新版本，正在切换…");
+        window.setTimeout(() => window.location.reload(), 900); // 兜底：个别环境 controllerchange 不触发
+        return; // checking 保持 true，页面即将刷新
+      }
+      // 软路径没等到（iOS 更新节流等）→ 硬更新
+      setMsg("正在刷新到最新版本…");
+      await hardRefresh();
     } catch {
-      setMsg("检查失败，请稍后重试");
-    } finally {
       setChecking(false);
+      setMsg("检查失败：网络不通或服务未响应，请稍后重试");
     }
   }
 
@@ -3891,9 +3921,63 @@ function AppVersionPanel({ onToast }: { onToast: (message: string) => void }) {
         {checking ? "检查中…" : "检查更新"}
       </button>
       {msg && <small className="sync-hint">{msg}</small>}
-      <small className="sync-hint">更新为自动下载：点「检查更新」后若拉到新版本会自动刷新；没反应的话把应用划掉重开一次。</small>
+      <small className="sync-hint">点「检查更新」会立即比对服务器最新版并刷新过去；网络不通时保留当前版本可继续使用。</small>
     </div>
   );
+}
+
+/** 等新的 ServiceWorker 就位：updatefound → installing → installed/activated，
+ *  或已处于 waiting。超时（默认 2.6s，覆盖 iOS 更新节流的场景）返回 false。 */
+function waitForNewWorker(registration: ServiceWorkerRegistration, timeout: number): Promise<boolean> {
+  return new Promise((resolve) => {
+    let settled = false;
+    const cleanup = () => {
+      window.clearTimeout(timer);
+      registration.removeEventListener("updatefound", onUpdateFound);
+      navigator.serviceWorker.removeEventListener("controllerchange", onControllerChange);
+    };
+    const done = (value: boolean) => {
+      if (settled) return;
+      settled = true;
+      cleanup();
+      resolve(value);
+    };
+    const onUpdateFound = () => {
+      const installing = registration.installing;
+      if (!installing) {
+        done(false);
+        return;
+      }
+      installing.addEventListener("statechange", () => {
+        if (installing.state === "installed" || installing.state === "activated") done(true);
+      });
+    };
+    const onControllerChange = () => done(true);
+    const timer = window.setTimeout(() => done(false), timeout);
+    registration.addEventListener("updatefound", onUpdateFound);
+    navigator.serviceWorker.addEventListener("controllerchange", onControllerChange);
+    if (registration.waiting) {
+      done(true);
+      return;
+    }
+    void registration.update().catch(() => undefined);
+  });
+}
+
+/** 硬更新：注销全部 ServiceWorker + 清空 Cache Storage + 刷新。
+ *  重开后页面从网络拿最新 index.html 并重新预缓存，彻底绕开 iOS 的 SW 更新节流。
+ *  两个坑（2026-10-24 实测）：① 导航必须带 query——location.reload() 会吃浏览器
+ *  对 / 的启发式缓存，又拿回旧 index.html；location.replace 不堆 history。
+ *  ② unregister 后不能立刻导航——旧 SW 对紧随其后的导航仍有拦截竞态，
+ *  等 600ms 让它完全退出，否则刷新后还是旧版。 */
+async function hardRefresh() {
+  const registrations = await navigator.serviceWorker.getRegistrations();
+  await Promise.all(registrations.map((registration) => registration.unregister()));
+  if (typeof caches !== "undefined") {
+    const keys = await caches.keys();
+    await Promise.all(keys.map((key) => caches.delete(key)));
+  }
+  window.setTimeout(() => window.location.replace(`/?hard-refresh=${Date.now()}`), 600);
 }
 
 function SyncSettingsPanel() {
@@ -4550,10 +4634,18 @@ function Reports({ transactions, accounts, categories, budgets, analysisNotes, o
     setSelectedTotalTrendIndex(totalExpenseTrendData.length > 0 ? totalExpenseTrendData.length - 1 : null);
   }, [expenseTrendAnchorMonth, totalExpenseTrendData.length]);
 
+  // 周期切换（月/年/具体月份变化）时重置回基础统计；挂载首次不带动画（ref 跳过），
+  // 否则每次进报表页都白播一次滑入动画、还多一次重渲染
+  const reportResetDone = useRef(false);
   useEffect(() => {
+    if (!reportResetDone.current) {
+      reportResetDone.current = true;
+      setReportTab("basic");
+      return;
+    }
     setDetailTransaction(null);
     setReportSubStack([]);
-    setReportTab("basic");
+    switchReportTab("basic");
   }, [month, period, selectedYear]);
 
   const reportToolbar = (
@@ -4608,6 +4700,23 @@ function Reports({ transactions, accounts, categories, budgets, analysisNotes, o
 
   const visibleReportTabs = REPORT_TABS.filter((tab) => period === "month" || !tab.monthOnly);
   const activeReportTab = visibleReportTabs.some((tab) => tab.id === reportTab) ? reportTab : "basic";
+
+  /** 模块签左右滑动切换（内容区横滑切上/下一个签）。motion 记录方向+序号：
+   *  序号进 key 让内容层重挂载，入场动画才能重放；首屏 seq=0 不播动画。 */
+  const [reportTabMotion, setReportTabMotion] = useState<{ seq: number; dir: "left" | "right" }>({ seq: 0, dir: "left" });
+  const switchReportTab = (id: ReportTabId) => {
+    const from = visibleReportTabs.findIndex((tab) => tab.id === activeReportTab);
+    const to = visibleReportTabs.findIndex((tab) => tab.id === id);
+    setReportTabMotion((prev) => ({ seq: prev.seq + 1, dir: to >= from ? "left" : "right" }));
+    setReportTab(id);
+  };
+  const reportTabSwipe = useTabSwipe({
+    enabled: reportSub === null && detailTransaction === null,
+    count: visibleReportTabs.length,
+    index: Math.max(0, visibleReportTabs.findIndex((tab) => tab.id === activeReportTab)),
+    onChange: (next) => switchReportTab(visibleReportTabs[next].id),
+    resetKey: reportTabMotion.seq
+  });
 
   return (
     <section className="report-page" ref={reportSwipe.ref as React.RefObject<HTMLElement>}>
@@ -4709,13 +4818,19 @@ function Reports({ transactions, accounts, categories, budgets, analysisNotes, o
                 type="button"
                 className={`page-tab ${activeReportTab === tab.id ? "active" : ""}`.trim()}
                 aria-current={activeReportTab === tab.id ? "page" : undefined}
-                onClick={() => setReportTab(tab.id)}
+                onClick={() => switchReportTab(tab.id)}
               >
                 {tab.label}
               </button>
             ))}
           </nav>
 
+          <div
+            className="tab-swipe-body"
+            ref={reportTabSwipe.bodyRef}
+            key={`report-tab-${reportTabMotion.seq}`}
+            data-swipe={reportTabMotion.seq === 0 ? undefined : reportTabMotion.dir}
+          >
           {activeReportTab === "basic" && (
             <>
               <div className="report-context-anchor" aria-label="当前报表数据范围">
@@ -4945,6 +5060,7 @@ function Reports({ transactions, accounts, categories, budgets, analysisNotes, o
               )}
             </>
           )}
+          </div>
         </>
       )}
       {detailTransaction && (

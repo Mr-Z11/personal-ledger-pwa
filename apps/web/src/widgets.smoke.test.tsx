@@ -27,6 +27,7 @@ import { PlanView, loadInsuranceSchedule, parseInsuranceText, saveInsuranceSched
 import {
   inferCategoryIcon,
   isPlaceholderCategoryIcon,
+  entryChunkFromIndexHtml,
   markAllPurged,
   markPurged
 } from "./utils";
@@ -525,5 +526,22 @@ describe("现有分类自动补图标（inferCategoryIcon）", () => {
     expect(isPlaceholderCategoryIcon("")).toBe(true);
     expect(isPlaceholderCategoryIcon(null)).toBe(true);
     expect(isPlaceholderCategoryIcon("utensils")).toBe(false);
+  });
+});
+
+describe("版本更新探测（entryChunkFromIndexHtml）", () => {
+  it("从 index.html 解析主入口 chunk 名", () => {
+    expect(entryChunkFromIndexHtml('<script src="/assets/index-D0JzeQAq.js" defer></script>')).toBe("index-D0JzeQAq.js");
+  });
+
+  it("兼容 crossorigin / type=module / 相对路径", () => {
+    expect(entryChunkFromIndexHtml('<script type="module" crossorigin src="./assets/index-abc123.js"></script>')).toBe("index-abc123.js");
+    expect(entryChunkFromIndexHtml('<script src="https://ledger.example.com/assets/index-Xy9.js?t=1" defer></script>')).toBe("index-Xy9.js");
+  });
+
+  it("取不到返回 null（空串 / 无入口 script）", () => {
+    expect(entryChunkFromIndexHtml("")).toBeNull();
+    expect(entryChunkFromIndexHtml("<html><body>no script</body></html>")).toBeNull();
+    expect(entryChunkFromIndexHtml('<script src="/assets/App-CDPhU4g-.js"></script>')).toBeNull();
   });
 });

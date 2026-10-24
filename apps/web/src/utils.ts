@@ -342,3 +342,13 @@ export function inferCategoryIcon(name: string): string | null {
   }
   return null;
 }
+
+/* ==================== 版本更新探测 ==================== */
+/** 从 index.html 里解析主入口 chunk 文件名（assets/index-*.js）。
+ *  「检查更新」时用它对比「服务器最新版」与「当前运行版」——
+ *  页面可能正被旧 ServiceWorker 的预缓存 serve，DOM 里的入口名就是旧版铁证。
+ *  取不到返回 null。 */
+export function entryChunkFromIndexHtml(html: string): string | null {
+  const match = /<script[^>]+src="[^"]*\/assets\/(index-[^"'/]+\.js)/i.exec(html ?? "");
+  return match ? match[1] : null;
+}

@@ -2338,6 +2338,41 @@ button.settings-section {
   gap: 0.6rem;
 }
 
+/* 模块签左右滑动切换（报表/规划）：内容层跟手位移 + 切换入场动画。
+   注意：transform 只能加在这层（签条之外）——transform 创建包含块，
+   会让 .page-tabs 的 position:sticky 失效（历史坑：吸顶标题条同理）。 */
+.tab-swipe-body {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+}
+
+.tab-swipe-body[data-swipe="left"] {
+  animation: tab-swipe-in-left 260ms cubic-bezier(.32, .72, 0, 1);
+}
+
+.tab-swipe-body[data-swipe="right"] {
+  animation: tab-swipe-in-right 260ms cubic-bezier(.32, .72, 0, 1);
+}
+
+@keyframes tab-swipe-in-left {
+  from { transform: translateX(28px); opacity: 0.35; }
+  to { transform: none; opacity: 1; }
+}
+
+@keyframes tab-swipe-in-right {
+  from { transform: translateX(-28px); opacity: 0.35; }
+  to { transform: none; opacity: 1; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .tab-swipe-body[data-swipe="left"],
+  .tab-swipe-body[data-swipe="right"] {
+    animation: none;
+  }
+}
+
 /* 回收站 */
 .trash-panel {
   display: grid;

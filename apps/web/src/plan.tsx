@@ -13,6 +13,7 @@ import {
   shortMonthLabel
 } from "./utils";
 import { collectRegularExpenses, InfoTip } from "./widgets";
+import { useTabSwipe } from "./swipe";
 
 /* ------------------------------------------------------------------ */
 /* 规划页：基于历史数据 + 去年同期（主权重）的未来支出预测（纯规则，无 AI） */
@@ -281,6 +282,21 @@ export function PlanView({ transactions, categories, budgets }: {
 
   const [insuranceItems, setInsuranceItems] = useState<InsuranceItem[]>(() => loadInsuranceSchedule());
   const [planTab, setPlanTab] = useState<PlanTabId>("overview");
+  /** 模块签左右滑动切换（内容区横滑切上/下一个签）；motion 方向+序号供入场动画重放 */
+  const [planTabMotion, setPlanTabMotion] = useState<{ seq: number; dir: "left" | "right" }>({ seq: 0, dir: "left" });
+  const switchPlanTab = (id: PlanTabId) => {
+    const from = PLAN_TABS.findIndex((tab) => tab.id === planTab);
+    const to = PLAN_TABS.findIndex((tab) => tab.id === id);
+    setPlanTabMotion((prev) => ({ seq: prev.seq + 1, dir: to >= from ? "left" : "right" }));
+    setPlanTab(id);
+  };
+  const planTabSwipe = useTabSwipe({
+    enabled: true,
+    count: PLAN_TABS.length,
+    index: PLAN_TABS.findIndex((tab) => tab.id === planTab),
+    onChange: (next) => switchPlanTab(PLAN_TABS[next].id),
+    resetKey: planTabMotion.seq
+  });
   const scheduleConfigured = insuranceItems.length > 0;
   const histInsAvgCents = useMemo(
     () => historyInsuranceMonthlyAvg(transactions, categories, historyEndKey),
@@ -415,13 +431,19 @@ export function PlanView({ transactions, categories, budgets }: {
             type="button"
             className={`page-tab ${planTab === tab.id ? "active" : ""}`.trim()}
             aria-current={planTab === tab.id ? "page" : undefined}
-            onClick={() => setPlanTab(tab.id)}
+            onClick={() => switchPlanTab(tab.id)}
           >
             {tab.label}
           </button>
         ))}
       </nav>
 
+      <div
+        className="tab-swipe-body"
+        ref={planTabSwipe.bodyRef}
+        key={`plan-tab-${planTabMotion.seq}`}
+        data-swipe={planTabMotion.seq === 0 ? undefined : planTabMotion.dir}
+      >
       {planTab === "overview" && (
       <div className="plan-kpi-grid four">
         <article className="plan-kpi">
@@ -696,6 +718,7 @@ export function PlanView({ transactions, categories, budgets }: {
         </div>
       </details>
       )}
+      </div>
     </section>
   );
 }
