@@ -8,7 +8,7 @@
 - **云端 47.74.3.104 自 2026-08-29 失效**（80/443 全关、SSH host key 变更，归属待确认）→ `deploy/update-server.sh` 暂不可用。**本地 Mac 栈是当前唯一活跃环境**。
 - 本地栈 `docker-compose.local.yml` = `postgres-local` + `api-local` + `caddy-local`；入口 `https://localhost:8443/api`（Caddy 自签证书，需一次性装 `~/Desktop/Caddy-Local-CA.crt` 到钥匙串，否则浏览器 fetch 被 TLS 拦）。
 - 三容器当前均 Up；`api-local` 用**只读 bind-mount** 挂本机 `apps/api/dist`（见 §3）。
-- git：远端 `origin/main` 需推送本次 `f5637bc`（HEAD = `f5637bc`）。推送走 `python3 scripts/api-push-main.py`（见 §5）。
+- git：远端 `origin/main` 与本地一致（HEAD = `1b6cb81`，含 `f5637bc` 回收站优化 + 左滑返回跟手）。推送走 `python3 scripts/api-push-main.py`（见 §5）。
 
 ## 2. 近期变更（2026-10-20 ~ 24，均已推送 origin/main）
 
