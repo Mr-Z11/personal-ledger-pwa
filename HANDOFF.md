@@ -3,14 +3,14 @@
 > 本文件是本项目**唯一需要每次会话维护的活跃交接/计划文档**（已合并原 task_plan.md / findings.md / progress.md / HANDOFF.md 四个增长型文件）。
 > 长期蒸馏知识看 `.workbuddy/memory/MEMORY.md`；逐日会话历史看 `.workbuddy/memory/YYYY-MM-DD.md`；架构与数据安全看 `AGENTS.md`（会被 IDE 自动注入）；静态项目说明看 `docs/codex-handoff.md`。更早的完整历史在 git 记录里（`git log` / `git show <commit>:findings.md`）。
 
-## 1. 当前状态（2026-10-23）
+## 1. 当前状态（2026-10-24）
 
 - **云端 47.74.3.104 自 2026-08-29 失效**（80/443 全关、SSH host key 变更，归属待确认）→ `deploy/update-server.sh` 暂不可用。**本地 Mac 栈是当前唯一活跃环境**。
 - 本地栈 `docker-compose.local.yml` = `postgres-local` + `api-local` + `caddy-local`；入口 `https://localhost:8443/api`（Caddy 自签证书，需一次性装 `~/Desktop/Caddy-Local-CA.crt` 到钥匙串，否则浏览器 fetch 被 TLS 拦）。
 - 三容器当前均 Up；`api-local` 用**只读 bind-mount** 挂本机 `apps/api/dist`（见 §3）。
-- git：远端 `origin/main` 与本地一致（HEAD 见 `git log -1`）。推送走 `python3 scripts/api-push-main.py`（见 §5）。
+- git：远端 `origin/main` 与本地一致（HEAD = `e12c02c`）。推送走 `python3 scripts/api-push-main.py`（见 §5）。
 
-## 2. 近期变更（2026-10-20 ~ 23，均已推送 origin/main）
+## 2. 近期变更（2026-10-20 ~ 24，均已推送 origin/main）
 
 | Commit | 内容 |
 |--------|------|
@@ -32,6 +32,7 @@
 | `04ad337` | **计划购买添加即提示删除 + 剩余天数按实际日历 + 版本号根治旧版争议**：① 删除「余额够时添加计划购买即弹本地通知」（`maybeNotifyPlanBuy` 全套）——根因：`affordable` 数组每次渲染新引用 → useEffect 每次渲染触发；② `BudgetReservoir.daysLeft` 从 `totalDays - today + 1`（含今天）改为 `totalDays - today`（实际日历剩余，`Math.max(1,…)`）；③ **vite define 注入 `__APP_VERSION__`（git 短 hash）+ `__BUILD_TIME__`**，设置页新增「关于与更新」区块（版本号+构建时间+「检查更新」按钮调 `registration.update()`）；④ main.tsx 冷启动 `registration.update()` + `controllerchange` 自动 reload（首次安装不触发）。用 playwright-core + 本机 `chromium_headless_shell-1208` 移动视口 390×844 复现验证吸顶：`{"stuck":true,"pos":"fixed","top":0}`、滚出正确释放——代码在 Chromium 完全正常，判定用户手机为旧版 PWA，靠版本号+检查更新根治「是否旧版」争议。冒烟 31 通过，已部署 |
 | `fdb20dc` | **修复吸顶标题条切换抖动**（用户确认吸顶已生效后反馈「固定支出→计划购买切换过程画面抖动」）：根因是标题条切 `position:fixed` 脱离文档流→下方内容瞬移一个标题条高度（~81px）→ `panel.bottom` 跟着跳→而吸顶判断恰依赖 `panel.bottom`→边界处「吸上→内容跳→判定松开→内容跳回」振荡。修复：`useStickyHeading` 增加**占位元素**（`.chart-heading-spacer`，React 渲染在标题条前）——切换时先量标题条在流中时下方内容位置、加 fixed class 后再量，差值设为占位高度（同步完成无绘制中间态），切换前后布局零变化，振荡根除；另有吸顶中标题条自身高度变化（文字换行）自动重量、resize 回自然布局重量。playwright 390×844 验证：189 步慢滚**布局零位移**（marker 每步精确跟随滚动量）、class 翻转 2 次无振荡、fixed/top:0/占位 81px；**负面对照**（旧代码构建到 :8444）：9 处 ~81px 跳动 + 边界 6 连抖。已部署已推送 |
 | `af23740` | **吸顶方案从 JS `position:fixed` 彻底改为原生 CSS `position:sticky`**（用户反馈上一版「翻到最底部慢速上滑卡住、页面在底部跳动、快速滑无碍」）：根因是 `position:fixed` 标题条在底部进出时，iOS Safari 的滚动锚定/橡皮筋会对文档高度变化做重锚定 re-pin，慢速上滑被困在底部反复跳（Chromium 不复现，纯 iOS 行为）。修复：**整段删除 `useStickyHeading` hook + `.chart-heading-spacer` 占位 + fixed 方案**，标题条直接 `position:sticky;top:0`（在文档流内，零布局位移、零文档高度变化、零重锚定）。依赖 `html/body` 的 `overflow-x:clip`（`@supports` 启用，不建滚动容器，sticky 正常——这正是 `0a39f19` 修好的前提）。playwright 390×844 验证：`fe/pb` 两标题条 `position:sticky`、吸顶+释放区间正常、**全程文档高度变化 0**、**底部慢速上滑回跳 0**、零控制台错误。彻底同时根除「跨模块切换抖动」与「底部跳动」两类问题。已部署已推送 |
+| `e12c02c` | **设置页改版随手记风格 + 流水回收站**（用户给了两张随手记设置页截图，要求清爽 UI 且「流水回收站最好要有」）：① 设置页重构——顶部 2×2 工具卡网格（流水回收站/数据导出/数据导入/数据同步，彩色图标砖+副标题+待恢复数量角标）+「基础功能」列表行（账户/预算/分类/提醒设置/数据管理/数据同步/关于与更新），白卡圆角+chevron，受控手风琴同时只展开一个分区；工具卡点击展开对应分区并 smooth scroll；工资日+当日限额两分区合并为「提醒设置」一行。② 回收站从「不可达的孤儿视图」变完整功能：列表按删除时间倒序（显示删除时间/原日期/账户），每行**恢复**（软删除回转走既有 outbox 同步）/ **彻底删除**，头部**清空回收站**（批量），均 confirm。③ 彻底删除打通服务端：shared `Transaction.purge?: boolean`（仅存在于同步载荷）+ `/sync/push` 遇 purge 即 `deleteMany` 硬删除——软删除行留在快照里 pull 后会复活回回收站，必须硬删除；本地 Dexie 直接删行+outbox 打 purge 标记；`utils.ts markPurged/markAllPurged` + 冒烟 +2（共 33）。④ 修 viewTitle 对 trash 显示「回收站」（原来回退「总览」）。已部署（api force-recreate + caddy force-recreate），playwright 390×844 验证零 JS 报错 |
 
 ## 3. 发布流程（本地栈）
 
@@ -48,6 +49,8 @@
 - **键盘遮挡用双信号**：focusin/focusout **或** visualViewport 占屏；`focusout` 乐观清除（不依赖 resize 异步回调，部分 WKWebView 收起不报 resize）。
 - **GHCR 镜像拉取不稳**：本机 colima VM 对 GHCR blob CDN（`pkg-containers.githubusercontent.com`）偶发 `TLS handshake timeout`（注册表 API 通、blob 不通）。所以后端改用 bind-mount 上线；若后端新增 npm 依赖，仍需更新镜像内 node_modules（拉新镜像或本地 build）。真要拉镜像：`docker pull --platform linux/amd64 ghcr.io/mr-z11/personal-ledger-pwa-api:main`（网络恢复后）。
 - **过期 PushSubscription 会报 `VapidPkHashMismatch`**：旧订阅用旧 VAPID 密钥创建，发送必失败（调度器仍向匹配的活跃订阅送达）。2026-10-21 已删 2026-08-15 那条，仅剩 2026-10-15 活跃订阅 `9cf22541-…`。
+- **后端 bind-mount 上线必须 `--force-recreate api-local`**：配置没变时 `up -d` 不重建容器，Node 进程仍在跑旧代码（表现为容器 Up N days、新 dist 不生效）。
+- **彻底删除不能只发软删除**：软删除行仍在 `/sync/pull` 快照里，pull 后会复活回回收站；必须打 `purge` 标记让服务端 `deleteMany` 硬删除（见 MEMORY.md「流水回收站」节）。
 - **Caddy dist 悬空**：dist 被 mv/重建后普通 `up -d` 不重建容器 → 容器内 `Operation not permitted`、页面 403；需 `--force-recreate`（仅当 mv 了目录；原地重建不必）。
 - 其余（本地备份 launchd、colima DNS/代理排查、BigInt、浮层 portal、业务模型两层预算等）见 `MEMORY.md`。
 
@@ -59,7 +62,8 @@
 
 ## 6. 当前待办 / 待确认
 
-- **手机实测（关键）**：① **底部慢速上滑回访**（版本 `af23740`，吸顶改原生 CSS `position:sticky`）：翻到最底部→慢慢往上滑，确认不再卡在底部跳动、页面可顺畅上滑（已用无头 Chromium 验证：全程文档高度变化 0、底部慢速上滑回跳 0）。同时确认固定支出↔计划购买切换时标题条吸顶+释放正常、无抖动。② 晚上 19:00 **不打开 App** 是否自动收到一条正反馈（验证服务端 web push 主动推送）；已订阅时本地不再重复弹通知。若没收到，让用户在手机 PWA 设置→当日限额提醒里重新「开启手机推送」刷新订阅。③ 记账后右上角标题徽章出现同步小角标（绿点+待同步数量），同步完成后消失；点角标能立即同步；记账全流程（金额输入/选分类/保存）不受任何浮层影响。④ 固定支出页「最低固定支出」：填一个浮动金额，确认「每月最低支出 = 固定项合计 + 浮动金额」实时变化、刷新后不丢。⑤ 日常/总开支两卡的剩余天数应为实际日历口径（今天 10/23 → 8 天，含今天会显示 9）。
+- **手机实测（2026-10-24 新版，关键）**：① 设置页整体观感是否达到「清爽」预期（工具卡网格+列表行）；② 删一笔流水 → 设置页回收站卡出现角标数字 → 进回收站恢复/彻底删除/清空是否正常；③ 彻底删除后同步一遍（点右上角角标），确认不会从云端快照复活；④ 设置页「关于与更新」核对版本号 = `e12c02c`（划掉重开两次即更新）。
+- 历史待验证项（版本 `af23740` 起）：底部慢速上滑不再卡底部跳动；19:00 不打开 App 是否收到正反馈 web push；日常/总开支两卡剩余天数为实际日历口径。
 - 可选：VM 网络恢复后 `docker pull` 正确 GHCR 镜像并移除 bind-mount（回归镜像部署）。
 - findings.md 里的 P0「reliable-sync 工作包」（串行化 syncNow、逐行 ack outbox、启动先 flush 再 pull）尚未实施，是后续可靠性改进首选。
 
