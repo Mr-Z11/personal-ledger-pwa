@@ -24,6 +24,7 @@ import {
   saveSalarySettings
 } from "./widgets";
 import { PlanView, loadInsuranceSchedule, parseInsuranceText, saveInsuranceSchedule } from "./plan";
+import { markAllPurged, markPurged } from "./utils";
 
 beforeAll(() => {
   const store = new Map<string, string>();
@@ -368,5 +369,23 @@ describe("当日限额全屏警告文案", () => {
     );
     expect(html).toContain("今日消费已到日限额");
     expect(html).toContain("误差线内，还没超");
+  });
+});
+
+describe("回收站彻底删除（purge）", () => {
+  const deleted = { ...tx("t-purge", 66, `${thisMonth}-10T12:00:00.000+08:00`), deletedAt: new Date().toISOString() };
+
+  it("单笔打 purge 标记，其余字段原样保留", () => {
+    const payload = markPurged(deleted);
+    expect(payload.purge).toBe(true);
+    expect(payload.id).toBe("t-purge");
+    expect(payload.amountCents).toBe(deleted.amountCents);
+    expect(payload.deletedAt).toBe(deleted.deletedAt);
+  });
+
+  it("批量全部打标记且不改原数组", () => {
+    const payload = markAllPurged([deleted, tx("t-purge-2", 12, `${thisMonth}-11T12:00:00.000+08:00`)]);
+    expect(payload.every((item) => item.purge === true)).toBe(true);
+    expect(deleted.purge).toBeUndefined();
   });
 });

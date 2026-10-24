@@ -34,6 +34,8 @@ export interface Transaction extends LedgerEntity {
   note?: string | null;
   merchant?: string | null;
   tags: string[];
+  /** 彻底删除标记（回收站「彻底删除」）：仅存在于 outbox 同步载荷，服务端收到后硬删除该行，本地不入库 */
+  purge?: boolean;
 }
 
 export type BudgetScope = "daily" | "total";

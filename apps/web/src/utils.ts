@@ -194,3 +194,12 @@ export function aggregateCategoryExpenses(transactions: Transaction[], categorie
 export function categoryBudgetCents(budgets: Budget[], month: string, categoryId: string | null) {
   return budgets.find((budget) => budget.month === month && (budget.categoryId ?? null) === categoryId)?.amountCents ?? 0;
 }
+
+/** 回收站「彻底删除」：给同步载荷打 purge 标记（服务端硬删除该行；软删除的 deletedAt 不足以让它从快照里消失） */
+export function markPurged(item: Transaction): Transaction {
+  return { ...item, purge: true };
+}
+
+export function markAllPurged(items: Transaction[]): Transaction[] {
+  return items.map(markPurged);
+}

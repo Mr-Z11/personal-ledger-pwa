@@ -377,6 +377,11 @@ export async function buildApp(): Promise<FastifyInstance> {
       });
     }
     for (const item of payload.transactions ?? []) {
+      // 回收站「彻底删除」：硬删除（软删除的 deletedAt 标记不足以让它从快照里消失）
+      if (item.purge) {
+        await prisma.transaction.deleteMany({ where: { id: item.id, ledgerId: ledger.id } });
+        continue;
+      }
       const { id, updatedAt, deletedAt, version: _version, occurredAt, ...data } = item;
       await prisma.transaction.upsert({
         where: { id },

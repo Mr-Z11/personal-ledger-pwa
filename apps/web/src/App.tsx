@@ -21,24 +21,30 @@ import {
   Bell,
   BellRing,
   CalendarClock,
+  ChevronRight,
   Cloud,
   CloudOff,
   Download,
   FolderPlus,
   Home,
+  Info,
   ListFilter,
   LogOut,
   Pencil,
   PieChartIcon,
   Plus,
   RefreshCw,
+  RotateCcw,
   Search,
   Settings2,
+  Tag,
+  Target,
+  Trash2,
   TrendingDown,
   TrendingUp,
-  Trash2,
   Undo2,
   Upload,
+  Wallet,
   X
 } from "lucide-react";
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
@@ -64,6 +70,8 @@ import {
   monthBudgetTotal,
   monthLabel,
   monthTotalBudgetCents,
+  markAllPurged,
+  markPurged,
   offsetMonthKey,
   percentDelta,
   previousMonthKeys,
@@ -384,6 +392,7 @@ function otherCategory(categories: Category[], kind: Category["kind"]) {
 
 function viewTitle(view: View) {
   if (view === "entry") return "记一笔";
+  if (view === "trash") return "回收站";
   return navItems.find((item) => item.id === view)?.label ?? "总览";
 }
 
@@ -639,6 +648,7 @@ export function App() {
   const activeAccounts = useMemo(() => activeOnly(accounts), [accounts]);
   const activeCategories = useMemo(() => activeOnly(categories), [categories]);
   const activeTransactions = useMemo(() => activeOnly(transactions), [transactions]);
+  const deletedTransactions = useMemo(() => transactions.filter((item) => item.deletedAt), [transactions]);
   const activeBudgets = useMemo(() => activeOnly(budgets), [budgets]);
   const activeAnalysisNotes = useMemo(() => activeOnly(analysisNotes), [analysisNotes]);
   const activePlannedPurchases = useMemo(() => activeOnly(plannedPurchases), [plannedPurchases]);
@@ -901,6 +911,25 @@ export function App() {
     if (!isLocalPreview && navigator.onLine) void syncNow();
   }
 
+  /** 回收站「彻底删除」单笔：本地 Dexie 直接删行，outbox 打 purge 标记让服务端硬删除 */
+  async function purgeTransaction(item: Transaction) {
+    await db.transactions.delete(item.id);
+    await enqueue({ transactions: [markPurged(item)] });
+    await refreshLocal();
+    if (!isLocalPreview && navigator.onLine) void syncNow();
+    setToast("流水已彻底删除");
+  }
+
+  /** 清空回收站：批量删行 + 一条 purge 载荷推服务端 */
+  async function clearTrash() {
+    if (deletedTransactions.length === 0) return;
+    await db.transactions.bulkDelete(deletedTransactions.map((item) => item.id));
+    await enqueue({ transactions: markAllPurged(deletedTransactions) });
+    await refreshLocal();
+    if (!isLocalPreview && navigator.onLine) void syncNow();
+    setToast(`回收站已清空（${deletedTransactions.length} 笔）`);
+  }
+
   const openEntry = useCallback(() => {
     setView("entry");
     setEntryFocusSignal((value) => value + 1);
@@ -1128,16 +1157,25 @@ export function App() {
             }}
             token={token}
             onToast={setToast}
+            trashCount={deletedTransactions.length}
+            onOpenTrash={() => setView("trash")}
             onSaveCategory={(item) => saveLocalAndQueue("categories", item)}
             onDeleteCategories={(items) => saveManyLocalAndQueue("categories", items)}
           />
         )}
         {view === "trash" && (
-          <Trash transactions={transactions.filter((item) => item.deletedAt)} accounts={accounts} categories={categories} onRestore={async (item) => {
-            const restored = { ...item, deletedAt: null, updatedAt: new Date().toISOString(), version: item.version + 1 };
-            await saveLocalAndQueue("transactions", restored);
-            setToast("流水已恢复");
-          }} />
+          <Trash
+            transactions={deletedTransactions}
+            accounts={accounts}
+            categories={categories}
+            onRestore={async (item) => {
+              const restored = { ...item, deletedAt: null, updatedAt: new Date().toISOString(), version: item.version + 1 };
+              await saveLocalAndQueue("transactions", restored);
+              setToast("流水已恢复");
+            }}
+            onPurge={(item) => purgeTransaction(item)}
+            onClear={() => clearTrash()}
+          />
         )}
         {dailyLimitHit && !dailyLimitOverlayClosed && (
           <DailyLimitOverlay
@@ -2293,7 +2331,9 @@ function SettingsPanel({
   dailyLimitSettings,
   onDailyLimitSettingsChange,
   token,
-  onToast
+  onToast,
+  trashCount,
+  onOpenTrash
 }: {
   accounts: Account[];
   categories: Category[];
@@ -2319,65 +2359,113 @@ function SettingsPanel({
   onDailyLimitSettingsChange: (settings: DailyLimitAlertSettings) => void;
   token: string;
   onToast: (message: string) => void;
+  trashCount: number;
+  onOpenTrash: () => void;
 }) {
+  // 手风琴：同一时刻只展开一个分区（清爽，也避免长页面）；顶部工具卡点击时展开对应分区并滚动到位
+  const [openRow, setOpenRow] = useState<string | null>(null);
+
+  function toggleRow(id: string) {
+    setOpenRow((current) => (current === id ? null : id));
+  }
+
+  function openRowAndScroll(id: string) {
+    setOpenRow(id);
+    window.setTimeout(() => {
+      document.getElementById(`settings-row-${id}`)?.scrollIntoView({ block: "start", behavior: "smooth" });
+    }, 80);
+  }
+
   return (
     <section className="settings-stack">
-      <SettingsSection title="数据管理" description="导入、导出和数据统计。">
-        <div className="form-stack data-tools-panel">
-          <label>导出格式
-            <select value={exportFormat} onChange={(event) => onExportFormatChange(event.target.value as ExportFormat)}>
-              {exportFormats.map((item) => <option key={item.id} value={item.id}>{item.label}</option>)}
-            </select>
-          </label>
-          <label>文件类型
-            <select value={exportFileType} onChange={(event) => onExportFileTypeChange(event.target.value as ExportFileType)}>
-              <option value="xlsx">Excel</option>
-              <option value="csv">CSV</option>
-            </select>
-          </label>
-          <div className="data-actions">
-            <button className="primary" type="button" onClick={onExport}><Download size={17} />导出账单</button>
-            <label className="primary import-button">
-              <Upload size={17} />
-              导入账单
-              <input type="file" accept=".csv,.tsv,.txt,.xls,.xlsx,.xlsm,text/csv,text/tab-separated-values,text/plain,text/html,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" hidden onChange={(event) => {
-                const file = event.currentTarget.files?.[0];
-                if (file) {
-                  void onImportFile(file).then(onImported).catch(onImportError);
-                }
-                event.currentTarget.value = "";
-              }} />
+      <div className="settings-tools-grid">
+        <button type="button" className="settings-tool-card tone-danger" onClick={onOpenTrash}>
+          <span className="settings-tool-icon"><Trash2 size={18} /></span>
+          <strong>流水回收站</strong>
+          <small>可恢复历史删除流水</small>
+          {trashCount > 0 && <span className="settings-tool-badge">{trashCount > 99 ? "99+" : trashCount}</span>}
+        </button>
+        <button type="button" className="settings-tool-card tone-teal" onClick={() => openRowAndScroll("data")}>
+          <span className="settings-tool-icon"><Download size={18} /></span>
+          <strong>数据导出</strong>
+          <small>一键导出流水报表</small>
+        </button>
+        <button type="button" className="settings-tool-card tone-green" onClick={() => openRowAndScroll("data")}>
+          <span className="settings-tool-icon"><Upload size={18} /></span>
+          <strong>数据导入</strong>
+          <small>支付宝、微信等账单</small>
+        </button>
+        <button type="button" className="settings-tool-card tone-gold" onClick={() => openRowAndScroll("sync")}>
+          <span className="settings-tool-icon"><RefreshCw size={18} /></span>
+          <strong>数据同步</strong>
+          <small>云端/本地地址切换</small>
+        </button>
+      </div>
+
+      <p className="settings-group-label">基础功能</p>
+
+      <div className="settings-list">
+        <SettingsRow id="accounts" icon={Wallet} tone="teal" title="账户管理" subtitle="维护储蓄卡、消费卡和额度" open={openRow === "accounts"} onToggle={toggleRow}>
+          <AccountsPanel accounts={accounts} onSave={onSaveAccount} onDelete={onDeleteAccount} />
+        </SettingsRow>
+        <SettingsRow id="budgets" icon={Target} tone="purple" title="预算管理" subtitle="日常消费与总开支两层预算" open={openRow === "budgets"} onToggle={toggleRow}>
+          <BudgetPanel budgets={budgets} categories={categories} transactions={transactions} onSave={onSaveBudget} onDelete={onDeleteBudget} />
+        </SettingsRow>
+        <SettingsRow id="categories" icon={Tag} tone="green" title="分类标签" subtitle="按一级、二级分类折叠维护" open={openRow === "categories"} onToggle={toggleRow}>
+          <CategoriesPanel categories={categories} onSave={onSaveCategory} onDelete={onDeleteCategories} />
+        </SettingsRow>
+        <SettingsRow id="reminders" icon={Bell} tone="gold" title="提醒设置" subtitle="工资日、当日限额与手机推送" open={openRow === "reminders"} onToggle={toggleRow}>
+          <div className="settings-subblock">
+            <h3>工资日提醒<InfoTip text="纯本地提醒，随时可改，离线、无服务器也能正常运作。" /></h3>
+            <LocalSalaryReminderPanel value={salarySettings} onChange={onSalarySettingsChange} />
+          </div>
+          <div className="settings-subblock">
+            <h3>当日限额提醒<InfoTip text="今日消费达到日限额（月日常预算 ÷ 当月天数，含误差线）时全屏红色警告并推送手机提醒。" /></h3>
+            <LocalDailyLimitAlertPanel value={dailyLimitSettings} onChange={onDailyLimitSettingsChange} />
+            <PushAlertPanel token={token} onToast={onToast} />
+          </div>
+        </SettingsRow>
+        <SettingsRow id="data" icon={Download} tone="teal" title="数据管理" subtitle="导入、导出和数据统计" open={openRow === "data"} onToggle={toggleRow}>
+          <div className="form-stack data-tools-panel">
+            <label>导出格式
+              <select value={exportFormat} onChange={(event) => onExportFormatChange(event.target.value as ExportFormat)}>
+                {exportFormats.map((item) => <option key={item.id} value={item.id}>{item.label}</option>)}
+              </select>
             </label>
+            <label>文件类型
+              <select value={exportFileType} onChange={(event) => onExportFileTypeChange(event.target.value as ExportFileType)}>
+                <option value="xlsx">Excel</option>
+                <option value="csv">CSV</option>
+              </select>
+            </label>
+            <div className="data-actions">
+              <button className="primary" type="button" onClick={onExport}><Download size={17} />导出账单</button>
+              <label className="primary import-button">
+                <Upload size={17} />
+                导入账单
+                <input type="file" accept=".csv,.tsv,.txt,.xls,.xlsx,.xlsm,text/csv,text/tab-separated-values,text/plain,text/html,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" hidden onChange={(event) => {
+                  const file = event.currentTarget.files?.[0];
+                  if (file) {
+                    void onImportFile(file).then(onImported).catch(onImportError);
+                  }
+                  event.currentTarget.value = "";
+                }} />
+              </label>
+            </div>
+            <div className="data-stat-strip">
+              <span>{transactions.length} 笔流水</span>
+              <span>{accounts.length} 个账户</span>
+              <span>{categories.length} 个分类</span>
+            </div>
           </div>
-          <div className="data-stat-strip">
-            <span>{transactions.length} 笔流水</span>
-            <span>{accounts.length} 个账户</span>
-            <span>{categories.length} 个分类</span>
-          </div>
-        </div>
-      </SettingsSection>
-      <SettingsSection title="数据同步" description="切换云端/本地同步地址，服务器到期后用本地电脑保存数据。">
-        <SyncSettingsPanel />
-      </SettingsSection>
-      <SettingsSection title="关于与更新" description="当前应用版本（git 短 hash）与更新检查。iOS 上自动更新需重开生效，点「检查更新」可立即拉取。">
-        <AppVersionPanel onToast={onToast} />
-      </SettingsSection>
-      <SettingsSection title="账户管理" description="维护储蓄卡、消费卡和额度。">
-        <AccountsPanel accounts={accounts} onSave={onSaveAccount} onDelete={onDeleteAccount} />
-      </SettingsSection>
-      <SettingsSection title="预算管理" description="日常消费与总开支两层预算，总开支包含日常消费。">
-        <BudgetPanel budgets={budgets} categories={categories} transactions={transactions} onSave={onSaveBudget} onDelete={onDeleteBudget} />
-      </SettingsSection>
-      <SettingsSection title="工资日提醒" description="纯本地提醒，随时可改，离线、无服务器也能正常运作。">
-        <LocalSalaryReminderPanel value={salarySettings} onChange={onSalarySettingsChange} />
-      </SettingsSection>
-      <SettingsSection title="当日限额提醒" description="今日消费达到日限额（月日常预算 ÷ 当月天数，含误差线）时全屏红色警告并推送手机提醒。">
-        <LocalDailyLimitAlertPanel value={dailyLimitSettings} onChange={onDailyLimitSettingsChange} />
-        <PushAlertPanel token={token} onToast={onToast} />
-      </SettingsSection>
-      <SettingsSection title="分类维护" description="按一级、二级分类折叠维护。">
-        <CategoriesPanel categories={categories} onSave={onSaveCategory} onDelete={onDeleteCategories} />
-      </SettingsSection>
+        </SettingsRow>
+        <SettingsRow id="sync" icon={RefreshCw} tone="gold" title="数据同步" subtitle="切换云端/本地同步地址" open={openRow === "sync"} onToggle={toggleRow}>
+          <SyncSettingsPanel />
+        </SettingsRow>
+        <SettingsRow id="about" icon={Info} tone="green" title="关于与更新" subtitle="当前版本与更新检查" open={openRow === "about"} onToggle={toggleRow}>
+          <AppVersionPanel onToast={onToast} />
+        </SettingsRow>
+      </div>
     </section>
   );
 }
@@ -2500,16 +2588,29 @@ function PushAlertPanel({ token, onToast }: { token: string; onToast: (message: 
   );
 }
 
-function SettingsSection({ title, description, children, defaultOpen = false }: { title: string; description: string; children: ReactNode; defaultOpen?: boolean }) {
+/** 设置页列表行（随手记风格）：彩色图标砖 + 标题/副标题 + chevron，点击展开/收起分区 */
+function SettingsRow({ id, icon: Icon, tone, title, subtitle, open, onToggle, children }: {
+  id: string;
+  icon: typeof Wallet;
+  tone: "danger" | "teal" | "green" | "gold" | "purple";
+  title: string;
+  subtitle: string;
+  open: boolean;
+  onToggle: (id: string) => void;
+  children: ReactNode;
+}) {
   return (
-    <details className="settings-section" open={defaultOpen}>
-      <summary>
-        <div>
-          <strong>{title}<InfoTip text={description} /></strong>
-        </div>
-      </summary>
-      <div className="settings-section-body">{children}</div>
-    </details>
+    <div className={`settings-section settings-row tone-${tone}${open ? " open" : ""}`} id={`settings-row-${id}`}>
+      <button type="button" className="settings-row-head" aria-expanded={open} onClick={() => onToggle(id)}>
+        <span className="settings-row-icon"><Icon size={17} /></span>
+        <span className="settings-row-text">
+          <strong>{title}</strong>
+          <small>{subtitle}</small>
+        </span>
+        <ChevronRight size={16} className="settings-row-chevron" />
+      </button>
+      {open && <div className="settings-section-body">{children}</div>}
+    </div>
   );
 }
 
@@ -4117,10 +4218,79 @@ function TrendFoldPanel({ title, rangeLabel, legendLabel, data, periodKind, sele
   );
 }
 
-function Trash({ transactions, accounts, categories, onRestore }: { transactions: Transaction[]; accounts: Account[]; categories: Category[]; onRestore: (item: Transaction) => Promise<void> }) {
+/** 流水回收站：删除的流水先软删除进这里，可恢复；「彻底删除」才真正抹掉（本地删行 + 服务端硬删除） */
+function Trash({ transactions, accounts, categories, onRestore, onPurge, onClear }: {
+  transactions: Transaction[];
+  accounts: Account[];
+  categories: Category[];
+  onRestore: (item: Transaction) => Promise<void>;
+  onPurge: (item: Transaction) => Promise<void>;
+  onClear: () => Promise<void>;
+}) {
+  const rows = useMemo(
+    () => [...transactions].sort((a, b) => (b.deletedAt ?? "").localeCompare(a.deletedAt ?? "")),
+    [transactions]
+  );
+
   return (
-    <section className="panel">
-      <TransactionRows transactions={transactions} accounts={accounts} categories={categories} onRestore={onRestore} />
+    <section className="panel trash-panel">
+      <div className="trash-head">
+        <div className="trash-head-text">
+          <h2>流水回收站</h2>
+          <p>{rows.length > 0 ? `共 ${rows.length} 笔已删除流水，可恢复或彻底删除` : "删除的流水会先放到这里，可随时恢复"}</p>
+        </div>
+        {rows.length > 0 && (
+          <button
+            type="button"
+            className="ghost danger"
+            onClick={() => {
+              if (window.confirm(`彻底删除全部 ${rows.length} 笔流水？删除后不可恢复。`)) void onClear();
+            }}
+          >
+            <Trash2 size={15} />清空回收站
+          </button>
+        )}
+      </div>
+      {rows.length === 0 ? (
+        <p className="empty">回收站是空的</p>
+      ) : (
+        <div className="rows trash-rows">
+          {rows.map((item) => {
+            const account = accounts.find((entry) => entry.id === item.accountId);
+            const category = categories.find((entry) => entry.id === item.categoryId);
+            const sign = item.type === "expense" ? "-" : item.type === "income" ? "+" : "";
+            const title = item.merchant || category?.name || typeLabels[item.type];
+            const deletedLabel = item.deletedAt
+              ? new Date(item.deletedAt).toLocaleString("zh-CN", { month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit" })
+              : "";
+            const meta = `删除于 ${deletedLabel} · ${new Date(item.occurredAt).toLocaleDateString("zh-CN")} · ${account?.name ?? ""}`;
+            return (
+              <article className={`row row-type-${item.type}`} key={item.id}>
+                <div className={`row-icon ${item.type}`}>{item.type === "transfer" ? <ArrowRightLeft size={15} /> : item.type === "income" ? <ArrowDownLeft size={15} /> : <ArrowUpRight size={15} />}</div>
+                <div className="row-main">
+                  <strong>{title}</strong>
+                  <span>{meta}</span>
+                </div>
+                <div className="row-side">
+                  <b>{sign}¥{centsToYuan(item.amountCents)}</b>
+                  <div className="row-actions">
+                    <button className="icon-button mini" onClick={() => void onRestore(item)} title="恢复"><RotateCcw size={14} /></button>
+                    <button
+                      className="icon-button mini danger"
+                      onClick={() => {
+                        if (window.confirm(`彻底删除「${title}」？删除后不可恢复。`)) void onPurge(item);
+                      }}
+                      title="彻底删除"
+                    >
+                      <X size={14} />
+                    </button>
+                  </div>
+                </div>
+              </article>
+            );
+          })}
+        </div>
+      )}
     </section>
   );
 }
