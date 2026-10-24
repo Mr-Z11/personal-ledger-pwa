@@ -19,43 +19,75 @@ import {
   ArrowDownLeft,
   ArrowRightLeft,
   ArrowUpRight,
+  Baby,
   Banknote,
   Bell,
   BellRing,
+  Bike,
+  BookOpen,
+  Briefcase,
+  Bus,
+  Cake,
   CalendarClock,
+  Car,
   ChevronLeft,
   ChevronRight,
+  Cigarette,
+  Circle,
   Cloud,
   CloudOff,
+  Coffee,
   Coins,
   CreditCard,
   Database,
   Download,
+  Droplets,
+  Dumbbell,
+  Folder,
   FolderPlus,
+  Fuel,
+  Gamepad2,
+  Gift,
+  GraduationCap,
+  HeartPulse,
   Home,
   Info,
   Landmark,
   ListFilter,
   LogOut,
   MessageCircle,
+  MoreHorizontal,
+  PawPrint,
   Pencil,
   PieChartIcon,
   PiggyBank,
+  Pill,
+  Plane,
   Plus,
+  Popcorn,
+  Receipt,
   RefreshCw,
   RotateCcw,
+  Scissors,
   Search,
   Settings2,
+  Shirt,
+  ShoppingBag,
   Smartphone,
   Tag,
   Target,
   Trash2,
   TrendingDown,
   TrendingUp,
+  Umbrella,
   Undo2,
   Upload,
+  Utensils,
   Wallet,
-  X
+  Wifi,
+  Wrench,
+  X,
+  Zap
 } from "lucide-react";
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import { api } from "./api";
@@ -110,6 +142,7 @@ import {
   dismissSalaryBannerForToday,
   InfoTip,
   loadDailyLimitAlertSettings,
+  loadFixedExpenses,
   loadSalarySettings,
   maybeNotifyDailyLimit,
   maybeNotifyPayday,
@@ -132,7 +165,7 @@ type ReportPeriod = "month" | "year";
 type ExportFormat = "ledger" | "portable" | "suishouji" | "qianji";
 type ExportFileType = "csv" | "xlsx";
 
-/** 二级/三级子模块（设置、报表里点进来的页面）：用导航栈管理，顶栏「返回」出栈 */
+/** 二级/三级子模块（设置、报表、总览里点进来的页面）：用导航栈管理，顶栏「返回」出栈 */
 type SubView =
   | { kind: "trash" }
   | { kind: "data" }
@@ -145,6 +178,8 @@ type SubView =
   | { kind: "budgetEditor"; budget: Budget | null }
   | { kind: "reminders" }
   | { kind: "reminderDetail"; which: "salary" | "dailyLimit" }
+  | { kind: "fixedExpenses" }
+  | { kind: "planBuy" }
   | { kind: "about" };
 
 const navItems: { id: View; label: string; icon: typeof Home }[] = [
@@ -459,6 +494,10 @@ function subHeading(sub: SubView): { strong: string; span: string; icon: typeof 
         span: sub.which === "salary" ? "纯本地提醒，离线也能用" : "达线警告与手机推送",
         icon: BellRing
       };
+    case "fixedExpenses":
+      return { strong: "本月固定支出", span: "固定项维护与最低固定支出测算", icon: Home };
+    case "planBuy":
+      return { strong: "计划购买", span: "想买清单，预算够时提醒", icon: ShoppingBag };
     case "about":
       return { strong: "关于与更新", span: "版本与更新检查", icon: Info };
   }
@@ -989,6 +1028,39 @@ export function App() {
     setToast(`回收站已清空（${deletedTransactions.length} 笔）`);
   }
 
+  /* 计划购买（总览二级子模块）：增/改完成态/删/编辑，均走本地 + outbox 同步 */
+  async function addPlannedPurchase(name: string, amountCents: number) {
+    await saveLocalAndQueue("plannedPurchases", {
+      id: crypto.randomUUID(),
+      name,
+      amountCents,
+      note: null,
+      completedAt: null,
+      version: 1,
+      updatedAt: new Date().toISOString(),
+      deletedAt: null
+    });
+    setToast(`已加入计划购买：${name}`);
+  }
+
+  async function togglePlannedPurchase(item: PlannedPurchase) {
+    const next = { ...item, completedAt: item.completedAt ? null : new Date().toISOString(), updatedAt: new Date().toISOString(), version: item.version + 1 };
+    await saveLocalAndQueue("plannedPurchases", next);
+    setToast(next.completedAt ? `已完成购买：${item.name}` : `已撤销完成：${item.name}`);
+  }
+
+  async function deletePlannedPurchase(item: PlannedPurchase) {
+    const deleted = { ...item, deletedAt: new Date().toISOString(), updatedAt: new Date().toISOString(), version: item.version + 1 };
+    await saveLocalAndQueue("plannedPurchases", deleted);
+    setToast(`已删除：${item.name}`);
+  }
+
+  async function editPlannedPurchase(item: PlannedPurchase, name: string, amountCents: number) {
+    const next = { ...item, name, amountCents, updatedAt: new Date().toISOString(), version: item.version + 1 };
+    await saveLocalAndQueue("plannedPurchases", next);
+    setToast(`已更新计划购买：${name}`);
+  }
+
   const openEntry = useCallback(() => {
     setView("entry");
     setSubStack([]);
@@ -1152,6 +1224,25 @@ export function App() {
             onToast={setToast}
           />
         );
+      case "fixedExpenses":
+        return (
+          <section className="settings-stack">
+            <FixedExpenseOverview transactions={activeTransactions} categories={activeCategories} />
+          </section>
+        );
+      case "planBuy":
+        return (
+          <section className="settings-stack">
+            <PlannedPurchasePanel
+              items={activePlannedPurchases}
+              todayRemainingCents={todayRemainingCents}
+              onAdd={(name, amountCents) => void addPlannedPurchase(name, amountCents)}
+              onToggleComplete={(item) => void togglePlannedPurchase(item)}
+              onDelete={(item) => void deletePlannedPurchase(item)}
+              onEdit={(item, name, amountCents) => void editPlannedPurchase(item, name, amountCents)}
+            />
+          </section>
+        );
       case "about":
         return (
           <section className="settings-stack">
@@ -1277,37 +1368,10 @@ export function App() {
         ) : (
           <>
         {view === "overview" && (
-          <Overview summary={dailySummary} budgetCents={currentBudgetCents} totalBudgetCents={currentTotalBudgetCents} accounts={activeAccounts} categories={activeCategories} transactions={activeTransactions}
+          <Overview summary={dailySummary} budgetCents={currentBudgetCents} totalBudgetCents={currentTotalBudgetCents} categories={activeCategories} transactions={activeTransactions}
             plannedPurchases={activePlannedPurchases}
-            todayRemainingCents={todayRemainingCents}
-            onAddPlannedPurchase={async (name, amountCents) => {
-              await saveLocalAndQueue("plannedPurchases", {
-                id: crypto.randomUUID(),
-                name,
-                amountCents,
-                note: null,
-                completedAt: null,
-                version: 1,
-                updatedAt: new Date().toISOString(),
-                deletedAt: null
-              });
-              setToast(`已加入计划购买：${name}`);
-            }}
-            onTogglePlannedPurchase={async (item) => {
-              const next = { ...item, completedAt: item.completedAt ? null : new Date().toISOString(), updatedAt: new Date().toISOString(), version: item.version + 1 };
-              await saveLocalAndQueue("plannedPurchases", next);
-              setToast(next.completedAt ? `已完成购买：${item.name}` : `已撤销完成：${item.name}`);
-            }}
-            onDeletePlannedPurchase={async (item) => {
-              const deleted = { ...item, deletedAt: new Date().toISOString(), updatedAt: new Date().toISOString(), version: item.version + 1 };
-              await saveLocalAndQueue("plannedPurchases", deleted);
-              setToast(`已删除：${item.name}`);
-            }}
-            onEditPlannedPurchase={async (item, name, amountCents) => {
-              const next = { ...item, name, amountCents, updatedAt: new Date().toISOString(), version: item.version + 1 };
-              await saveLocalAndQueue("plannedPurchases", next);
-              setToast(`已更新计划购买：${name}`);
-            }}
+            onOpenFixedExpenses={() => pushSub({ kind: "fixedExpenses" })}
+            onOpenPlanBuy={() => pushSub({ kind: "planBuy" })}
             todayLimitCents={todayLimitCents}
             todaySpentCents={todaySpentCents}
           />
@@ -1441,21 +1505,19 @@ function AuthScreen({ onAuth }: { onAuth: (result: Awaited<ReturnType<typeof api
   );
 }
 
-function Overview({ summary, budgetCents, totalBudgetCents, accounts, categories, transactions, plannedPurchases, todayRemainingCents, todayLimitCents, todaySpentCents, onAddPlannedPurchase, onTogglePlannedPurchase, onDeletePlannedPurchase, onEditPlannedPurchase }: {
+function Overview({ summary, budgetCents, totalBudgetCents, categories, transactions, plannedPurchases, todayLimitCents, todaySpentCents, onOpenFixedExpenses, onOpenPlanBuy }: {
   summary: { incomeCents: number; expenseCents: number; netCents: number };
   budgetCents: number;
   totalBudgetCents: number;
-  accounts: Account[];
   categories: Category[];
   transactions: Transaction[];
   plannedPurchases: PlannedPurchase[];
-  todayRemainingCents: number | null;
   todayLimitCents: number;
   todaySpentCents: number;
-  onAddPlannedPurchase: (name: string, amountCents: number) => void;
-  onTogglePlannedPurchase: (item: PlannedPurchase) => void;
-  onDeletePlannedPurchase: (item: PlannedPurchase) => void;
-  onEditPlannedPurchase: (item: PlannedPurchase, name: string, amountCents: number) => void;
+  /** 进入「本月固定支出」二级子模块 */
+  onOpenFixedExpenses: () => void;
+  /** 进入「计划购买」二级子模块 */
+  onOpenPlanBuy: () => void;
 }) {
   const monthTransactions = transactions.filter((item) => item.occurredAt.startsWith(monthKey()));
   const prevMonthKey = offsetMonthKey(monthKey(), -1);
@@ -1467,15 +1529,11 @@ function Overview({ summary, budgetCents, totalBudgetCents, accounts, categories
   const prevMonthDailyAverage = prevMonthExpenseCents > 0 ? Math.round(prevMonthExpenseCents / prevMonthElapsedDays) : 0;
   const monthExpenseTransactionsAll = monthTransactions.filter((item) => item.type === "expense");
   const monthExpenseTransactions = dailyExpenseTransactions(monthTransactions, categories);
-  const specialMonthExpenses = specialExpenseTransactions(monthTransactions, categories);
   const elapsedDays = Math.max(1, new Date().getDate());
   const dailyAverage = Math.round(summary.expenseCents / elapsedDays);
   const totalExpenseCents = monthExpenseTransactionsAll.reduce((sum, item) => sum + item.amountCents, 0);
-  const specialExpenseCents = specialMonthExpenses.reduce((sum, item) => sum + item.amountCents, 0);
   const totalExpenseDelta = percentDelta(totalExpenseCents, prevMonthTotalExpenses);
   const dailyAvgDelta = percentDelta(dailyAverage, prevMonthDailyAverage);
-  const dailyExpenseRatio = totalExpenseCents > 0 ? Math.round((summary.expenseCents / totalExpenseCents) * 100) : 0;
-  const specialExpenseRatio = totalExpenseCents > 0 ? Math.round((specialExpenseCents / totalExpenseCents) * 100) : 0;
   const largestExpense = monthExpenseTransactions.reduce((max, item) => Math.max(max, item.amountCents), 0);
   const expenseByCategory = monthExpenseTransactions.reduce((totals, item) => {
     const id = item.categoryId ?? "uncategorized";
@@ -1484,7 +1542,11 @@ function Overview({ summary, budgetCents, totalBudgetCents, accounts, categories
   }, new Map<string, number>());
   const topCategoryEntry = Array.from(expenseByCategory.entries()).sort((left, right) => right[1] - left[1])[0];
   const topCategory = topCategoryEntry ? categories.find((category) => category.id === topCategoryEntry[0]) : undefined;
-  const recentTransactions = transactions.slice(0, 4);
+  // 两个二级子模块的入口摘要：固定支出读本机模板，计划购买取未完成项
+  const fixedItems = loadFixedExpenses(monthKey());
+  const fixedPredictedCents = fixedItems.reduce((sum, item) => sum + item.predictedCents, 0);
+  const pendingPurchases = plannedPurchases.filter((item) => !item.completedAt);
+  const pendingPurchaseCents = pendingPurchases.reduce((sum, item) => sum + item.amountCents, 0);
   const trendTag = (delta: number) => {
     if (delta === 0) return null;
     const isUp = delta > 0;
@@ -1516,16 +1578,24 @@ function Overview({ summary, budgetCents, totalBudgetCents, accounts, categories
         />
       </div>
 
-      <FixedExpenseOverview transactions={transactions} categories={categories} />
-
-      <PlannedPurchasePanel
-        items={plannedPurchases}
-        todayRemainingCents={todayRemainingCents}
-        onAdd={onAddPlannedPurchase}
-        onToggleComplete={onTogglePlannedPurchase}
-        onDelete={onDeletePlannedPurchase}
-        onEdit={onEditPlannedPurchase}
-      />
+      <div className="settings-list overview-module-entries">
+        <SubEntryRow
+          icon={Home}
+          tone="gold"
+          title="本月固定支出"
+          subtitle={`${monthLabel(monthKey())} · 预计 ¥${centsToYuan(fixedPredictedCents)} · 含最低固定支出测算`}
+          count={fixedItems.length}
+          onClick={onOpenFixedExpenses}
+        />
+        <SubEntryRow
+          icon={ShoppingBag}
+          tone="purple"
+          title="计划购买"
+          subtitle={pendingPurchases.length > 0 ? `待买 ${pendingPurchases.length} 项 · 合计 ¥${centsToYuan(pendingPurchaseCents)}` : "暂无想买的东西，点这里添加"}
+          count={pendingPurchases.length}
+          onClick={onOpenPlanBuy}
+        />
+      </div>
 
       <div className="overview-quick-grid">
         <article className="overview-quick-card">
@@ -1545,36 +1615,13 @@ function Overview({ summary, budgetCents, totalBudgetCents, accounts, categories
         </article>
         <article className="overview-quick-card category">
           <span>最大分类</span>
-          <strong>{topCategory ? categoryPath(topCategory, categories) : "暂无支出"}</strong>
+          <strong className="overview-quick-category">
+            {topCategory && <CategoryIcon icon={topCategory.icon} size={14} />}
+            {topCategory ? categoryPath(topCategory, categories) : "暂无支出"}
+          </strong>
           <em>{topCategoryEntry ? `¥${centsToYuan(topCategoryEntry[1])}` : "¥0.00"}</em>
         </article>
       </div>
-
-      <section className="panel overview-spending">
-        <div className="chart-heading">
-          <h2>本月整体支出</h2>
-          <strong>¥{centsToYuan(totalExpenseCents)}</strong>
-        </div>
-        <div className="spending-split">
-          <div>
-            <span>日常消费</span>
-            <strong>¥{centsToYuan(summary.expenseCents)}</strong>
-            <em>{dailyExpenseRatio}%</em>
-            <div className="bar"><i style={{ width: `${dailyExpenseRatio}%` }} /></div>
-          </div>
-          <div>
-            <span>专项支出</span>
-            <strong>¥{centsToYuan(specialExpenseCents)}</strong>
-            <em>{specialExpenseRatio}%</em>
-            <div className="bar special"><i style={{ width: `${specialExpenseRatio}%` }} /></div>
-          </div>
-        </div>
-      </section>
-
-      <section className="panel">
-        <h2>最近流水</h2>
-        <TransactionRows transactions={recentTransactions} accounts={accounts} categories={categories} compact />
-      </section>
     </section>
   );
 }
@@ -2647,6 +2694,55 @@ function DataView({
   );
 }
 
+/* ============ 分类图标（消费分类图形标识，替代首汉字） ============ */
+
+/** 分类图标库：icon 字符串 → 图形 + 中文标签（设置里点选，图表里渲染） */
+const categoryIconMeta: Record<string, { label: string; icon: typeof Tag }> = {
+  utensils: { label: "餐饮", icon: Utensils },
+  coffee: { label: "饮品", icon: Coffee },
+  "shopping-bag": { label: "购物", icon: ShoppingBag },
+  shirt: { label: "服饰", icon: Shirt },
+  gift: { label: "礼物", icon: Gift },
+  home: { label: "住房", icon: Home },
+  zap: { label: "水电", icon: Zap },
+  droplets: { label: "水费", icon: Droplets },
+  wifi: { label: "网络", icon: Wifi },
+  bus: { label: "公交", icon: Bus },
+  car: { label: "用车", icon: Car },
+  fuel: { label: "加油", icon: Fuel },
+  bike: { label: "单车", icon: Bike },
+  plane: { label: "出行", icon: Plane },
+  "gamepad-2": { label: "游戏", icon: Gamepad2 },
+  popcorn: { label: "零食", icon: Popcorn },
+  cake: { label: "甜点", icon: Cake },
+  "heart-pulse": { label: "医疗", icon: HeartPulse },
+  pill: { label: "药品", icon: Pill },
+  "book-open": { label: "学习", icon: BookOpen },
+  "graduation-cap": { label: "学费", icon: GraduationCap },
+  briefcase: { label: "办公", icon: Briefcase },
+  receipt: { label: "票据", icon: Receipt },
+  coins: { label: "理财", icon: Coins },
+  "piggy-bank": { label: "储蓄", icon: PiggyBank },
+  wallet: { label: "钱包", icon: Wallet },
+  baby: { label: "育儿", icon: Baby },
+  "paw-print": { label: "宠物", icon: PawPrint },
+  dumbbell: { label: "运动", icon: Dumbbell },
+  cigarette: { label: "烟酒", icon: Cigarette },
+  scissors: { label: "理发", icon: Scissors },
+  wrench: { label: "维修", icon: Wrench },
+  umbrella: { label: "雨具", icon: Umbrella },
+  folder: { label: "其他", icon: Folder },
+  tag: { label: "标签", icon: Tag },
+  circle: { label: "默认", icon: Circle }
+};
+
+/** 渲染分类图标：按 category.icon 取图形，未登记/缺省回退默认圆点 */
+function CategoryIcon({ icon, size = 16 }: { icon?: string | null; size?: number }) {
+  const entry = (icon && categoryIconMeta[icon]) || categoryIconMeta.circle;
+  const Icon = entry.icon;
+  return <Icon size={size} />;
+}
+
 /* ============ 二级/三级子模块：账户管理 ============ */
 
 const accountTypeMeta: Record<Account["type"], { label: string; group: string; icon: typeof Wallet; color: string }> = {
@@ -2884,7 +2980,7 @@ function CategoryListPage({ categories, categoryKind, onOpenCategory, onAddCateg
             return (
               <Fragment key={parent.id}>
                 <button type="button" className="account-row category-row" onClick={() => onOpenCategory(parent)}>
-                  <span className="account-row-icon" style={{ background: `${parent.color}1f`, color: parent.color }}>{parent.name.slice(0, 1)}</span>
+                  <span className="account-row-icon" style={{ background: `${parent.color}1f`, color: parent.color }}><CategoryIcon icon={parent.icon} size={16} /></span>
                   <span className="account-row-text">
                     <strong>{parent.name}</strong>
                     <small>{children.length} 个子分类</small>
@@ -2893,7 +2989,7 @@ function CategoryListPage({ categories, categoryKind, onOpenCategory, onAddCateg
                 </button>
                 {children.map((child) => (
                   <button type="button" className="account-row category-row child" key={child.id} onClick={() => onOpenCategory(child)}>
-                    <span className="account-row-icon" style={{ background: `${child.color}1f`, color: child.color }}>{child.name.slice(0, 1)}</span>
+                    <span className="account-row-icon" style={{ background: `${child.color}1f`, color: child.color }}><CategoryIcon icon={child.icon} size={14} /></span>
                     <span className="account-row-text">
                       <strong>{child.name}</strong>
                       <small>{parent.name}</small>
@@ -2924,6 +3020,7 @@ function CategoryEditorPage({ category, categoryKind, categories, onSave, onDele
   const [name, setName] = useState(category?.name ?? "");
   const [kind, setKind] = useState<Category["kind"]>(category?.kind ?? categoryKind);
   const [parentId, setParentId] = useState(category?.parentId ?? "");
+  const [icon, setIcon] = useState(category?.icon ?? "circle");
   const topCategories = activeCategories.filter((item) => !item.parentId && item.kind === kind && item.id !== category?.id);
 
   async function submit(event: React.FormEvent) {
@@ -2944,6 +3041,7 @@ function CategoryEditorPage({ category, categoryKind, categories, onSave, onDele
       name: name.trim(),
       kind,
       parentId: nextParentId,
+      icon,
       version: category ? category.version + 1 : 1,
       updatedAt: new Date().toISOString(),
       deletedAt: null
@@ -2987,6 +3085,30 @@ function CategoryEditorPage({ category, categoryKind, categories, onSave, onDele
             {topCategories.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}
           </select>
         </label>
+        <div className="category-icon-field">
+          <span className="field-label">分类图标</span>
+          <div className="category-icon-picker">
+            {Object.entries(categoryIconMeta).map(([id, entry]) => {
+              const OptionIcon = entry.icon;
+              const selected = icon === id;
+              return (
+                <button
+                  type="button"
+                  key={id}
+                  className={`category-icon-option ${selected ? "selected" : ""}`.trim()}
+                  style={selected ? { borderColor: kind === "expense" ? "#d45b3f" : "#2f7d4f", color: kind === "expense" ? "#d45b3f" : "#2f7d4f" } : undefined}
+                  onClick={() => setIcon(id)}
+                  title={entry.label}
+                  aria-label={entry.label}
+                  aria-pressed={selected}
+                >
+                  <OptionIcon size={17} />
+                </button>
+              );
+            })}
+          </div>
+          <small className="category-icon-hint">图表与列表按图标显示，不再用名称首字</small>
+        </div>
         <button className="primary" type="submit">保存分类</button>
         {category && (
           <button type="button" className="ghost danger" onClick={() => void remove()}><Trash2 size={15} />删除分类</button>
@@ -3520,7 +3642,7 @@ function SyncSettingsPanel() {
 }
 
 function InteractiveDonut({ data, total, selectedIndex, onSelect, onCycleSelect, kind }: {
-  data: { id: string; name: string; value: number; color: string }[];
+  data: { id: string; name: string; value: number; color: string; icon?: string }[];
   total: number;
   selectedIndex: number;
   onSelect: (index: number) => void;
@@ -3579,7 +3701,10 @@ function InteractiveDonut({ data, total, selectedIndex, onSelect, onCycleSelect,
         </svg>
         <div className="donut-center">
           <strong>¥{centsToYuan(selected?.value ?? total)}</strong>
-          <span>{selected?.name ?? "点击饼图看明细"}</span>
+          <span className="donut-center-label">
+            {selected?.icon && <CategoryIcon icon={selected.icon} size={14} />}
+            {selected?.name ?? "点击饼图看明细"}
+          </span>
           {selectedSegment && <em>{selectedSegment.ratio}%</em>}
         </div>
       </div>
@@ -3745,7 +3870,7 @@ function Reports({ transactions, accounts, categories, budgets, analysisNotes, o
   const projectedExpense = Math.round(dailyAverageExpense * periodDays);
 
   const categoryData = useMemo(() => {
-    const totals = new Map<string, { id: string; name: string; value: number; color: string }>();
+    const totals = new Map<string, { id: string; name: string; value: number; color: string; icon?: string }>();
     dailyReportTransactions.forEach((item) => {
       const category = categories.find((entry) => entry.id === item.categoryId);
       const id = category?.id ?? "uncategorized";
@@ -3753,7 +3878,8 @@ function Reports({ transactions, accounts, categories, budgets, analysisNotes, o
         id,
         name: category ? categoryPath(category, categories) : "未分类",
         value: 0,
-        color: category?.color ?? "#8a7154"
+        color: category?.color ?? "#8a7154",
+        icon: category?.icon ?? "circle"
       };
       current.value += item.amountCents;
       totals.set(id, current);
@@ -3764,7 +3890,7 @@ function Reports({ transactions, accounts, categories, budgets, analysisNotes, o
   }, [dailyReportTransactions, categories]);
 
   const specialCategoryData = useMemo(() => {
-    const totals = new Map<string, { id: string; name: string; value: number; color: string }>();
+    const totals = new Map<string, { id: string; name: string; value: number; color: string; icon?: string }>();
     specialReportTransactions.forEach((item) => {
       const category = categories.find((entry) => entry.id === item.categoryId);
       const id = category?.id ?? "uncategorized";
@@ -3772,7 +3898,8 @@ function Reports({ transactions, accounts, categories, budgets, analysisNotes, o
         id,
         name: category ? categoryPath(category, categories) : "未分类",
         value: 0,
-        color: "#8a7154"
+        color: "#8a7154",
+        icon: category?.icon ?? "circle"
       };
       current.value += item.amountCents;
       totals.set(id, current);
@@ -4202,7 +4329,10 @@ function Reports({ transactions, accounts, categories, budgets, analysisNotes, o
               <div className="panel report-category-summary">
                 <div className="report-category-summary-main">
                   <span>{periodLabel} · 日常消费</span>
-                  <strong>{activeCategory.name}</strong>
+                  <strong className="report-category-summary-title">
+                    <CategoryIcon icon={activeCategory.icon} size={16} />
+                    {activeCategory.name}
+                  </strong>
                   <em>
                     {activeCategoryTransactions.length} 笔 · ¥{centsToYuan(activeCategory.value)}
                     {periodSummary.expenseCents > 0 ? ` · 占 ${Math.round((activeCategory.value / periodSummary.expenseCents) * 100)}%` : ""}
@@ -4290,7 +4420,7 @@ function Reports({ transactions, accounts, categories, budgets, analysisNotes, o
                         pushReportSub({ kind: "categoryDetail", id: entry.id });
                       }}
                     >
-                      <i className="report-category-dot" style={{ background: entry.color }} />
+                      <span className="report-category-icon" style={{ background: `${entry.color}1f`, color: entry.color }}><CategoryIcon icon={entry.icon} size={15} /></span>
                       <span className="report-category-name">{entry.name}</span>
                       <strong>¥{centsToYuan(entry.value)}</strong>
                       <em>{periodSummary.expenseCents > 0 ? Math.round((entry.value / periodSummary.expenseCents) * 100) : 0}%</em>
@@ -4372,7 +4502,10 @@ function Reports({ transactions, accounts, categories, budgets, analysisNotes, o
                 <div className="special-expense-grid">
                   {specialCategoryData.map((entry) => (
                     <div className="budget-line special-expense-line" key={entry.id}>
-                      <span>{entry.name}</span>
+                      <span className="special-expense-name">
+                        <CategoryIcon icon={entry.icon} size={14} />
+                        {entry.name}
+                      </span>
                       <strong>¥{centsToYuan(entry.value)}</strong>
                       <div className="bar"><i style={{ width: `${Math.max(3, Math.round((entry.value / Math.max(1, specialSummary.expenseCents)) * 100))}%` }} /></div>
                     </div>

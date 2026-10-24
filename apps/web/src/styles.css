@@ -442,6 +442,18 @@ h2 {
   white-space: nowrap;
 }
 
+/* 「最大分类」卡：图标 + 分类路径 */
+.overview-quick-card strong.overview-quick-category {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+}
+
+.overview-quick-card strong.overview-quick-category svg {
+  flex: 0 0 auto;
+  color: #c4512f;
+}
+
 .overview-quick-card em {
   min-width: 0;
   overflow: hidden;
@@ -2565,6 +2577,18 @@ button.settings-section {
   white-space: nowrap;
 }
 
+/* 专项支出分类名：图标 + 名称 */
+.special-expense-line span.special-expense-name {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+}
+
+.special-expense-line span.special-expense-name svg {
+  flex: 0 0 auto;
+  color: #8a7154;
+}
+
 .special-expense-line strong {
   font-size: 0.8rem;
   white-space: nowrap;
@@ -2888,6 +2912,52 @@ button.settings-section {
   color: #243127;
   font-size: 0.85rem;
   font-weight: 800;
+}
+
+/* 分类编辑器：图标选择网格（点选后图表/列表按图标显示） */
+.category-icon-field {
+  display: grid;
+  gap: 0.42rem;
+}
+
+.category-icon-picker {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.42rem;
+  max-height: 11.5rem;
+  overflow-y: auto;
+  padding: 0.55rem;
+  border: 1px solid rgba(49, 71, 58, 0.1);
+  border-radius: 0.7rem;
+  background: rgba(255, 253, 246, 0.7);
+}
+
+.category-icon-option {
+  width: 2.15rem;
+  height: 2.15rem;
+  display: grid;
+  place-items: center;
+  border: 1.5px solid rgba(49, 71, 58, 0.12);
+  border-radius: 0.6rem;
+  background: #fff;
+  color: rgba(36, 49, 39, 0.66);
+  cursor: pointer;
+  transition: border-color 150ms ease, color 150ms ease, transform 150ms ease;
+}
+
+.category-icon-option:active {
+  transform: scale(0.94);
+}
+
+.category-icon-option.selected {
+  background: rgba(31, 95, 116, 0.06);
+  font-weight: 800;
+}
+
+.category-icon-hint {
+  color: rgba(36, 49, 39, 0.5);
+  font-size: 0.74rem;
+  font-weight: 700;
 }
 
 .category-search {
@@ -3678,6 +3748,19 @@ button.insight-card {
   font-weight: 800;
 }
 
+/* 分类流水子页标题：图标 + 分类名 */
+.report-category-summary-main strong.report-category-summary-title {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.36rem;
+  min-width: 0;
+}
+
+.report-category-summary-main strong.report-category-summary-title svg {
+  flex: 0 0 auto;
+  color: #1f5f74;
+}
+
 .report-category-summary-main em {
   color: rgba(36, 49, 39, 0.6);
   font-size: 0.78rem;
@@ -3722,6 +3805,16 @@ button.insight-card {
   width: 0.68rem;
   height: 0.68rem;
   border-radius: 999px;
+  flex: 0 0 auto;
+}
+
+/* 报表分类行：图标砖（底色用分类色 12% 透明度，图形用分类色） */
+.report-category-icon {
+  width: 1.72rem;
+  height: 1.72rem;
+  display: grid;
+  place-items: center;
+  border-radius: 0.52rem;
   flex: 0 0 auto;
 }
 
@@ -4213,6 +4306,18 @@ button.insight-card {
   color: rgba(36, 49, 39, 0.62);
   font-size: 0.8rem;
   font-weight: 800;
+}
+
+/* 甜甜图中心：分类图标 + 名称（图标替代首汉字） */
+.donut-center span.donut-center-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  min-width: 0;
+}
+
+.donut-center span.donut-center-label svg {
+  flex: 0 0 auto;
 }
 
 .donut-center em {
