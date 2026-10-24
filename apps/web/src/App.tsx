@@ -1422,7 +1422,8 @@ export function App() {
         {dailyLimitHit && (
           <DailyLimitRibbon spentCents={todaySpentCents} limitCents={todayLimitCents} />
         )}
-        <header className="topbar" ref={topbarRef as React.RefObject<HTMLElement>}>
+        <div className="view-track" ref={subSwipe.trackRef as React.RefObject<HTMLDivElement>}>
+          <header className="topbar" ref={topbarRef as React.RefObject<HTMLElement>}>
           <div className="page-heading">
             {sub && (
               <button type="button" className="back-button" onClick={popSub} title="返回上一级">
@@ -1560,6 +1561,7 @@ export function App() {
           />
         )}
         <button className="floating entry-fab" onClick={openEntry} title="记一笔"><Plus size={30} /></button>
+        </div>
       </main>
     </div>
   );
@@ -1752,20 +1754,37 @@ function triggerHaptic(pattern: VibratePattern = 8) {
  * iOS 风格「从左边缘向右滑动返回」：仅在启用（存在可返回的二级页）时挂监听。
  * - 起滑点必须在屏幕左边缘 EDGE 内，否则不接管（不干扰页面其它区域）。
  * - 手势须以横向右滑为主（dx > |dy|*RATIO）才 engage；纵向滚动则立即放弃、不 preventDefault，滚动照常。
- * - engage 后 preventDefault 阻止页面滚动，松手超过 THRESHOLD 才真正返回。
+ * - engage 后 preventDefault 阻止页面滚动；松手超过 THRESHOLD 才真正返回。
+ * 跟手：拖动期间 trackRef 指向的内容层整体 translateX(dx)，像 iOS 交互式返回那样跟着手指走；
+ *       松手后播放完成（滑出屏幕再卸载）或回弹（弹回原位）动画，而不是瞬间切换。
  * 视觉提示：左侧滑入的箭头（EdgeBackHint），随手指位移淡入。
  */
-const EDGE_SWIPE = { EDGE: 32, START: 12, RATIO: 1.3, THRESHOLD: 72, MAX: 64 };
+const EDGE_SWIPE = { EDGE: 32, START: 12, RATIO: 1.3, THRESHOLD: 72, MAX: 64, COMMIT: 260, CANCEL: 320 };
+/** iOS 默认的减速/弹性曲线（cubic-bezier(.32,.72,0,1)），松手后的滑入/回弹都用它 */
+const SWIPE_EASE = "cubic-bezier(.32,.72,0,1)";
+
 function useEdgeSwipeBack({ enabled, onBack }: { enabled: boolean; onBack: () => void }) {
   const ref = useRef<HTMLElement | null>(null);
+  /** 要被整体平移的内容层：调用方把它包住当前视图，动画才有「整页跟着走」的效果 */
+  const trackRef = useRef<HTMLElement | null>(null);
   const onBackRef = useRef(onBack);
   onBackRef.current = onBack;
   const [hintX, setHintX] = useState(0);
-  const stateRef = useRef({ startX: 0, startY: 0, engaged: false, dragX: 0 });
+  const stateRef = useRef({ startX: 0, startY: 0, engaged: false, dragX: 0, animating: false });
+
+  /** 清掉跟手留下的 inline 样式：必须在 onBack() 之前调用，否则新页面会带着 translateX 进场 */
+  const clearTrack = () => {
+    const track = trackRef.current;
+    if (!track) return;
+    track.style.transition = "";
+    track.style.transform = "";
+    track.style.opacity = "";
+  };
+
   useEffect(() => {
     const el = ref.current;
     if (!el || !enabled) return;
-    const { EDGE, START, RATIO, THRESHOLD, MAX } = EDGE_SWIPE;
+    const { EDGE, START, RATIO, THRESHOLD, MAX, COMMIT, CANCEL } = EDGE_SWIPE;
     const reset = () => {
       const s = stateRef.current;
       s.engaged = false;
@@ -1775,9 +1794,10 @@ function useEdgeSwipeBack({ enabled, onBack }: { enabled: boolean; onBack: () =>
       setHintX(0);
     };
     const onStart = (event: TouchEvent) => {
+      const s = stateRef.current;
+      if (s.animating) return;
       const touch = event.touches[0];
       if (!touch || touch.clientX > EDGE) return;
-      const s = stateRef.current;
       s.startX = touch.clientX;
       s.startY = touch.clientY;
       s.engaged = false;
@@ -1785,6 +1805,7 @@ function useEdgeSwipeBack({ enabled, onBack }: { enabled: boolean; onBack: () =>
     };
     const onMove = (event: TouchEvent) => {
       const s = stateRef.current;
+      if (s.animating) return;
       if (s.startX === 0 && s.startY === 0) return;
       const touch = event.touches[0];
       if (!touch) return;
@@ -1805,10 +1826,47 @@ function useEdgeSwipeBack({ enabled, onBack }: { enabled: boolean; onBack: () =>
       event.preventDefault();
       s.dragX = Math.max(0, dx);
       setHintX(Math.min(s.dragX, MAX));
+      // 整页跟手右移（不加 transition，一有位移就要立刻响应手指）
+      const track = trackRef.current;
+      if (track) {
+        track.style.transition = "none";
+        track.style.transform = `translateX(${s.dragX}px)`;
+        track.style.opacity = "1";
+      }
     };
     const onEnd = () => {
       const s = stateRef.current;
-      if (s.engaged && s.dragX >= THRESHOLD) onBackRef.current();
+      const track = trackRef.current;
+      if (!s.engaged) {
+        reset();
+        return;
+      }
+      if (s.dragX >= THRESHOLD) {
+        // 完成：继续滑出屏幕再卸载，避免「瞬间跳走」
+        s.animating = true;
+        const width = track ? track.offsetWidth : 0;
+        if (track) {
+          track.style.transition = `transform ${COMMIT}ms ${SWIPE_EASE}, opacity ${COMMIT}ms ease`;
+          track.style.transform = `translateX(${width}px)`;
+          track.style.opacity = "0.35";
+        }
+        window.setTimeout(() => {
+          s.animating = false;
+          clearTrack();
+          onBackRef.current();
+        }, COMMIT);
+      } else {
+        // 未过阈值：弹回原位
+        s.animating = true;
+        if (track) {
+          track.style.transition = `transform ${CANCEL}ms ${SWIPE_EASE}`;
+          track.style.transform = "translateX(0)";
+        }
+        window.setTimeout(() => {
+          s.animating = false;
+          clearTrack();
+        }, CANCEL);
+      }
       reset();
     };
     el.addEventListener("touchstart", onStart, { passive: true });
@@ -1823,7 +1881,7 @@ function useEdgeSwipeBack({ enabled, onBack }: { enabled: boolean; onBack: () =>
       reset();
     };
   }, [enabled]);
-  return { ref, hintX };
+  return { ref, hintX, trackRef };
 }
 
 /** 左边缘右滑返回的视觉提示：随手指位移从左侧滑入的箭头 */
@@ -4554,6 +4612,7 @@ function Reports({ transactions, accounts, categories, budgets, analysisNotes, o
   return (
     <section className="report-page" ref={reportSwipe.ref as React.RefObject<HTMLElement>}>
       <EdgeBackHint x={reportSwipe.hintX} />
+      <div className="view-track report-view-track" ref={reportSwipe.trackRef as React.RefObject<HTMLDivElement>}>
       {reportToolbar}
       {reportSub ? (
         <>
@@ -4896,6 +4955,7 @@ function Reports({ transactions, accounts, categories, budgets, analysisNotes, o
           onClose={() => setDetailTransaction(null)}
         />
       )}
+      </div>
     </section>
   );
 }
@@ -5019,18 +5079,18 @@ function Trash({ transactions, accounts, categories, onRestore, onPurge, onClear
           <h2>流水回收站</h2>
           <p>{rows.length > 0 ? `共 ${rows.length} 笔已删除流水，可恢复或彻底删除` : "删除的流水会先放到这里，可随时恢复"}</p>
         </div>
-        {rows.length > 0 && (
-          <button
-            type="button"
-            className="ghost danger"
-            onClick={() => {
-              if (window.confirm(`彻底删除全部 ${rows.length} 笔流水？删除后不可恢复。`)) void onClear();
-            }}
-          >
-            <Trash2 size={15} />清空回收站
-          </button>
-        )}
       </div>
+      {rows.length > 0 && (
+        <button
+          type="button"
+          className="trash-clear"
+          onClick={() => {
+            if (window.confirm(`彻底删除全部 ${rows.length} 笔流水？删除后不可恢复。`)) void onClear();
+          }}
+        >
+          <Trash2 size={16} />清空回收站（{rows.length} 笔）
+        </button>
+      )}
       {rows.length === 0 ? (
         <p className="empty">回收站是空的</p>
       ) : (
@@ -5043,7 +5103,9 @@ function Trash({ transactions, accounts, categories, onRestore, onPurge, onClear
             const deletedLabel = item.deletedAt
               ? new Date(item.deletedAt).toLocaleString("zh-CN", { month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit" })
               : "";
-            const meta = `删除于 ${deletedLabel} · ${new Date(item.occurredAt).toLocaleDateString("zh-CN")} · ${account?.name ?? ""}`;
+            // 副标题只保留「何时删除 + 来源账户」：原交易日期在回收站里价值最低，
+            // 塞进来会把整行文字挤成省略号（row-main 宽度被金额列压缩）
+            const meta = `删除于 ${deletedLabel} · ${account?.name ?? ""}`.replace(/\s+·\s*$/, "");
             return (
               <article className={`row row-type-${item.type}`} key={item.id}>
                 <div className={`row-icon ${item.type}`}>{item.type === "transfer" ? <ArrowRightLeft size={15} /> : item.type === "income" ? <ArrowDownLeft size={15} /> : <ArrowUpRight size={15} />}</div>

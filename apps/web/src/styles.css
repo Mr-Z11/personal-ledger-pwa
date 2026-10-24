@@ -2322,6 +2322,22 @@ button.settings-section {
   font-weight: 700;
 }
 
+/* 滑动返回时被整体平移的内容层（useEdgeSwipeBack 的 trackRef 指向它）。
+   平时不设任何定位/变换，不影响正常布局；只有跟手返回时由 JS 临时写
+   transform，松手后播完完成/回弹动画就清掉 inline 样式。
+   注意：不要把 transform 写在 main / .report-page 本身上——transform 会创建
+   包含块，会让里面的 position:sticky 标题条瞬间失效。 */
+.view-track {
+  min-width: 0;
+}
+
+/* 报表页本体是 flex column + gap，内容层要复刻同样的布局，否则间距全丢 */
+.report-page > .view-track {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+}
+
 /* 回收站 */
 .trash-panel {
   display: grid;
@@ -2346,6 +2362,56 @@ button.settings-section {
   color: rgba(36, 49, 39, 0.58);
   font-size: 0.78rem;
   font-weight: 700;
+}
+
+/* 清空回收站：全宽危险按钮。原来是 .ghost.danger，而 .ghost.danger 的样式只在
+   .transaction-detail-actions / .transaction-action-sheet 里定义，.trash-head 下
+   并没有对应规则，实际只继承 .ghost 的淡灰底 → 按钮几乎和背景融为一体、找不到 */
+.trash-clear {
+  width: 100%;
+  min-height: 2.5rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.45rem;
+  padding: 0 0.9rem;
+  border: 1px solid rgba(212, 91, 63, 0.42);
+  border-radius: 0.65rem;
+  background: rgba(212, 91, 63, 0.12);
+  color: #b8432c;
+  font-size: 0.85rem;
+  font-weight: 800;
+  cursor: pointer;
+  transition: background 160ms ease, border-color 160ms ease, transform 120ms ease;
+}
+
+.trash-clear:hover {
+  background: rgba(212, 91, 63, 0.2);
+  border-color: rgba(212, 91, 63, 0.6);
+}
+
+.trash-clear:active {
+  transform: scale(0.985);
+}
+
+/* 回收站行：与流水列表同款三列横排（图标 | 标题+时间 | 金额+操作）。
+   之前把 row-icon/row-main/row-side 直接塞进 .row，而 .row 是单列网格
+   （grid-template-columns: minmax(0,1fr)），三个块垂直堆叠，每行高出一倍多 */
+.trash-rows .row {
+  grid-template-columns: 2rem minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 0.5rem;
+  min-height: 2.5rem;
+  padding: 0.3rem 0.45rem;
+}
+
+.trash-rows .row-main strong {
+  font-size: 0.9rem;
+}
+
+.trash-rows .row-main span {
+  font-size: 0.72rem;
+  color: rgba(36, 49, 39, 0.55);
 }
 
 .reminder-panel {
