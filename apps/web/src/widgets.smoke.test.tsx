@@ -24,7 +24,12 @@ import {
   saveSalarySettings
 } from "./widgets";
 import { PlanView, loadInsuranceSchedule, parseInsuranceText, saveInsuranceSchedule } from "./plan";
-import { markAllPurged, markPurged } from "./utils";
+import {
+  inferCategoryIcon,
+  isPlaceholderCategoryIcon,
+  markAllPurged,
+  markPurged
+} from "./utils";
 
 beforeAll(() => {
   const store = new Map<string, string>();
@@ -390,5 +395,135 @@ describe("回收站彻底删除（purge）", () => {
     const payload = markAllPurged([deleted, tx("t-purge-2", 12, `${thisMonth}-11T12:00:00.000+08:00`)]);
     expect(payload.every((item) => item.purge === true)).toBe(true);
     expect(deleted.purge).toBeUndefined();
+  });
+});
+
+describe("现有分类自动补图标（inferCategoryIcon）", () => {
+  /** 库里真实存在的分类名 → 期望图标；null = 确实属于「其他/专项」兜底桶，保持占位图标不动 */
+  const cases: [string, string | null][] = [
+      ["上网费", "wifi"],
+      ["专项支出", null],
+      ["中奖收入", "ticket"],
+      ["书报杂志", "book-open"],
+      ["书籍资料", "book-open"],
+      ["买菜", "carrot"],
+      ["交流通讯", "smartphone"],
+      ["交通出行", "car-taxi-front"],
+      ["亲子教育", "baby"],
+      ["亲子活动", "baby"],
+      ["人情往来", "gift"],
+      ["人情礼金", "gift"],
+      ["休闲娱乐", "gamepad-2"],
+      ["休闲玩乐", "sparkles"],
+      ["休闲社交", "sparkles"],
+      ["保健运动", "pill-bottle"],
+      ["保姆费用", "baby"],
+      ["保险", "heart-pulse"],
+      ["健康医疗", "heart-pulse"],
+      ["公共交通", "bus"],
+      ["兴趣课程", "pencil"],
+      ["其他", null],
+      ["其他支出", null],
+      ["其他收入", null],
+      ["其他杂项", null],
+      ["兼职收入", "briefcase"],
+      ["出行", "car-taxi-front"],
+      ["利息支出", "coins"],
+      ["利息收入", "coins"],
+      ["副业", "briefcase"],
+      ["加油", "fuel"],
+      ["加班收入", "briefcase"],
+      ["化妆饰品", "sparkles"],
+      ["医疗药品", "heart-pulse"],
+      ["医药费", "pill"],
+      ["压岁钱", "hand-coins"],
+      ["图书文具", "book-open"],
+      ["培训进修", "graduation-cap"],
+      ["外出美食", "utensils"],
+      ["外食", "utensils"],
+      ["奖金收入", "banknote"],
+      ["孝敬家人", "heart"],
+      ["孝敬家长", "heart"],
+      ["学习成长", "graduation-cap"],
+      ["学习进修", "graduation-cap"],
+      ["学费托管", "graduation-cap"],
+      ["孩子", "baby"],
+      ["孩子教育", "baby"],
+      ["宠物宝贝", "paw-print"],
+      ["居家日用", "home"],
+      ["居家物业", "home"],
+      ["工资", "banknote"],
+      ["工资收入", "banknote"],
+      ["意外丢失", null],
+      ["意外来钱", null],
+      ["慈善捐助", "heart"],
+      ["房租", "home"],
+      ["手机费", "smartphone"],
+      ["打车租车", "car-taxi-front"],
+      ["投资收入", "coins"],
+      ["收入记录", "wallet"],
+      ["教育", "graduation-cap"],
+      ["教育培训", "graduation-cap"],
+      ["教育杂费", "graduation-cap"],
+      ["数码装备", "laptop"],
+      ["旅游", "map"],
+      ["日用品", "shopping-bag"],
+      ["服装鞋包", "shirt"],
+      ["服饰个护", "shirt"],
+      ["未分类大额", null],
+      ["校服用品", "shirt"],
+      ["水电物业", "home"],
+      ["油费过路", "car"],
+      ["理财", "coins"],
+      ["礼金收入", "gift"],
+      ["经营所得", "briefcase"],
+      ["维修", "wrench"],
+      ["美妆护理", "sparkles"],
+      ["考试竞赛", "pencil"],
+      ["职业收入", "briefcase"],
+      ["课外培训费用", "graduation-cap"],
+      ["购车养车", "car"],
+      ["贷款利息", "coins"],
+      ["贷款本金", "landmark"],
+      ["过路费", "car"],
+      ["运动健康医疗", "heart-pulse"],
+      ["运动健身", "dumbbell"],
+      ["通讯数码", "smartphone"],
+      ["通讯费", "smartphone"],
+      ["金融保险", "heart-pulse"],
+      ["零食饮料", "coffee"],
+      ["鞋帽包包", "shirt"],
+      ["食品酒水", "wine"],
+      ["餐饮娱乐", "utensils"],
+      ["餐饮食品", "utensils"]
+
+  ];
+
+  it("真实分类名都能推断出图标（兜底桶除外）", () => {
+    cases.forEach(([name, expected]) => {
+      expect(inferCategoryIcon(name), `分类「${name}」`).toBe(expected);
+    });
+  });
+
+  it("兜底桶保持占位图标，不会被误配", () => {
+    ["其他", "其他支出", "其他收入", "其他杂项", "专项支出", "未分类大额"].forEach((name) => {
+      expect(inferCategoryIcon(name)).toBeNull();
+    });
+  });
+
+  it("具体词优先于泛化词", () => {
+    expect(inferCategoryIcon("咖啡")).toBe("coffee");
+    expect(inferCategoryIcon("打车")).toBe("car-taxi-front");
+    expect(inferCategoryIcon("地铁通勤")).toBe("tram-front");
+    expect(inferCategoryIcon("加油")).toBe("fuel");
+    expect(inferCategoryIcon("股票")).toBe("trending-up");
+  });
+
+  it("circle / folder / 空值都算未配图标，手选过的不算", () => {
+    expect(isPlaceholderCategoryIcon("circle")).toBe(true);
+    expect(isPlaceholderCategoryIcon("folder")).toBe(true);
+    expect(isPlaceholderCategoryIcon("")).toBe(true);
+    expect(isPlaceholderCategoryIcon(null)).toBe(true);
+    expect(isPlaceholderCategoryIcon("utensils")).toBe(false);
   });
 });

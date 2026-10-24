@@ -164,11 +164,14 @@ import {
   categoryPath,
   dailyExpenseTransactions,
   dateFromMonthKey,
+  DEFAULT_CATEGORY_ICON,
   dateKey,
   dateLabel,
   dayOfYear,
   daysInMonth,
   daysInYear,
+  inferCategoryIcon,
+  isPlaceholderCategoryIcon,
   monthBudgetTotal,
   monthLabel,
   monthTotalBudgetCents,
@@ -434,7 +437,8 @@ function makeCategory(input: {
     name: input.name.trim(),
     kind: input.kind,
     parentId: input.parentId ?? null,
-    icon: input.icon ?? "circle",
+    // 没显式指定图标时按分类名推断，让新分类一建好就有图形标识（推断不到再回退默认圆点）
+    icon: input.icon ?? inferCategoryIcon(input.name) ?? DEFAULT_CATEGORY_ICON,
     color: input.color ?? (input.kind === "expense" ? "#d45b3f" : "#2f7d4f")
   };
 }
@@ -1068,6 +1072,27 @@ export function App() {
     await refreshLocal();
     if (!isLocalPreview && navigator.onLine) void syncNow();
   }
+
+  /** 存量分类自动补图标：只对「从没手选过图标」的分类生效——即 icon 仍是占位值
+   *  （新建默认 circle / 自动建父级用的 folder）或图标库里已下架的旧 id（如 train、line-chart）。
+   *  用户在分类编辑页手选过的图标一律不动。结果写回本地并进 outbox 同步到服务端。
+   *  autoIconDone 记录本次会话已处理过的 id，保证只跑一次、不会自触发循环。 */
+  const autoIconDone = useRef(new Set<string>());
+  useEffect(() => {
+    const pending = categories.filter(
+      (item) => !item.deletedAt && !autoIconDone.current.has(item.id) && (isPlaceholderCategoryIcon(item.icon) || !categoryIconMeta[item.icon ?? ""])
+    );
+    if (pending.length === 0) return;
+    const patched = pending
+      .map((item) => {
+        autoIconDone.current.add(item.id);
+        const inferred = inferCategoryIcon(item.name);
+        return inferred ? { ...item, icon: inferred } : null;
+      })
+      .filter((item): item is Category => item !== null);
+    if (patched.length === 0) return;
+    void saveManyLocalAndQueue("categories", patched);
+  }, [categories]);
 
   /** 回收站「彻底删除」单笔：本地 Dexie 直接删行，outbox 打 purge 标记让服务端硬删除 */
   async function purgeTransaction(item: Transaction) {
@@ -2931,7 +2956,7 @@ const categoryIconMeta: Record<string, { label: string; icon: typeof Tag }> = {
 
   // —— 母婴 / 宠物 ——
   baby: { label: "育儿", icon: Baby },
-  heart: { label: "母婴", icon: Heart },
+  heart: { label: "爱心", icon: Heart },
   "paw-print": { label: "宠物", icon: PawPrint },
 
   // —— 医疗 / 教育 ——
