@@ -504,7 +504,7 @@ export function DailyPaceChart({ month, transactions, categories, budgetCents }:
   const actualPoints: string[] = [`${x(0)},${y(0)}`];
   for (let day = 1; day <= today; day += 1) actualPoints.push(`${x(day)},${y(cumulative[day])}`);
   const prevPoints: string[] = [`${x(0)},${y(0)}`];
-  for (let day = 1; day <= days; day += 1) prevPoints.push(`${x(day)},${y(prevCumulative[day])}`);
+  for (let day = 1; day <= days; day += 1) prevPoints.push(`${x(day)},${y(prevCumulative[day] ?? 0)}`);
   const areaPoints = `${actualPoints.join(" ")} ${x(today)},${y(0)}`;
 
   const compactYuan = (cents: number) => {

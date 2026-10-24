@@ -144,20 +144,22 @@ describe("常规项支出与规划页", () => {
     expect(html).toContain("暂无常规项");
   });
 
-  it("PlanView 渲染预测 KPI、趋势图、主要支出项与预测依据", () => {
+  it("PlanView 渲染预测 KPI 与模块签（各模块内容点签后展示）", () => {
     const budgets: Budget[] = [
       { ...stamp, id: "b-total", month: monthOffsetKey(1), categoryId: null, amountCents: yuanToCents(9000), scope: "total" }
     ];
     const html = renderToString(<PlanView transactions={regularTransactions} categories={categories} budgets={budgets} />);
+    // 总览签（默认）：预测 KPI
     expect(html).toContain("预测总支出");
     expect(html).toContain("预测日常消费");
-    expect(html).toContain("主要支出项预测");
-    expect(html).toContain("预测依据与计算过程");
-    expect(html).toContain("plan-chart");
     expect(html).toContain("去年同期");
     expect(html).toContain("规划月份");
     expect(html).toContain('type="month"');
-    expect(html).toContain("贷款本金");
+    // 模块签齐全：趋势/逐月明细/支出项/保险日历/预测依据点签后渲染
+    expect(html).toContain("page-tabs");
+    for (const label of ["总览", "趋势", "逐月明细", "支出项", "保险日历", "预测依据"]) {
+      expect(html).toContain(`>${label}</button>`);
+    }
   });
 
   it("PlanView 空数据时不崩溃", () => {
@@ -174,7 +176,8 @@ describe("常规项支出与规划页", () => {
     expect(loaded).toHaveLength(3);
     expect(loaded[1].amountCents).toBe(70000);
     const html = renderToString(<PlanView transactions={regularTransactions} categories={categories} budgets={[]} />);
-    expect(html).toContain("保险缴费日历");
+    // 保险日程保存后：总览签 KPI 引用修正结果；面板本体在「保险日历」签内
+    expect(html).toContain("已按保险日历修正");
     expect(html).toContain("保险日历");
     saveInsuranceSchedule([]);
   });

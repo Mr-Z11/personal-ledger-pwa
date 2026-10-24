@@ -248,6 +248,18 @@ function InsuranceSchedulePanel({ items, futureKeys, onChange }: {
   );
 }
 
+/** 规划模块签（顶部横向滑动选择，参考随手记） */
+type PlanTabId = "overview" | "trend" | "months" | "items" | "insurance" | "evidence";
+
+const PLAN_TABS: { id: PlanTabId; label: string }[] = [
+  { id: "overview", label: "总览" },
+  { id: "trend", label: "趋势" },
+  { id: "months", label: "逐月明细" },
+  { id: "items", label: "支出项" },
+  { id: "insurance", label: "保险日历" },
+  { id: "evidence", label: "预测依据" }
+];
+
 export function PlanView({ transactions, categories, budgets }: {
   transactions: Transaction[];
   categories: Category[];
@@ -268,6 +280,7 @@ export function PlanView({ transactions, categories, budgets }: {
   );
 
   const [insuranceItems, setInsuranceItems] = useState<InsuranceItem[]>(() => loadInsuranceSchedule());
+  const [planTab, setPlanTab] = useState<PlanTabId>("overview");
   const scheduleConfigured = insuranceItems.length > 0;
   const histInsAvgCents = useMemo(
     () => historyInsuranceMonthlyAvg(transactions, categories, historyEndKey),
@@ -395,6 +408,21 @@ export function PlanView({ transactions, categories, budgets }: {
         </label>
       </div>
 
+      <nav className="page-tabs" aria-label="规划模块">
+        {PLAN_TABS.map((tab) => (
+          <button
+            key={tab.id}
+            type="button"
+            className={`page-tab ${planTab === tab.id ? "active" : ""}`.trim()}
+            aria-current={planTab === tab.id ? "page" : undefined}
+            onClick={() => setPlanTab(tab.id)}
+          >
+            {tab.label}
+          </button>
+        ))}
+      </nav>
+
+      {planTab === "overview" && (
       <div className="plan-kpi-grid four">
         <article className="plan-kpi">
           <span>{monthLabel(anchorKey)}预测总支出</span>
@@ -431,7 +459,9 @@ export function PlanView({ transactions, categories, budgets }: {
           <em>{items.length} 个常规项 · 弹性消费约 ¥{centsToYuan(flexibleCents)}</em>
         </article>
       </div>
+      )}
 
+      {planTab === "trend" && (
       <section className="panel">
         <div className="chart-heading">
           <h2>消费与总支出预测趋势</h2>
@@ -507,7 +537,9 @@ export function PlanView({ transactions, categories, budgets }: {
         </div>
         <p className="plan-chart-note">每个目标月份按各自的去年同期独立预测（菱形标记 = 去年同月实际总支出，主权重 {Math.round(PLAN_LAST_YEAR_WEIGHT * 100)}%）；须线为近 {PLAN_HISTORY} 个月最低~最高区间。时间越远不确定性越大。</p>
       </section>
+      )}
 
+      {planTab === "months" && (
       <section className="panel">
         <div className="chart-heading">
           <h2>{monthLabel(anchorKey)} 起 {PLAN_AHEAD} 个月预测明细</h2>
@@ -533,13 +565,17 @@ export function PlanView({ transactions, categories, budgets }: {
           <p className="empty">历史数据不足 {PLAN_HISTORY} 个月，暂无法生成逐月预测明细。</p>
         )}
       </section>
+      )}
 
+      {planTab === "insurance" && (
       <InsuranceSchedulePanel
         items={insuranceItems}
         futureKeys={futureKeys}
         onChange={setInsuranceItems}
       />
+      )}
 
+      {planTab === "items" && (
       <section className="panel">
         <div className="chart-heading">
           <h2>{monthLabel(anchorKey)}主要支出项预测</h2>
@@ -574,8 +610,10 @@ export function PlanView({ transactions, categories, budgets }: {
           </div>
         )}
       </section>
+      )}
 
-      <details className="panel plan-evidence">
+      {planTab === "evidence" && (
+      <details className="panel plan-evidence" open>
         <summary className="insights-fold-summary">
           <div>
             <h2>预测依据与计算过程</h2>
@@ -657,6 +695,7 @@ export function PlanView({ transactions, categories, budgets }: {
           <p className="plan-evidence-disclaimer">说明：以上全部为纯统计规则（去年同期加权 + 均值 + 趋势限制 + 频率识别），不预测一次性大额支出（如旅游、家电、人情），请把这类计划内开销自行加到预测值上。</p>
         </div>
       </details>
+      )}
     </section>
   );
 }

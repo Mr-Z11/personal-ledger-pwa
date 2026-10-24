@@ -3114,7 +3114,10 @@ button.settings-section {
 
 /* 报表页整体密度对齐设置页：模块间距 0.6rem、面板内距 0.7rem */
 .report-page {
-  display: grid;
+  /* flex 列而非 grid：模块签 position:sticky 需要能贯穿整个页面高度，
+     grid 行高会把 sticky 约束在签自己那一行里导致吸不了顶 */
+  display: flex;
+  flex-direction: column;
   gap: 0.6rem;
 }
 
@@ -3142,6 +3145,62 @@ button.settings-section {
   color: rgba(36, 49, 39, 0.62);
   font-size: 0.75rem;
   font-weight: 700;
+}
+
+/* 模块签（报表/规划）：顶部横向滑动选择，点签看对应模块详情（参考随手记） */
+.page-tabs {
+  position: sticky;
+  top: 0;
+  z-index: 6;
+  display: flex;
+  gap: 0.05rem;
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+  scrollbar-width: none;
+  -webkit-overflow-scrolling: touch;
+  padding: 0.28rem 0.12rem 0;
+  border-bottom: 1px solid rgba(49, 71, 58, 0.1);
+  background: rgba(246, 241, 231, 0.94);
+  backdrop-filter: blur(10px);
+  box-shadow: 0 0.3rem 0.6rem rgba(36, 49, 39, 0.06);
+}
+
+.page-tabs::-webkit-scrollbar {
+  display: none;
+}
+
+.page-tab {
+  flex: 0 0 auto;
+  position: relative;
+  padding: 0.46rem 0.64rem 0.52rem;
+  border: 0;
+  background: none;
+  font: inherit;
+  font-size: 0.85rem;
+  font-weight: 700;
+  color: rgba(36, 49, 39, 0.5);
+  white-space: nowrap;
+  cursor: pointer;
+  transition: color 150ms ease;
+}
+
+.page-tab:hover {
+  color: rgba(36, 49, 39, 0.78);
+}
+
+.page-tab.active {
+  color: #243127;
+}
+
+.page-tab.active::after {
+  content: "";
+  position: absolute;
+  left: 0.64rem;
+  right: 0.64rem;
+  bottom: 0;
+  height: 2px;
+  border-radius: 999px;
+  background: #1f5f74;
 }
 
 .report-context-anchor {

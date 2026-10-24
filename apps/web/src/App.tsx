@@ -35,7 +35,6 @@ import {
   Home,
   Info,
   Landmark,
-  Lightbulb,
   ListFilter,
   LogOut,
   MessageCircle,
@@ -47,7 +46,6 @@ import {
   RotateCcw,
   Search,
   Settings2,
-  ShieldAlert,
   Smartphone,
   Tag,
   Target,
@@ -3609,11 +3607,24 @@ type AnalysisFinding = {
 
 /** 报表板块子页（本地导航栈，顶栏无返回按钮时用页内返回头） */
 type ReportSubPage =
-  | { kind: "insights" }
   | { kind: "insightDetail"; id: string }
-  | { kind: "anomalies" }
   | { kind: "anomalyDetail"; id: string }
   | { kind: "categoryDetail"; id: string };
+
+/** 报表模块签（顶部横向滑动选择，参考随手记） */
+type ReportTabId = "basic" | "category" | "trend" | "pace" | "regular" | "big" | "special" | "insights" | "anomalies";
+
+const REPORT_TABS: { id: ReportTabId; label: string; monthOnly?: boolean }[] = [
+  { id: "basic", label: "基础统计" },
+  { id: "category", label: "分类" },
+  { id: "trend", label: "趋势" },
+  { id: "pace", label: "消费节奏", monthOnly: true },
+  { id: "regular", label: "常规项", monthOnly: true },
+  { id: "big", label: "大额开销", monthOnly: true },
+  { id: "special", label: "专项支出" },
+  { id: "insights", label: "核心洞察" },
+  { id: "anomalies", label: "异常分析", monthOnly: true }
+];
 
 function AnalysisNoteEditor({ value, placeholder, onSave, compact = false }: {
   value: string;
@@ -3663,28 +3674,6 @@ function AnalysisNoteEditor({ value, placeholder, onSave, compact = false }: {
   );
 }
 
-function ReportFold({ title, hint, badge, defaultOpen = false, children }: {
-  title: string;
-  hint: string;
-  badge?: string;
-  defaultOpen?: boolean;
-  children: ReactNode;
-}) {
-  return (
-    <details className="panel report-fold" open={defaultOpen}>
-      <summary className="report-fold-summary">
-        <div className="chart-heading">
-          <h2>{title}</h2>
-          <span>{hint}</span>
-        </div>
-        {badge && <strong className="report-fold-badge">{badge}</strong>}
-        <em>收起</em>
-      </summary>
-      <div className="report-fold-body">{children}</div>
-    </details>
-  );
-}
-
 function ReportScopePill({ label, detail }: { label: string; detail: string }) {
   return (
     <div className="report-scope-pill">
@@ -3713,6 +3702,7 @@ function Reports({ transactions, accounts, categories, budgets, analysisNotes, o
   const reportSub = reportSubStack.length > 0 ? reportSubStack[reportSubStack.length - 1] : null;
   const pushReportSub = (page: ReportSubPage) => setReportSubStack((stack) => [...stack, page]);
   const popReportSub = () => setReportSubStack((stack) => stack.slice(0, -1));
+  const [reportTab, setReportTab] = useState<ReportTabId>("basic");
   const [detailTransaction, setDetailTransaction] = useState<Transaction | null>(null);
   const categoryKind: Category["kind"] = "expense";
   const selectedYear = year.trim() || currentYear;
@@ -4089,6 +4079,7 @@ function Reports({ transactions, accounts, categories, budgets, analysisNotes, o
   useEffect(() => {
     setDetailTransaction(null);
     setReportSubStack([]);
+    setReportTab("basic");
   }, [month, period, selectedYear]);
 
   const reportToolbar = (
@@ -4130,17 +4121,8 @@ function Reports({ transactions, accounts, categories, budgets, analysisNotes, o
     : [];
   const reportSubHead = (() => {
     switch (reportSub?.kind) {
-      case "insights":
-        return { title: "核心洞察", subtitle: `${periodLabel} · ${insightCards.length} 项深度解读` };
       case "insightDetail":
         return { title: activeInsight?.title ?? "洞察详情", subtitle: `${activeInsight?.value ?? ""} · ${periodLabel}`.replace(/^ · /, "") };
-      case "anomalies":
-        return {
-          title: "消费异常分析",
-          subtitle: monthlyAnalysis.findings.length > 0
-            ? `${monthLabel(month)} · ${monthlyAnalysis.findings.length} 项提醒`
-            : `${monthLabel(month)} · 暂无异常`
-        };
       case "anomalyDetail":
         return { title: activeFinding?.title ?? "异常详情", subtitle: activeFinding?.value ?? periodLabel };
       case "categoryDetail":
@@ -4149,6 +4131,9 @@ function Reports({ transactions, accounts, categories, budgets, analysisNotes, o
         return { title: "", subtitle: "" };
     }
   })();
+
+  const visibleReportTabs = REPORT_TABS.filter((tab) => period === "month" || !tab.monthOnly);
+  const activeReportTab = visibleReportTabs.some((tab) => tab.id === reportTab) ? reportTab : "basic";
 
   return (
     <section className="report-page">
@@ -4165,24 +4150,6 @@ function Reports({ transactions, accounts, categories, budgets, analysisNotes, o
             </div>
           </div>
 
-          {reportSub.kind === "insights" && (
-            <div className="finance-insights">
-              {insightCards.map((card) => (
-                <button
-                  type="button"
-                  className={`insight-card ${card.tone}`.trim()}
-                  key={card.id}
-                  onClick={() => pushReportSub({ kind: "insightDetail", id: card.id })}
-                >
-                  <span>{card.title}</span>
-                  <strong>{card.value}</strong>
-                  <p>{card.summary}</p>
-                  <em>查看详情</em>
-                </button>
-              ))}
-            </div>
-          )}
-
           {reportSub.kind === "insightDetail" && activeInsight && (
             <article className={`insight-card ${activeInsight.tone} expanded`.trim()}>
               <span>{activeInsight.title}</span>
@@ -4196,68 +4163,6 @@ function Reports({ transactions, accounts, categories, budgets, analysisNotes, o
                 </ul>
               </div>
             </article>
-          )}
-
-          {reportSub.kind === "anomalies" && (
-            <>
-              <div className="analysis-summary-grid">
-                <div className={monthlyAnalysis.budgetCents > 0 && monthlyAnalysis.budgetUsage > 100 ? "analysis-summary-card warn" : "analysis-summary-card"}>
-                  <span>日常预算</span>
-                  <strong>{monthlyAnalysis.budgetCents > 0 ? `${monthlyAnalysis.budgetUsage}%` : "未设置"}</strong>
-                  <em>{monthlyAnalysis.budgetCents > 0 ? `¥${centsToYuan(periodSummary.expenseCents)} / ¥${centsToYuan(monthlyAnalysis.budgetCents)}` : "可在设置中补充预算"}</em>
-                </div>
-                <div className="analysis-summary-card">
-                  <span>全部支出</span>
-                  <strong>¥{centsToYuan(monthlyAnalysis.totalExpenseCents)}</strong>
-                  <em>日常 + 专项</em>
-                </div>
-                <div className="analysis-summary-card">
-                  <span>预计日常</span>
-                  <strong>¥{centsToYuan(projectedExpense)}</strong>
-                  <em>按当前日均测算</em>
-                </div>
-              </div>
-              <div className="analysis-delta-grid">
-                <div>
-                  <strong>增加最多</strong>
-                  {monthlyAnalysis.topIncreases.length > 0 ? monthlyAnalysis.topIncreases.map((item) => (
-                    <span key={item.id}>{item.name} +¥{centsToYuan(item.delta)}</span>
-                  )) : <span>暂无明显增加</span>}
-                </div>
-                <div>
-                  <strong>下降最多</strong>
-                  {monthlyAnalysis.topDrops.length > 0 ? monthlyAnalysis.topDrops.map((item) => (
-                    <span key={item.id}>{item.name} -¥{centsToYuan(Math.abs(item.delta))}</span>
-                  )) : <span>暂无明显下降</span>}
-                </div>
-              </div>
-              <AnalysisNoteEditor
-                value={monthAnalysisNote?.content ?? ""}
-                placeholder="记录本月复盘：哪些是必要支出，哪些是可优化的消费习惯，哪些需要下月继续观察。"
-                onSave={(content) => saveAnalysisNote("month", "summary", content)}
-              />
-              {monthlyAnalysis.findings.length > 0 ? (
-                <div className="anomaly-list">
-                  {monthlyAnalysis.findings.map((finding) => (
-                    <button
-                      type="button"
-                      className={`anomaly-row ${finding.tone}`}
-                      key={finding.id}
-                      onClick={() => pushReportSub({ kind: "anomalyDetail", id: finding.id })}
-                    >
-                      <div>
-                        <span>{finding.title}</span>
-                        <strong>{finding.value}</strong>
-                        <p>{finding.summary}</p>
-                      </div>
-                      <em>详情</em>
-                    </button>
-                  ))}
-                </div>
-              ) : (
-                <p className="empty">本月没有触发显著异常，建议仍保留一条人工复盘笔记，记录是否有即将发生的大额支出。</p>
-              )}
-            </>
           )}
 
           {reportSub.kind === "anomalyDetail" && activeFinding && (
@@ -4318,163 +4223,247 @@ function Reports({ transactions, accounts, categories, budgets, analysisNotes, o
         </>
       ) : (
         <>
-      <div className="report-context-anchor" aria-label="当前报表数据范围">
-        <div>
-          <span>当前查看</span>
-          <strong>{periodLabel}</strong>
-        </div>
-        <em>{stickyScopeHint}</em>
-      </div>
-
-      <ReportScopePill label={primaryScopeLabel} detail={`${periodLabel} 汇总，不含历史趋势`} />
-      <div className="report-metrics">
-        <Metric title={period === "month" ? "日常月消费" : "日常年消费"} value={periodSummary.expenseCents} icon={ArrowUpRight} tone="warn" />
-        <Metric title="专项支出" value={specialSummary.expenseCents} icon={Banknote} tone="blue" />
-        <Metric title="预计日常消费" value={projectedExpense} icon={ArrowRightLeft} tone="neutral" />
-      </div>
-
-      {period === "month" && (
-        <>
-          <ReportFold title="本月消费节奏" hint={`${monthLabel(month)} · 每日累计 vs 预算参考线`}>
-            <TrendFocusCards month={month} transactions={transactions} categories={categories} budgetCents={monthlyAnalysis.budgetCents} />
-            <DailyPaceChart month={month} transactions={transactions} categories={categories} budgetCents={monthlyAnalysis.budgetCents} />
-          </ReportFold>
-
-          <ReportFold title="常规项支出" hint={`近6个月 · 每月固定开销逐月对比`}>
-            <RegularExpensePanel month={month} transactions={transactions} categories={categories} />
-          </ReportFold>
-        </>
-      )}
-
-      <button type="button" className="report-entry-row" onClick={() => pushReportSub({ kind: "insights" })}>
-        <span className="settings-row-head">
-          <span className="settings-row-icon tone-purple sub-entry-icon"><Lightbulb size={19} /></span>
-          <span className="settings-row-text">
-            <strong>核心洞察</strong>
-            <small>{periodLabel} · {insightCards.length} 项深度解读</small>
-          </span>
-          <ChevronRight size={16} className="settings-row-chevron" />
-        </span>
-      </button>
-
-      {period === "month" && (
-        <>
-        <button
-          type="button"
-          className={`report-entry-row has-badge ${monthlyAnalysis.findings.some((finding) => finding.tone === "warn") ? "warn" : ""}`.trim()}
-          onClick={() => pushReportSub({ kind: "anomalies" })}
-        >
-          <span className="settings-row-head">
-            <span className="settings-row-icon tone-gold sub-entry-icon"><ShieldAlert size={19} /></span>
-            <span className="settings-row-text">
-              <strong>消费异常分析</strong>
-              <small>{monthLabel(month)} · 本月异常，历史数据只作参照</small>
-            </span>
-            <span className={`report-entry-badge ${monthlyAnalysis.findings.some((finding) => finding.tone === "warn") ? "warn" : ""}`.trim()}>
-              {monthlyAnalysis.findings.length > 0 ? `${monthlyAnalysis.findings.length} 项提醒` : "暂无异常"}
-            </span>
-            <ChevronRight size={16} className="settings-row-chevron" />
-          </span>
-        </button>
-
-        <ReportFold title="大额开销" hint={`${monthLabel(month)} · 清单 + 规律识别（纯统计规则，无 AI）`}>
-          <BigExpensePanel month={month} transactions={transactions} categories={categories} accounts={accounts} />
-        </ReportFold>
-        </>
-      )}
-
-      {specialCategoryData.length > 0 && (
-        <details className="panel special-expense-panel">
-          <summary className="special-expense-summary">
-            <div>
-              <span>专项支出</span>
-              <strong>¥{centsToYuan(specialSummary.expenseCents)}</strong>
-            </div>
-            <em>{periodLabel} · {specialCategoryData.length} 类 · 单独统计</em>
-          </summary>
-          <div className="special-expense-grid">
-            {specialCategoryData.map((entry) => (
-              <div className="budget-line special-expense-line" key={entry.id}>
-                <span>{entry.name}</span>
-                <strong>¥{centsToYuan(entry.value)}</strong>
-                <div className="bar"><i style={{ width: `${Math.max(3, Math.round((entry.value / Math.max(1, specialSummary.expenseCents)) * 100))}%` }} /></div>
-              </div>
+          <nav className="page-tabs" aria-label="报表模块">
+            {visibleReportTabs.map((tab) => (
+              <button
+                key={tab.id}
+                type="button"
+                className={`page-tab ${activeReportTab === tab.id ? "active" : ""}`.trim()}
+                aria-current={activeReportTab === tab.id ? "page" : undefined}
+                onClick={() => setReportTab(tab.id)}
+              >
+                {tab.label}
+              </button>
             ))}
-          </div>
-        </details>
-      )}
+          </nav>
 
-      <section className="grid two report-grid">
-        <div className="panel chart-panel category-analysis">
-          <div className="chart-heading">
-            <h2>分类统计</h2>
-            <span>{periodLabel} · 日常消费明细</span>
-          </div>
-          <div className="donut-wrap">
-            <InteractiveDonut
-              data={categoryData}
-              total={categoryTotal}
-              selectedIndex={selectedCategoryIndex ?? -1}
-              onSelect={(index) => {
-                const entry = categoryData[index];
-                if (!entry) return;
-                setSelectedCategoryIndex(index);
-                pushReportSub({ kind: "categoryDetail", id: entry.id });
-              }}
-              onCycleSelect={(index) => setSelectedCategoryIndex(index)}
-              kind={categoryKind}
-            />
-          </div>
-          {categoryData.length === 0 && <p className="empty">本期暂无{categoryKind === "expense" ? "支出" : "收入"}分类数据</p>}
-          {categoryData.length > 0 && (
-            <div className="report-category-list">
-              {categoryData.map((entry, index) => (
-                <button
-                  type="button"
-                  className={`report-category-row ${selectedCategoryIndex === index ? "active" : ""}`.trim()}
-                  key={entry.id}
-                  onClick={() => {
+          {activeReportTab === "basic" && (
+            <>
+              <div className="report-context-anchor" aria-label="当前报表数据范围">
+                <div>
+                  <span>当前查看</span>
+                  <strong>{periodLabel}</strong>
+                </div>
+                <em>{stickyScopeHint}</em>
+              </div>
+
+              <ReportScopePill label={primaryScopeLabel} detail={`${periodLabel} 汇总，不含历史趋势`} />
+              <div className="report-metrics">
+                <Metric title={period === "month" ? "日常月消费" : "日常年消费"} value={periodSummary.expenseCents} icon={ArrowUpRight} tone="warn" />
+                <Metric title="专项支出" value={specialSummary.expenseCents} icon={Banknote} tone="blue" />
+                <Metric title="预计日常消费" value={projectedExpense} icon={ArrowRightLeft} tone="neutral" />
+              </div>
+            </>
+          )}
+
+          {activeReportTab === "category" && (
+            <div className="panel chart-panel category-analysis">
+              <div className="chart-heading">
+                <h2>分类统计</h2>
+                <span>{periodLabel} · 日常消费明细</span>
+              </div>
+              <div className="donut-wrap">
+                <InteractiveDonut
+                  data={categoryData}
+                  total={categoryTotal}
+                  selectedIndex={selectedCategoryIndex ?? -1}
+                  onSelect={(index) => {
+                    const entry = categoryData[index];
+                    if (!entry) return;
                     setSelectedCategoryIndex(index);
                     pushReportSub({ kind: "categoryDetail", id: entry.id });
                   }}
-                >
-                  <i className="report-category-dot" style={{ background: entry.color }} />
-                  <span className="report-category-name">{entry.name}</span>
-                  <strong>¥{centsToYuan(entry.value)}</strong>
-                  <em>{periodSummary.expenseCents > 0 ? Math.round((entry.value / periodSummary.expenseCents) * 100) : 0}%</em>
-                  <ChevronRight size={15} className="settings-row-chevron" />
-                </button>
-              ))}
-              <p className="report-category-hint">点击分类查看本期流水明细</p>
+                  onCycleSelect={(index) => setSelectedCategoryIndex(index)}
+                  kind={categoryKind}
+                />
+              </div>
+              {categoryData.length === 0 && <p className="empty">本期暂无{categoryKind === "expense" ? "支出" : "收入"}分类数据</p>}
+              {categoryData.length > 0 && (
+                <div className="report-category-list">
+                  {categoryData.map((entry, index) => (
+                    <button
+                      type="button"
+                      className={`report-category-row ${selectedCategoryIndex === index ? "active" : ""}`.trim()}
+                      key={entry.id}
+                      onClick={() => {
+                        setSelectedCategoryIndex(index);
+                        pushReportSub({ kind: "categoryDetail", id: entry.id });
+                      }}
+                    >
+                      <i className="report-category-dot" style={{ background: entry.color }} />
+                      <span className="report-category-name">{entry.name}</span>
+                      <strong>¥{centsToYuan(entry.value)}</strong>
+                      <em>{periodSummary.expenseCents > 0 ? Math.round((entry.value / periodSummary.expenseCents) * 100) : 0}%</em>
+                      <ChevronRight size={15} className="settings-row-chevron" />
+                    </button>
+                  ))}
+                  <p className="report-category-hint">点击分类查看本期流水明细</p>
+                </div>
+              )}
             </div>
           )}
-        </div>
 
-        <div className="trend-stack">
-          <TrendFoldPanel
-            title={period === "month" ? "近12个月消费趋势" : "近6年消费趋势"}
-            rangeLabel={dailyTrendRangeLabel}
-            legendLabel="日常消费"
-            data={dailyTrendData}
-            periodKind={period}
-            selectedIndex={selectedTrendIndex}
-            onSelect={setSelectedTrendIndex}
-            colorOffset={0}
-          />
-          <TrendFoldPanel
-            title="近12个月支出趋势"
-            rangeLabel={totalExpenseTrendRangeLabel}
-            legendLabel="全部支出"
-            data={totalExpenseTrendData}
-            periodKind="month"
-            selectedIndex={selectedTotalTrendIndex}
-            onSelect={setSelectedTotalTrendIndex}
-            colorOffset={3}
-            totalMode
-          />
-        </div>
-      </section>
-      </>
+          {activeReportTab === "trend" && (
+            <div className="trend-stack">
+              <TrendFoldPanel
+                title={period === "month" ? "近12个月消费趋势" : "近6年消费趋势"}
+                rangeLabel={dailyTrendRangeLabel}
+                legendLabel="日常消费"
+                data={dailyTrendData}
+                periodKind={period}
+                selectedIndex={selectedTrendIndex}
+                onSelect={setSelectedTrendIndex}
+                colorOffset={0}
+                defaultOpen
+              />
+              <TrendFoldPanel
+                title="近12个月支出趋势"
+                rangeLabel={totalExpenseTrendRangeLabel}
+                legendLabel="全部支出"
+                data={totalExpenseTrendData}
+                periodKind="month"
+                selectedIndex={selectedTotalTrendIndex}
+                onSelect={setSelectedTotalTrendIndex}
+                colorOffset={3}
+                totalMode
+                defaultOpen
+              />
+            </div>
+          )}
+
+          {activeReportTab === "pace" && (
+            <section className="panel">
+              <div className="chart-heading">
+                <h2>本月消费节奏</h2>
+                <span>{monthLabel(month)} · 每日累计 vs 预算参考线</span>
+              </div>
+              <TrendFocusCards month={month} transactions={transactions} categories={categories} budgetCents={monthlyAnalysis.budgetCents} />
+              <DailyPaceChart month={month} transactions={transactions} categories={categories} budgetCents={monthlyAnalysis.budgetCents} />
+            </section>
+          )}
+
+          {activeReportTab === "regular" && (
+            <section className="panel">
+              <div className="chart-heading">
+                <h2>常规项支出</h2>
+                <span>近6个月 · 每月固定开销逐月对比</span>
+              </div>
+              <RegularExpensePanel month={month} transactions={transactions} categories={categories} />
+            </section>
+          )}
+
+          {activeReportTab === "big" && (
+            <section className="panel">
+              <div className="chart-heading">
+                <h2>大额开销</h2>
+                <span>{monthLabel(month)} · 清单 + 规律识别（纯统计规则，无 AI）</span>
+              </div>
+              <BigExpensePanel month={month} transactions={transactions} categories={categories} accounts={accounts} />
+            </section>
+          )}
+
+          {activeReportTab === "special" && (
+            <section className="panel">
+              <div className="chart-heading">
+                <h2>专项支出</h2>
+                <span>{periodLabel} · {specialCategoryData.length} 类 · 单独统计，不纳入日常趋势</span>
+              </div>
+              {specialCategoryData.length > 0 ? (
+                <div className="special-expense-grid">
+                  {specialCategoryData.map((entry) => (
+                    <div className="budget-line special-expense-line" key={entry.id}>
+                      <span>{entry.name}</span>
+                      <strong>¥{centsToYuan(entry.value)}</strong>
+                      <div className="bar"><i style={{ width: `${Math.max(3, Math.round((entry.value / Math.max(1, specialSummary.expenseCents)) * 100))}%` }} /></div>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <p className="empty">本期暂无专项支出（贷款、保险、教育等会单独统计）</p>
+              )}
+            </section>
+          )}
+
+          {activeReportTab === "insights" && (
+            <div className="finance-insights">
+              {insightCards.map((card) => (
+                <button
+                  type="button"
+                  className={`insight-card ${card.tone}`.trim()}
+                  key={card.id}
+                  onClick={() => pushReportSub({ kind: "insightDetail", id: card.id })}
+                >
+                  <span>{card.title}</span>
+                  <strong>{card.value}</strong>
+                  <p>{card.summary}</p>
+                  <em>查看详情</em>
+                </button>
+              ))}
+            </div>
+          )}
+
+          {activeReportTab === "anomalies" && (
+            <>
+              <div className="analysis-summary-grid">
+                <div className={monthlyAnalysis.budgetCents > 0 && monthlyAnalysis.budgetUsage > 100 ? "analysis-summary-card warn" : "analysis-summary-card"}>
+                  <span>日常预算</span>
+                  <strong>{monthlyAnalysis.budgetCents > 0 ? `${monthlyAnalysis.budgetUsage}%` : "未设置"}</strong>
+                  <em>{monthlyAnalysis.budgetCents > 0 ? `¥${centsToYuan(periodSummary.expenseCents)} / ¥${centsToYuan(monthlyAnalysis.budgetCents)}` : "可在设置中补充预算"}</em>
+                </div>
+                <div className="analysis-summary-card">
+                  <span>全部支出</span>
+                  <strong>¥{centsToYuan(monthlyAnalysis.totalExpenseCents)}</strong>
+                  <em>日常 + 专项</em>
+                </div>
+                <div className="analysis-summary-card">
+                  <span>预计日常</span>
+                  <strong>¥{centsToYuan(projectedExpense)}</strong>
+                  <em>按当前日均测算</em>
+                </div>
+              </div>
+              <div className="analysis-delta-grid">
+                <div>
+                  <strong>增加最多</strong>
+                  {monthlyAnalysis.topIncreases.length > 0 ? monthlyAnalysis.topIncreases.map((item) => (
+                    <span key={item.id}>{item.name} +¥{centsToYuan(item.delta)}</span>
+                  )) : <span>暂无明显增加</span>}
+                </div>
+                <div>
+                  <strong>下降最多</strong>
+                  {monthlyAnalysis.topDrops.length > 0 ? monthlyAnalysis.topDrops.map((item) => (
+                    <span key={item.id}>{item.name} -¥{centsToYuan(Math.abs(item.delta))}</span>
+                  )) : <span>暂无明显下降</span>}
+                </div>
+              </div>
+              <AnalysisNoteEditor
+                value={monthAnalysisNote?.content ?? ""}
+                placeholder="记录本月复盘：哪些是必要支出，哪些是可优化的消费习惯，哪些需要下月继续观察。"
+                onSave={(content) => saveAnalysisNote("month", "summary", content)}
+              />
+              {monthlyAnalysis.findings.length > 0 ? (
+                <div className="anomaly-list">
+                  {monthlyAnalysis.findings.map((finding) => (
+                    <button
+                      type="button"
+                      className={`anomaly-row ${finding.tone}`}
+                      key={finding.id}
+                      onClick={() => pushReportSub({ kind: "anomalyDetail", id: finding.id })}
+                    >
+                      <div>
+                        <span>{finding.title}</span>
+                        <strong>{finding.value}</strong>
+                        <p>{finding.summary}</p>
+                      </div>
+                      <em>详情</em>
+                    </button>
+                  ))}
+                </div>
+              ) : (
+                <p className="empty">本月没有触发显著异常，建议仍保留一条人工复盘笔记，记录是否有即将发生的大额支出。</p>
+              )}
+            </>
+          )}
+        </>
       )}
       {detailTransaction && (
         <TransactionDetailDrawer
@@ -4493,7 +4482,7 @@ type TrendPoint = {
   expense: number;
 };
 
-function TrendFoldPanel({ title, rangeLabel, legendLabel, data, periodKind, selectedIndex, onSelect, colorOffset = 0, totalMode = false }: {
+function TrendFoldPanel({ title, rangeLabel, legendLabel, data, periodKind, selectedIndex, onSelect, colorOffset = 0, totalMode = false, defaultOpen = false }: {
   title: string;
   rangeLabel: string;
   legendLabel: string;
@@ -4503,6 +4492,7 @@ function TrendFoldPanel({ title, rangeLabel, legendLabel, data, periodKind, sele
   onSelect: (index: number) => void;
   colorOffset?: number;
   totalMode?: boolean;
+  defaultOpen?: boolean;
 }) {
   const maxTrend = Math.max(1, ...data.map((entry) => entry.expense));
   const activeTrendIndex = selectedIndex ?? data.length - 1;
@@ -4513,7 +4503,7 @@ function TrendFoldPanel({ title, rangeLabel, legendLabel, data, periodKind, sele
   const trendScopeLabel = totalMode ? "历史支出趋势" : periodKind === "month" ? "历史消费趋势" : "多年消费趋势";
 
   return (
-    <details className={`panel chart-panel trend-panel trend-fold-panel ${totalMode ? "total-trend-panel" : "daily-trend-panel"}`}>
+    <details className={`panel chart-panel trend-panel trend-fold-panel ${totalMode ? "total-trend-panel" : "daily-trend-panel"}`} open={defaultOpen}>
       <summary className="trend-fold-summary">
         <div className="trend-fold-title">
           <div className="trend-title-row">
