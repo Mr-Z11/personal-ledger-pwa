@@ -282,20 +282,18 @@ export function PlanView({ transactions, categories, budgets }: {
 
   const [insuranceItems, setInsuranceItems] = useState<InsuranceItem[]>(() => loadInsuranceSchedule());
   const [planTab, setPlanTab] = useState<PlanTabId>("overview");
-  /** 模块签左右滑动切换（内容区横滑切上/下一个签）；motion 方向+序号供入场动画重放 */
-  const [planTabMotion, setPlanTabMotion] = useState<{ seq: number; dir: "left" | "right" }>({ seq: 0, dir: "left" });
+  const activePlanTabIndex = Math.max(0, PLAN_TABS.findIndex((tab) => tab.id === planTab));
+  /** 模块签左右滑动切换（iOS 分页式：拖动时两侧相邻模块同时可见） */
   const switchPlanTab = (id: PlanTabId) => {
-    const from = PLAN_TABS.findIndex((tab) => tab.id === planTab);
     const to = PLAN_TABS.findIndex((tab) => tab.id === id);
-    setPlanTabMotion((prev) => ({ seq: prev.seq + 1, dir: to >= from ? "left" : "right" }));
+    if (to >= 0) planTabSwipe.snapTo(to);
     setPlanTab(id);
   };
   const planTabSwipe = useTabSwipe({
     enabled: true,
     count: PLAN_TABS.length,
-    index: PLAN_TABS.findIndex((tab) => tab.id === planTab),
-    onChange: (next) => switchPlanTab(PLAN_TABS[next].id),
-    resetKey: planTabMotion.seq
+    index: activePlanTabIndex,
+    onChange: (next) => switchPlanTab(PLAN_TABS[next].id)
   });
   const scheduleConfigured = insuranceItems.length > 0;
   const histInsAvgCents = useMemo(
@@ -438,13 +436,14 @@ export function PlanView({ transactions, categories, budgets }: {
         ))}
       </nav>
 
-      <div
-        className="tab-swipe-body"
-        ref={planTabSwipe.bodyRef}
-        key={`plan-tab-${planTabMotion.seq}`}
-        data-swipe={planTabMotion.seq === 0 ? undefined : planTabMotion.dir}
-      >
-      {planTab === "overview" && (
+      <div className="tab-swipe-body" ref={planTabSwipe.bodyRef}>
+        <div className="tab-swipe-track" ref={planTabSwipe.trackRef}>
+          {PLAN_TABS.map((tab, tabIndex) => (
+            <div className="tab-swipe-page" key={tab.id} data-page={tabIndex} aria-hidden={tabIndex !== activePlanTabIndex}>
+              {/* 只渲染当前页与左右相邻页：拖动时两侧要能真的看到内容 */}
+              {Math.abs(tabIndex - activePlanTabIndex) <= 1 && (
+                <>
+      {tab.id === "overview" && (
       <div className="plan-kpi-grid four">
         <article className="plan-kpi">
           <span>{monthLabel(anchorKey)}预测总支出</span>
@@ -483,7 +482,7 @@ export function PlanView({ transactions, categories, budgets }: {
       </div>
       )}
 
-      {planTab === "trend" && (
+      {tab.id === "trend" && (
       <section className="panel">
         <div className="chart-heading">
           <h2>消费与总支出预测趋势</h2>
@@ -561,7 +560,7 @@ export function PlanView({ transactions, categories, budgets }: {
       </section>
       )}
 
-      {planTab === "months" && (
+      {tab.id === "months" && (
       <section className="panel">
         <div className="chart-heading">
           <h2>{monthLabel(anchorKey)} 起 {PLAN_AHEAD} 个月预测明细</h2>
@@ -589,7 +588,7 @@ export function PlanView({ transactions, categories, budgets }: {
       </section>
       )}
 
-      {planTab === "insurance" && (
+      {tab.id === "insurance" && (
       <InsuranceSchedulePanel
         items={insuranceItems}
         futureKeys={futureKeys}
@@ -597,7 +596,7 @@ export function PlanView({ transactions, categories, budgets }: {
       />
       )}
 
-      {planTab === "items" && (
+      {tab.id === "items" && (
       <section className="panel">
         <div className="chart-heading">
           <h2>{monthLabel(anchorKey)}主要支出项预测</h2>
@@ -634,7 +633,7 @@ export function PlanView({ transactions, categories, budgets }: {
       </section>
       )}
 
-      {planTab === "evidence" && (
+      {tab.id === "evidence" && (
       <details className="panel plan-evidence" open>
         <summary className="insights-fold-summary">
           <div>
@@ -718,6 +717,11 @@ export function PlanView({ transactions, categories, budgets }: {
         </div>
       </details>
       )}
+                </>
+              )}
+            </div>
+          ))}
+        </div>
       </div>
     </section>
   );

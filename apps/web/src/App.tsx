@@ -4807,22 +4807,19 @@ function Reports({ transactions, accounts, categories, budgets, analysisNotes, o
 
   const visibleReportTabs = REPORT_TABS.filter((tab) => period === "month" || !tab.monthOnly);
   const activeReportTab = visibleReportTabs.some((tab) => tab.id === reportTab) ? reportTab : "basic";
+  const activeReportTabIndex = Math.max(0, visibleReportTabs.findIndex((tab) => tab.id === activeReportTab));
 
-  /** 模块签左右滑动切换（内容区横滑切上/下一个签）。motion 记录方向+序号：
-   *  序号进 key 让内容层重挂载，入场动画才能重放；首屏 seq=0 不播动画。 */
-  const [reportTabMotion, setReportTabMotion] = useState<{ seq: number; dir: "left" | "right" }>({ seq: 0, dir: "left" });
+  /** 模块签左右滑动切换（iOS 分页式：拖动时两侧相邻模块同时可见） */
   const switchReportTab = (id: ReportTabId) => {
-    const from = visibleReportTabs.findIndex((tab) => tab.id === activeReportTab);
     const to = visibleReportTabs.findIndex((tab) => tab.id === id);
-    setReportTabMotion((prev) => ({ seq: prev.seq + 1, dir: to >= from ? "left" : "right" }));
+    if (to >= 0) reportTabSwipe.snapTo(to);
     setReportTab(id);
   };
   const reportTabSwipe = useTabSwipe({
     enabled: reportSub === null && detailTransaction === null,
     count: visibleReportTabs.length,
-    index: Math.max(0, visibleReportTabs.findIndex((tab) => tab.id === activeReportTab)),
-    onChange: (next) => switchReportTab(visibleReportTabs[next].id),
-    resetKey: reportTabMotion.seq
+    index: activeReportTabIndex,
+    onChange: (next) => switchReportTab(visibleReportTabs[next].id)
   });
 
   return (
@@ -4937,13 +4934,15 @@ function Reports({ transactions, accounts, categories, budgets, analysisNotes, o
             ))}
           </nav>
 
-          <div
-            className="tab-swipe-body"
-            ref={reportTabSwipe.bodyRef}
-            key={`report-tab-${reportTabMotion.seq}`}
-            data-swipe={reportTabMotion.seq === 0 ? undefined : reportTabMotion.dir}
-          >
-          {activeReportTab === "basic" && (
+          <div className="tab-swipe-body" ref={reportTabSwipe.bodyRef}>
+            <div className="tab-swipe-track" ref={reportTabSwipe.trackRef}>
+              {visibleReportTabs.map((tab, tabIndex) => (
+                <div className="tab-swipe-page" key={tab.id} data-page={tabIndex} aria-hidden={tabIndex !== activeReportTabIndex}>
+                  {/* 只渲染当前页与左右相邻页：拖动时两侧要能真的看到内容，
+                      全部渲染 9 个模块则太重 */}
+                  {Math.abs(tabIndex - activeReportTabIndex) <= 1 && (
+                    <>
+          {tab.id === "basic" && (
             <>
               <div className="report-context-anchor" aria-label="当前报表数据范围">
                 <div>
@@ -4962,7 +4961,7 @@ function Reports({ transactions, accounts, categories, budgets, analysisNotes, o
             </>
           )}
 
-          {activeReportTab === "category" && (
+          {tab.id === "category" && (
             <div className="panel chart-panel category-analysis">
               <div className="chart-heading">
                 <h2>分类统计</h2>
@@ -5009,7 +5008,7 @@ function Reports({ transactions, accounts, categories, budgets, analysisNotes, o
             </div>
           )}
 
-          {activeReportTab === "trend" && (
+          {tab.id === "trend" && (
             <div className="trend-stack">
               <TrendFoldPanel
                 title={period === "month" ? "近12个月消费趋势" : "近6年消费趋势"}
@@ -5037,7 +5036,7 @@ function Reports({ transactions, accounts, categories, budgets, analysisNotes, o
             </div>
           )}
 
-          {activeReportTab === "pace" && (
+          {tab.id === "pace" && (
             <section className="panel">
               <div className="chart-heading">
                 <h2>本月消费节奏</h2>
@@ -5048,7 +5047,7 @@ function Reports({ transactions, accounts, categories, budgets, analysisNotes, o
             </section>
           )}
 
-          {activeReportTab === "regular" && (
+          {tab.id === "regular" && (
             <section className="panel">
               <div className="chart-heading">
                 <h2>常规项支出</h2>
@@ -5058,7 +5057,7 @@ function Reports({ transactions, accounts, categories, budgets, analysisNotes, o
             </section>
           )}
 
-          {activeReportTab === "big" && (
+          {tab.id === "big" && (
             <section className="panel">
               <div className="chart-heading">
                 <h2>大额开销</h2>
@@ -5068,7 +5067,7 @@ function Reports({ transactions, accounts, categories, budgets, analysisNotes, o
             </section>
           )}
 
-          {activeReportTab === "special" && (
+          {tab.id === "special" && (
             <section className="panel">
               <div className="chart-heading">
                 <h2>专项支出</h2>
@@ -5093,7 +5092,7 @@ function Reports({ transactions, accounts, categories, budgets, analysisNotes, o
             </section>
           )}
 
-          {activeReportTab === "insights" && (
+          {tab.id === "insights" && (
             <div className="finance-insights">
               {insightCards.map((card) => (
                 <button
@@ -5111,7 +5110,7 @@ function Reports({ transactions, accounts, categories, budgets, analysisNotes, o
             </div>
           )}
 
-          {activeReportTab === "anomalies" && (
+          {tab.id === "anomalies" && (
             <>
               <div className="analysis-summary-grid">
                 <div className={monthlyAnalysis.budgetCents > 0 && monthlyAnalysis.budgetUsage > 100 ? "analysis-summary-card warn" : "analysis-summary-card"}>
@@ -5171,7 +5170,12 @@ function Reports({ transactions, accounts, categories, budgets, analysisNotes, o
                 <p className="empty">本月没有触发显著异常，建议仍保留一条人工复盘笔记，记录是否有即将发生的大额支出。</p>
               )}
             </>
-          )}
+                  )}
+                    </>
+                  )}
+                </div>
+              ))}
+            </div>
           </div>
         </>
       )}

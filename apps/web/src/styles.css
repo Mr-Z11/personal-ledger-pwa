@@ -2372,38 +2372,41 @@ button.settings-section {
   gap: 0.6rem;
 }
 
-/* 模块签左右滑动切换（报表/规划）：内容层跟手位移 + 切换入场动画。
-   注意：transform 只能加在这层（签条之外）——transform 创建包含块，
-   会让 .page-tabs 的 position:sticky 失效（历史坑：吸顶标题条同理）。 */
+/* 模块签左右滑动切换（报表/规划）：iOS 分页式。
+   视口裁掉两侧 → 轨道把各模块页横排 → 位移到目标页，拖动中左右邻页同时露出。
+   注意 ①：transform 只能加在 .tab-swipe-track 上（签条在 .tab-swipe-body 之外）——
+   transform 创建包含块，会让 .page-tabs 的 position:sticky 失效（历史坑：吸顶标题条同理）。
+   注意 ②：.tab-swipe-body 的 overflow:hidden 使其成为滚动容器，因此**子页内不能再依赖
+   position:sticky**（目前报表/规划的 6+9 个子模块里没有吸顶元素，改动前先确认）。
+   注意 ③：高度由 useTabSwipe 的 ResizeObserver 跟随当前页写入，否则会被最高的页撑高。 */
 .tab-swipe-body {
+  min-width: 0;
+  overflow: hidden;
+}
+
+.tab-swipe-track {
+  display: flex;
+  align-items: flex-start;
+  will-change: transform;
+}
+
+.tab-swipe-page {
+  flex: 0 0 100%;
   min-width: 0;
   display: flex;
   flex-direction: column;
   gap: 0.6rem;
 }
 
-.tab-swipe-body[data-swipe="left"] {
-  animation: tab-swipe-in-left 260ms cubic-bezier(.32, .72, 0, 1);
+/* 邻页（拖动时露出的上一/下一模块）不接受交互，避免误点 */
+.tab-swipe-page[aria-hidden="true"] {
+  pointer-events: none;
 }
 
-.tab-swipe-body[data-swipe="right"] {
-  animation: tab-swipe-in-right 260ms cubic-bezier(.32, .72, 0, 1);
-}
-
-@keyframes tab-swipe-in-left {
-  from { transform: translateX(28px); opacity: 0.35; }
-  to { transform: none; opacity: 1; }
-}
-
-@keyframes tab-swipe-in-right {
-  from { transform: translateX(-28px); opacity: 0.35; }
-  to { transform: none; opacity: 1; }
-}
-
+/* 位移时长是 JS 内联写在 .tab-swipe-track 上的，故这里要 !important 才压得住 */
 @media (prefers-reduced-motion: reduce) {
-  .tab-swipe-body[data-swipe="left"],
-  .tab-swipe-body[data-swipe="right"] {
-    animation: none;
+  .tab-swipe-track {
+    transition: none !important;
   }
 }
 
