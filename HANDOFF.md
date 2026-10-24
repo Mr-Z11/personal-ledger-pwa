@@ -8,7 +8,7 @@
 - **云端 47.74.3.104 自 2026-08-29 失效**（80/443 全关、SSH host key 变更，归属待确认）→ `deploy/update-server.sh` 暂不可用。**本地 Mac 栈是当前唯一活跃环境**。
 - 本地栈 `docker-compose.local.yml` = `postgres-local` + `api-local` + `caddy-local`；入口 `https://localhost:8443/api`（Caddy 自签证书，需一次性装 `~/Desktop/Caddy-Local-CA.crt` 到钥匙串，否则浏览器 fetch 被 TLS 拦）。
 - 三容器当前均 Up；`api-local` 用**只读 bind-mount** 挂本机 `apps/api/dist`（见 §3）。
-- git：远端 `origin/main` 与本地一致（HEAD = `1b6cb81`，含 `f5637bc` 回收站优化 + 左滑返回跟手）。推送走 `python3 scripts/api-push-main.py`（见 §5）。
+- git：远端 `origin/main` 与本地一致（HEAD = `8b8ad32`，含「检查更新」硬更新链路 + 报表/规划横滑切换 + 版本 dirty 标记，已部署 caddy-local）。推送走 `python3 scripts/api-push-main.py`（见 §5）。
 
 ## 2. 近期变更（2026-10-20 ~ 24，均已推送 origin/main）
 
@@ -43,13 +43,14 @@
 | `6fd9e3b` | **现有分类自动补图标**：`utils.ts` 新增 `inferCategoryIcon(name)`（约 60 条「关键词→图标 id」规则，具体词优先于泛化词）+ `DEFAULT_CATEGORY_ICON` / `PLACEHOLDER_CATEGORY_ICONS` / `isPlaceholderCategoryIcon`；App 启动后跑一次回填，只改 icon 仍是占位值（新建默认 `circle`、自动建父级用的 `folder`）或图标库已下架的旧 id（`train`、`line-chart`）的分类，手选过的图标不动；结果写入本地 Dexie + outbox 同步到服务端。`makeCategory` 也改为按名推断，新分类一建好就有图形标识 |
 | `95d4af4` | **二三级子模块标题吸顶 + 各级标题字号统一**：`.topbar` 改原生 `position:sticky`（top:0 / z-index:20 + 背景 blur），间距由 `margin-bottom` 改成 `padding-bottom`（否则吸顶时内容从透明 margin 缝隙穿过）——≤940px 断点里那句 `margin-bottom:.6rem` 必须同步改，否则会覆盖回 base。报表子页头 `.report-subpage-head` 同样 sticky，`top: var(--topbar-h)` 吸在标题条下方（它与 `.page-tabs` 是三元互斥渲染，不会并排）。`--topbar-h` 由 App.tsx 的 ResizeObserver 实测写入（高度随返回按钮/安全区/字号变），只改 CSS 变量不碰布局，不触发 iOS 滚动重锚定。新增 `--page-title-size`，`h1` 与 `.report-subpage-title h2` 共用；报表二级/三级标题原为写死 1.02rem，比一级 h1 小一截。 |
 | `f5637bc` | **回收站排版优化 + 左滑返回跟手走动式**：① 回收站行距过大的根因是 `.row` 为单列网格，而回收站把 icon/main/side 直接塞进 `.row`（流水列表是套在 `.row-content-button` 三列里），导致垂直堆叠；新增 `.trash-rows .row` 复刻三列横排，行高 ~100px→50px。② 「清空回收站」用 `.ghost.danger` 但该样式只在 `.transaction-detail-actions`/`.transaction-action-sheet` 定义，`trash-head` 下无对应规则 → 实际渲染成淡灰胶囊、几乎不可见；改为全宽危险按钮（红描边+淡红底+红字+笔数）并移到标题区下方。③ 副标题精简为「删除于 MM/DD HH:mm · 账户」（原「原 MM/DD」会挤成省略号）。④ 左滑返回改为跟手：`useEdgeSwipeBack` 增 `trackRef`，拖动期间内容层整体 `translateX(dx)`，松手过阈值用 `cubic-bezier(.32,.72,0,1)` 滑出屏幕再卸载、未过阈值弹回原位。**坑：transform 不能写在 main/.report-page 上**（会创建包含块使内部 sticky 标题条失效），故新增中间层 `.view-track` 承接位移；`clearTrack()` 必须在 `onBack()` 之前调用。 |
+| `8b8ad32` | **「检查更新」一次点击直达新版 + 报表/规划模块签横滑切换 + 构建版本 dirty 标记**：① 旧「检查更新」只调 `registration.update()`——iOS PWA 的 SW 更新有节流，冷启动/手动 update 常拉不到新 sw.js，表现为「部署了新版本、重开 N 次仍旧版」（实测两次部署都没到达手机，用户停在 `6283bf5`）。新逻辑：带 query 的 `fetch('/index.html?update-probe=')` 探到服务器最新入口 chunk（query 绕过 precache——workbox 的 precache 匹配忽略 search），与 DOM 里正在运行的入口名对比；不同则先软路径（update() 等新 SW 激活，main.tsx 的 controllerchange 自动刷新），2.6s 没等到走硬更新：`getRegistrations().unregister()` + 清空 Cache Storage + **等 600ms** + `location.replace('/?hard-refresh=')`（unregister 后立刻导航会被旧 SW 拦截竞态；replace 必须带 query，否则 `location.reload()` 吃启发式缓存又拿回旧 index.html）。纯函数 `entryChunkFromIndexHtml` 入 utils.ts。② 报表/规划内容区左右滑切换模块签：新 hook `useTabSwipe`（swipe.ts），跟手位移（正常 0.45 阻尼/贴边 0.18）+ 松手 ≥56px 切换 + CSS 入场动画（`.tab-swipe-body[data-swipe]`）；与左边缘右滑返回分工（clientX<32 归返回）；签条自身横滚不抢手势。**坑：内容层用 `key={seq}` 重挂载来重放动画，而 effect 依赖 `[enabled,count]` 不会重绑——挂载即触发的周期重置让 seq 0→1 后整页手势静默死亡**；解法是把 seq 作为 `resetKey` 传入 hook 的 effect 依赖。周期重置 effect 用 ref 跳过挂载首次，避免进报表页白播一次动画。③ `vite.config` `buildVersion()` 对 dirty 工作区追加 `-dirty`——防止「先部署后提交」让版本号显示上一个 commit（本轮实测：19:42 部署的构建版本号是 `21d8475`）。验证：typecheck + 40 单测 + playwright 16/16（tab 手势，移动/桌面）+ 8/8（检查更新两场景：已是最新/换版后点一次自动刷新到 `NEWVER9`）。 |
 
 
 - **前端**：`mv apps/web/dist /tmp/…`（规避沙箱 safe-delete shim）→ `npm run build` → `docker compose -f docker-compose.local.yml --env-file .env.local up -d --force-recreate caddy-local`。**dist 原地重建（不 mv 目录）时挂载不悬空，可免 force-recreate。**
 - **后端（现行，bind-mount）**：改 `apps/api` 源码 → `npm --workspace @ledger/api run build`（managed node；`prisma generate && tsc`）→ `docker compose -f docker-compose.local.yml --env-file .env.local up -d api-local`。容器直接跑本机 dist，**无需从 GHCR 拉镜像**。启动自动 `prisma db push`（改 schema 前先 `bash scripts/data-sync.sh backup-local`）。
 - **推送**：见 §5。
-- 手机端：本地 origin 的 PWA 划掉重开两次即更新；云端 origin 的 PWA 收不到更新，须从 `https://FrorideMacBook-Air.local:8443` 重装。
-- 版本核对（2026-10-23 新增）：bundle 注入 `__APP_VERSION__`（git 短 hash，如 `04ad337`）+ `__BUILD_TIME__`，设置页「关于与更新」可见；main.tsx 冷启动自动 `registration.update()`，controllerchange 自动 reload（首次安装不触发热载）。用户反馈功能「没生效」时先让其在设置页核对版本号，避免旧版争议。
+- 手机端：**「检查更新」点一次即刷新到最新版**（2026-10-24 重写，见 §2 `8b8ad32`）；不再依赖「划掉重开两次」——iOS 的 SW 更新节流会让重开 N 次都停在旧版（实测停在 `6283bf5` 两次部署都没到达）。云端 origin 的 PWA 收不到更新，须从 `https://FrorideMacBook-Air.local:8443` 重装。
+- 版本核对（2026-10-23 新增）：bundle 注入 `__APP_VERSION__`（git 短 hash，工作区有未提交改动时带 `-dirty` 后缀）+ `__BUILD_TIME__`，设置页「关于与更新」可见；main.tsx 冷启动自动 `registration.update()`，controllerchange 自动 reload（首次安装不触发热载）。用户反馈功能「没生效」时先让其在设置页核对版本号，避免旧版争议。**部署顺序必须是先 commit 再 build**，否则版本号是上一个 commit 的 hash。
 
 ## 4. 关键约束 & 不要重复踩的坑（详表见 MEMORY.md）
 
