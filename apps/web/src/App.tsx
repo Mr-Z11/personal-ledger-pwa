@@ -785,6 +785,7 @@ export function App() {
   const [dailyLimitSettings, setDailyLimitSettings] = useState<DailyLimitAlertSettings>(() => loadDailyLimitAlertSettings());
   // 当日限额红色警报：一旦超限，当天每次打开 App 都会再次弹出；仅在本次会话内可关闭
   const [dailyLimitOverlayClosed, setDailyLimitOverlayClosed] = useState(false);
+  const topbarRef = useRef<HTMLElement | null>(null);
 
   const refreshLocal = useCallback(async () => {
     const [nextAccounts, nextCategories, nextTransactions, nextBudgets, nextAnalysisNotes, nextPlannedPurchases, nextOutboxCount, nextLastSync] = await Promise.all([
@@ -1161,6 +1162,23 @@ export function App() {
   const popSub = useCallback(() => setSubStack((current) => current.slice(0, -1)), []);
   const sub = subStack.length > 0 ? subStack[subStack.length - 1] : null;
 
+  /** 把吸顶标题条的实测高度写进 --topbar-h：报表的模块签 / 子页头要靠它定位，
+   *  否则两条 sticky 会叠在一起。高度会随「返回按钮有无 / 安全区 / 字号」变化，
+   *  所以用 ResizeObserver 跟。只改 CSS 变量、不碰布局，不会触发 iOS 滚动重锚定。 */
+  useEffect(() => {
+    const bar = topbarRef.current;
+    if (!bar) return undefined;
+    const apply = () => {
+      const height = Math.round(bar.getBoundingClientRect().height);
+      if (height > 0) document.documentElement.style.setProperty("--topbar-h", `${height}px`);
+    };
+    apply();
+    if (typeof ResizeObserver === "undefined") return undefined;
+    const observer = new ResizeObserver(apply);
+    observer.observe(bar);
+    return () => observer.disconnect();
+  }, [view, sub]);
+
   // 二级子模块：从左边缘右滑返回（iOS 风格）
   const subSwipe = useEdgeSwipeBack({ enabled: sub !== null, onBack: popSub });
 
@@ -1404,7 +1422,7 @@ export function App() {
         {dailyLimitHit && (
           <DailyLimitRibbon spentCents={todaySpentCents} limitCents={todayLimitCents} />
         )}
-        <header className="topbar">
+        <header className="topbar" ref={topbarRef as React.RefObject<HTMLElement>}>
           <div className="page-heading">
             {sub && (
               <button type="button" className="back-button" onClick={popSub} title="返回上一级">

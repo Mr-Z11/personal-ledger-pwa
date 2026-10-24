@@ -10,6 +10,12 @@
   text-rendering: optimizeLegibility;
   -webkit-text-size-adjust: 100%;
   text-size-adjust: 100%;
+  /* 一/二/三级模块的页面主标题统一字号：App 级 topbar 的 h1 与报表子页头的 h2
+     都取这个值，避免层级切换时标题忽大忽小（断点值见文末 @media） */
+  --page-title-size: clamp(1.55rem, 2.6vw, 2.1rem);
+  /* 吸顶标题条的实际高度，由 App.tsx 里的 ResizeObserver 写入；
+     报表的模块签 / 子页头要吸在它下面，避免两条叠在一起 */
+  --topbar-h: 3.1rem;
 }
 
 * {
@@ -179,12 +185,23 @@ main {
 }
 
 .topbar {
+  /* 原生 sticky 吸顶（不要用 JS position:fixed 模拟：文档高度变化会触发
+     iOS 滚动重锚定，底部慢速上滑会卡住回跳）。前提：html/body 用
+     overflow-x: clip 而非 hidden（后者会让 body 成为滚动容器，sticky 失效） */
+  position: sticky;
+  top: 0;
+  z-index: 20;
   display: flex;
   align-items: center;
   justify-content: space-between;
   flex-wrap: wrap;
   gap: 0.7rem;
-  margin-bottom: 0.7rem;
+  /* 用 padding 而不是 margin 撑开与内容的间距：吸顶时背景要盖住整条，
+     否则内容会从透明的 margin 缝隙里穿过去 */
+  padding-bottom: 0.7rem;
+  margin-bottom: 0;
+  background: rgba(246, 241, 231, 0.94);
+  backdrop-filter: blur(10px);
 }
 
 .page-heading {
@@ -295,7 +312,7 @@ h2 {
 }
 
 h1 {
-  font-size: clamp(1.55rem, 2.6vw, 2.1rem);
+  font-size: var(--page-title-size);
   line-height: 1.12;
   overflow-wrap: normal;
 }
@@ -3257,7 +3274,8 @@ button.settings-section {
 /* 模块签（报表/规划）：顶部横向滑动选择，点签看对应模块详情（参考随手记） */
 .page-tabs {
   position: sticky;
-  top: 0;
+  /* 吸在吸顶标题条下方（--topbar-h 由 JS 实测写入），否则两条会叠在一起 */
+  top: var(--topbar-h);
   z-index: 6;
   display: flex;
   gap: 0.05rem;
@@ -3631,12 +3649,17 @@ button.insight-card {
   color: #243127;
 }
 
-/* 报表子页返回头（本地栈，顶栏无返回按钮） */
+/* 报表子页返回头（本地栈，顶栏无返回按钮）：二级/三级页面滚动时同样吸顶 */
 .report-subpage-head {
+  position: sticky;
+  top: var(--topbar-h);
+  z-index: 12;
   display: flex;
   align-items: center;
   gap: 0.7rem;
   padding: 0.05rem 0.05rem 0.25rem;
+  background: rgba(246, 241, 231, 0.94);
+  backdrop-filter: blur(10px);
 }
 
 .report-subpage-title {
@@ -3647,8 +3670,10 @@ button.insight-card {
 
 .report-subpage-title h2 {
   margin: 0;
-  font-size: 1.02rem;
+  /* 与一级页面主标题（h1）同一变量，保证层级切换时字号一致 */
+  font-size: var(--page-title-size);
   font-weight: 800;
+  line-height: 1.12;
   color: #243127;
 }
 
@@ -5088,7 +5113,9 @@ button.insight-card {
   .topbar {
     align-items: flex-start;
     gap: 0.5rem;
-    margin-bottom: 0.6rem;
+    /* 同 base：用 padding 撑开间距，让吸顶时的背景盖住整条 */
+    padding-bottom: 0.6rem;
+    margin-bottom: 0;
   }
 
   .page-heading {
@@ -5106,8 +5133,12 @@ button.insight-card {
     height: 1.8rem;
   }
 
+  /* 只改变量：h1 与报表子页头 h2 都取它，保证各级标题字号始终一致 */
+  :root {
+    --page-title-size: 1.55rem;
+  }
+
   h1 {
-    font-size: 1.55rem;
     white-space: nowrap;
   }
 
@@ -5416,8 +5447,8 @@ button.insight-card {
     display: none;
   }
 
-  h1 {
-    font-size: 1.42rem;
+  :root {
+    --page-title-size: 1.42rem;
   }
 
   .top-actions {
