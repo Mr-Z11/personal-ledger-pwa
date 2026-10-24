@@ -1076,6 +1076,9 @@ export function App() {
   const popSub = useCallback(() => setSubStack((current) => current.slice(0, -1)), []);
   const sub = subStack.length > 0 ? subStack[subStack.length - 1] : null;
 
+  // 二级子模块：从左边缘右滑返回（iOS 风格）
+  const subSwipe = useEdgeSwipeBack({ enabled: sub !== null, onBack: popSub });
+
   /** 二级/三级子模块渲染：设置与报表点进来的页面都走这里 */
   function renderSubView(current: SubView) {
     switch (current.kind) {
@@ -1311,7 +1314,8 @@ export function App() {
         </button>
       </aside>
 
-      <main>
+      <main ref={subSwipe.ref as React.RefObject<HTMLElement>}>
+        <EdgeBackHint x={subSwipe.hintX} />
         {dailyLimitHit && (
           <DailyLimitRibbon spentCents={todaySpentCents} limitCents={todayLimitCents} />
         )}
@@ -1639,6 +1643,98 @@ function Metric({ title, value, icon: Icon, tone }: { title: string; value: numb
 function triggerHaptic(pattern: VibratePattern = 8) {
   if (typeof navigator === "undefined" || typeof navigator.vibrate !== "function") return;
   navigator.vibrate(pattern);
+}
+
+/**
+ * iOS 风格「从左边缘向右滑动返回」：仅在启用（存在可返回的二级页）时挂监听。
+ * - 起滑点必须在屏幕左边缘 EDGE 内，否则不接管（不干扰页面其它区域）。
+ * - 手势须以横向右滑为主（dx > |dy|*RATIO）才 engage；纵向滚动则立即放弃、不 preventDefault，滚动照常。
+ * - engage 后 preventDefault 阻止页面滚动，松手超过 THRESHOLD 才真正返回。
+ * 视觉提示：左侧滑入的箭头（EdgeBackHint），随手指位移淡入。
+ */
+const EDGE_SWIPE = { EDGE: 32, START: 12, RATIO: 1.3, THRESHOLD: 72, MAX: 64 };
+function useEdgeSwipeBack({ enabled, onBack }: { enabled: boolean; onBack: () => void }) {
+  const ref = useRef<HTMLElement | null>(null);
+  const onBackRef = useRef(onBack);
+  onBackRef.current = onBack;
+  const [hintX, setHintX] = useState(0);
+  const stateRef = useRef({ startX: 0, startY: 0, engaged: false, dragX: 0 });
+  useEffect(() => {
+    const el = ref.current;
+    if (!el || !enabled) return;
+    const { EDGE, START, RATIO, THRESHOLD, MAX } = EDGE_SWIPE;
+    const reset = () => {
+      const s = stateRef.current;
+      s.engaged = false;
+      s.dragX = 0;
+      s.startX = 0;
+      s.startY = 0;
+      setHintX(0);
+    };
+    const onStart = (event: TouchEvent) => {
+      const touch = event.touches[0];
+      if (!touch || touch.clientX > EDGE) return;
+      const s = stateRef.current;
+      s.startX = touch.clientX;
+      s.startY = touch.clientY;
+      s.engaged = false;
+      s.dragX = 0;
+    };
+    const onMove = (event: TouchEvent) => {
+      const s = stateRef.current;
+      if (s.startX === 0 && s.startY === 0) return;
+      const touch = event.touches[0];
+      if (!touch) return;
+      const dx = touch.clientX - s.startX;
+      const dy = touch.clientY - s.startY;
+      if (!s.engaged) {
+        if (dx > START && dx > Math.abs(dy) * RATIO) {
+          s.engaged = true;
+        } else if (Math.abs(dy) > START && Math.abs(dy) > Math.abs(dx)) {
+          // 纵向滚动，放弃接管，让页面正常滚动
+          s.startX = 0;
+          s.startY = 0;
+          return;
+        } else {
+          return;
+        }
+      }
+      event.preventDefault();
+      s.dragX = Math.max(0, dx);
+      setHintX(Math.min(s.dragX, MAX));
+    };
+    const onEnd = () => {
+      const s = stateRef.current;
+      if (s.engaged && s.dragX >= THRESHOLD) onBackRef.current();
+      reset();
+    };
+    el.addEventListener("touchstart", onStart, { passive: true });
+    el.addEventListener("touchmove", onMove, { passive: false });
+    el.addEventListener("touchend", onEnd);
+    el.addEventListener("touchcancel", onEnd);
+    return () => {
+      el.removeEventListener("touchstart", onStart);
+      el.removeEventListener("touchmove", onMove);
+      el.removeEventListener("touchend", onEnd);
+      el.removeEventListener("touchcancel", onEnd);
+      reset();
+    };
+  }, [enabled]);
+  return { ref, hintX };
+}
+
+/** 左边缘右滑返回的视觉提示：随手指位移从左侧滑入的箭头 */
+function EdgeBackHint({ x }: { x: number }) {
+  const shown = Math.min(x, EDGE_SWIPE.MAX);
+  return (
+    <div
+      className="edge-back-hint"
+      style={{ opacity: Math.min(shown / EDGE_SWIPE.THRESHOLD, 1), transform: `translateX(${shown - EDGE_SWIPE.MAX - 8}px)` }}
+      aria-hidden
+    >
+      <ChevronLeft size={26} />
+    </div>
+  );
 }
 
 // 会唤出系统软键盘的输入框（select/日期控件不算，它们弹的是系统选择器）
@@ -3827,8 +3923,10 @@ function Reports({ transactions, accounts, categories, budgets, analysisNotes, o
   const reportSub = reportSubStack.length > 0 ? reportSubStack[reportSubStack.length - 1] : null;
   const pushReportSub = (page: ReportSubPage) => setReportSubStack((stack) => [...stack, page]);
   const popReportSub = () => setReportSubStack((stack) => stack.slice(0, -1));
-  const [reportTab, setReportTab] = useState<ReportTabId>("basic");
   const [detailTransaction, setDetailTransaction] = useState<Transaction | null>(null);
+  // 报表详情：从左边缘右滑返回（iOS 风格）
+  const reportSwipe = useEdgeSwipeBack({ enabled: reportSub !== null && detailTransaction === null, onBack: popReportSub });
+  const [reportTab, setReportTab] = useState<ReportTabId>("basic");
   const categoryKind: Category["kind"] = "expense";
   const selectedYear = year.trim() || currentYear;
   const periodKey = period === "month" ? month : selectedYear;
@@ -4263,7 +4361,8 @@ function Reports({ transactions, accounts, categories, budgets, analysisNotes, o
   const activeReportTab = visibleReportTabs.some((tab) => tab.id === reportTab) ? reportTab : "basic";
 
   return (
-    <section className="report-page">
+    <section className="report-page" ref={reportSwipe.ref as React.RefObject<HTMLElement>}>
+      <EdgeBackHint x={reportSwipe.hintX} />
       {reportToolbar}
       {reportSub ? (
         <>

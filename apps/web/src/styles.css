@@ -224,6 +224,25 @@ main {
   transform: scale(0.95);
 }
 
+/* 左边缘右滑返回的视觉提示：随手指从左侧滑入的箭头（固定定位、不挡操作） */
+.edge-back-hint {
+  position: fixed;
+  left: 0;
+  top: 50%;
+  width: 3.4rem;
+  height: 3.4rem;
+  margin-top: -1.7rem;
+  display: grid;
+  place-items: center;
+  color: #1f5f74;
+  background: rgba(31, 95, 116, 0.14);
+  border-radius: 0 999px 999px 0;
+  box-shadow: 0 2px 12px rgba(31, 95, 116, 0.18);
+  pointer-events: none;
+  z-index: 62;
+  will-change: transform, opacity;
+}
+
 .app-heading {
   min-height: 2.7rem;
   padding: 0.38rem 0.6rem;
