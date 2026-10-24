@@ -188,7 +188,10 @@ main {
 
 /* 上一层页面预览层：返回手势拖动时从内容层下方露出（内容由 JS 快照注入）。
    padding 用 inherit 继承父容器（main / .report-page）的内边距，
-   预览内容才能与内容层 .view-track 的左边缘对齐，否则会横向错位。 */
+   预览内容才能与内容层 .view-track 的左边缘对齐，否则会横向错位。
+   注意：拖动期间 JS 会用 clip-path 把本层裁到「内容层让出来的那一条」宽度
+   （不做视差位移，也不改 width/right——只裁绘制不重排），
+   否则短页面的下方会透出上一层的其余内容，看起来像「切换的页面只有一半」。 */
 .view-prev {
   position: absolute;
   inset: 0;
@@ -198,7 +201,6 @@ main {
   pointer-events: none;
   visibility: hidden;
   background: #f6f1e7;
-  will-change: transform;
 }
 
 .view-prev-scroll {
@@ -2378,10 +2380,13 @@ button.settings-section {
    transform 创建包含块，会让 .page-tabs 的 position:sticky 失效（历史坑：吸顶标题条同理）。
    注意 ②：.tab-swipe-body 的 overflow:hidden 使其成为滚动容器，因此**子页内不能再依赖
    position:sticky**（目前报表/规划的 6+9 个子模块里没有吸顶元素，改动前先确认）。
-   注意 ③：高度由 useTabSwipe 的 ResizeObserver 跟随当前页写入，否则会被最高的页撑高。 */
+   注意 ③：高度由 useTabSwipe 的 ResizeObserver 跟随当前页写入，否则会被最高的页撑高。
+   注意 ④：height 过渡与 TAB_SWIPE.COMMIT 同长（400ms）——切到矮页时容器跟着柔和收敛，
+   不然轨道还在滑、底部先跳一格；改时长两边一起改。 */
 .tab-swipe-body {
   min-width: 0;
   overflow: hidden;
+  transition: height 400ms cubic-bezier(.32, .72, 0, 1);
 }
 
 .tab-swipe-track {
@@ -2407,6 +2412,9 @@ button.settings-section {
 @media (prefers-reduced-motion: reduce) {
   .tab-swipe-track {
     transition: none !important;
+  }
+  .tab-swipe-body {
+    transition: none;
   }
 }
 

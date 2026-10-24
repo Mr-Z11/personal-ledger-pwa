@@ -1772,13 +1772,89 @@ function triggerHaptic(pattern: VibratePattern = 8) {
  *
  * 拖动过程中要能**看到上一层页面**（iOS 交互式返回的核心），做法是：
  * 进入子页前抓一次内容层 HTML 快照（captureSnapshot），返回手势 engage 时把快照挂到
- * 预览层（previewRef，z-index 低于内容层）显示，并按 PARALLAX 视差跟手左移、暗化递减——
- * 于是手指慢慢往右拖时，上一层页面从左边缘一点点露出来；松手过阈值后上层归位、
- * 当前层滑出，一气呵成（COMMIT 240ms，比回弹短，收尾更干脆）。
+ * 预览层（previewRef，z-index 低于内容层）显示，用 clip-path 裁到「当前层让出来的那一条」
+ * （不做视差——视差会让上一层缺一条边，看起来「只有一半」）+ 暗化递减——于是手指慢慢往右
+ * 拖时，上一层页面完整地从左边缘露出来；松手过阈值后上层展开、当前层滑出，一气呵成
+ * （COMMIT 400ms：用户反馈 240ms 收尾太急，「切换停留」放慢些才自然）。
  */
-const EDGE_SWIPE = { EDGE: 32, START: 12, RATIO: 1.3, THRESHOLD: 72, MAX: 64, COMMIT: 240, CANCEL: 300, PARALLAX: 0.32, DIM: 0.28 };
+const EDGE_SWIPE = { EDGE: 32, START: 12, RATIO: 1.3, THRESHOLD: 72, MAX: 64, COMMIT: 400, CANCEL: 400, DIM: 0.28 };
 /** 手势期间临时盖在内容层下的背景（遮住预览层，平时页面背景在 body 上，不能常驻） */
-const SWIPE_TRACK_BG = "#f6f1e7";
+/** 手势期间给内容层铺底色：直接用 body 的画布背景（background-attachment:fixed 让渐变
+ *  相对视口对齐，位移的元素上也能和页面原背景完全一致）。
+ *  目的：短页面（如提醒设置只有 195px 高）被右移后，下方不能透出上一层的其余内容——
+ *  既靠预览层 clip-path 裁到「让出来那一条」，也靠这层底色兜住整屏。 */
+const paintTrackBackground = (track: HTMLElement) => {
+  const body = getComputedStyle(document.body);
+  track.style.backgroundImage = body.backgroundImage;
+  track.style.backgroundColor = body.backgroundColor;
+  track.style.backgroundAttachment = "fixed";
+};
+
+/** 手势期间 position:fixed 后代的包含块补偿。
+ *  坑：轨道一带 transform，`position:fixed` 的包含块就从视口偷换成轨道——短页面
+ *  （如提醒设置只有 195px 高）的 FAB 会从屏幕底部**瞬移到轨道顶**，长页面则直接
+ *  出屏不见；看起来像「被甩下」，不是整页整体切换。快照层里的副本同理：包含块是
+ *  带 will-change 的 .view-prev-scroll，会锚到它的底边而不是视口底边。
+ *  解法：手势 engage 时（轨道还没 transform）先量下 fixed 后代的静止视口位置，轨道带上
+ *  transform 后再量一次，差值作为**恒定**补偿写进元素自己的 transform（transition 临时关掉，
+ *  否则 180ms 渐变跟不上手）；松手后随 clearTrack 同一同步块清掉，不留残样式。 */
+const fixedDescendants = (root: HTMLElement) =>
+  [...root.querySelectorAll<HTMLElement>("*")].filter((el) => getComputedStyle(el).position === "fixed");
+
+/** 量一组 fixed 元素的静止视口位置（按 class 归档，快照副本靠它找目标位） */
+const measureFixedRest = (root: HTMLElement) => {
+  const byEl = new Map<HTMLElement, DOMRect>();
+  const byClass = new Map<string, DOMRect>();
+  for (const el of fixedDescendants(root)) {
+    const rect = el.getBoundingClientRect();
+    byEl.set(el, rect);
+    const key = el.getAttribute("class") ?? "";
+    if (key && !byClass.has(key)) byClass.set(key, rect);
+  }
+  return { byEl, byClass };
+};
+
+/** 按 rest 位置把 fixed 元素补偿回视口原地，返回被改过的元素（供清理） */
+const applyFixedCompensation = (els: Iterable<HTMLElement>, rest: Map<HTMLElement, DOMRect>) => {
+  const touched: HTMLElement[] = [];
+  for (const el of els) {
+    const rect = rest.get(el);
+    if (!rect || !el.isConnected) continue;
+    const now = el.getBoundingClientRect();
+    const dx = Math.round(rect.left - now.left);
+    const dy = Math.round(rect.top - now.top);
+    if (!dx && !dy) continue;
+    el.style.transition = "none";
+    el.style.transform = `translate(${dx}px, ${dy}px)`;
+    touched.push(el);
+  }
+  return touched;
+};
+
+/** 快照里的 fixed 副本：按 class 找 live 元素的静止位置（同一套 CSS、同一个视口） */
+const applySnapshotFixedCompensation = (root: HTMLElement, restByClass: Map<string, DOMRect>) => {
+  const touched: HTMLElement[] = [];
+  for (const el of fixedDescendants(root)) {
+    const rect = restByClass.get(el.getAttribute("class") ?? "");
+    if (!rect) continue;
+    const now = el.getBoundingClientRect();
+    const dx = Math.round(rect.left - now.left);
+    const dy = Math.round(rect.top - now.top);
+    if (!dx && !dy) continue;
+    el.style.transition = "none";
+    el.style.transform = `translate(${dx}px, ${dy}px)`;
+    touched.push(el);
+  }
+  return touched;
+};
+
+const clearFixedCompensation = (els: HTMLElement[]) => {
+  for (const el of els) {
+    if (!el.isConnected) continue;
+    el.style.transition = "";
+    el.style.transform = "";
+  }
+};
 
 type SwipePreview = { layer: HTMLElement; scroll: HTMLElement | null; dim: HTMLElement | null };
 
@@ -1792,7 +1868,7 @@ function useEdgeSwipeBack({ enabled, onBack }: { enabled: boolean; onBack: () =>
   const onBackRef = useRef(onBack);
   onBackRef.current = onBack;
   const [hintX, setHintX] = useState(0);
-  const stateRef = useRef({ startX: 0, startY: 0, engaged: false, dragX: 0, animating: false, preview: null as SwipePreview | null });
+  const stateRef = useRef({ startX: 0, startY: 0, engaged: false, dragX: 0, animating: false, preview: null as SwipePreview | null, fixedRest: null as Map<HTMLElement, DOMRect> | null, fixedTouched: [] as HTMLElement[], fixedDone: false });
 
   /** 进入下一级页面之前调用（**必须在 setState 之前**，否则抓到的已经是新页面）：
    *  抓当前内容层的 HTML + 滚动位置，返回手势时当作「上一层」显示在下面。 */
@@ -1812,14 +1888,17 @@ function useEdgeSwipeBack({ enabled, onBack }: { enabled: boolean; onBack: () =>
     };
   };
 
-  /** 把上一层快照挂进预览层：滚动位置靠 translateY 补偿（快照内容是整页，从顶部开始） */
-  const mountPreview = (): SwipePreview | null => {
+  /** 把上一层快照挂进预览层：滚动位置靠 translateY 补偿（快照内容是整页，从顶部开始）。
+   *  快照里的 fixed 副本（FAB 等）包含块是带 will-change 的 .view-prev-scroll，会锚到它的
+   *  底边而不是视口底边——按 live 元素的静止视口位置补偿回去，露出来的那一条才完整。 */
+  const mountPreview = (restByClass?: Map<string, DOMRect>): SwipePreview | null => {
     const parts = previewParts();
     const snap = snapshotRef.current;
     if (!parts || !snap) return null;
     if (parts.scroll) {
       parts.scroll.innerHTML = snap.html;
       parts.scroll.style.transform = `translateY(${-snap.scrollY}px)`;
+      if (restByClass) applySnapshotFixedCompensation(parts.scroll, restByClass);
     }
     parts.layer.style.visibility = "visible";
     parts.layer.style.transition = "none";
@@ -1832,6 +1911,7 @@ function useEdgeSwipeBack({ enabled, onBack }: { enabled: boolean; onBack: () =>
     parts.layer.style.visibility = "hidden";
     parts.layer.style.transition = "";
     parts.layer.style.transform = "";
+    parts.layer.style.clipPath = "";
     if (parts.scroll) {
       parts.scroll.innerHTML = "";
       parts.scroll.style.transform = "";
@@ -1851,12 +1931,15 @@ function useEdgeSwipeBack({ enabled, onBack }: { enabled: boolean; onBack: () =>
     track.style.transform = "";
     track.style.opacity = "";
     track.style.background = "";
+    track.style.backgroundImage = "";
+    track.style.backgroundColor = "";
+    track.style.backgroundAttachment = "";
   };
 
   useEffect(() => {
     const el = ref.current;
     if (!el || !enabled) return;
-    const { EDGE, START, RATIO, THRESHOLD, MAX, COMMIT, CANCEL, PARALLAX, DIM } = EDGE_SWIPE;
+    const { EDGE, START, RATIO, THRESHOLD, MAX, COMMIT, CANCEL, DIM } = EDGE_SWIPE;
     const reset = () => {
       const s = stateRef.current;
       s.engaged = false;
@@ -1865,11 +1948,16 @@ function useEdgeSwipeBack({ enabled, onBack }: { enabled: boolean; onBack: () =>
       s.startY = 0;
       setHintX(0);
     };
-    /** 上一层跟手：从 -PARALLAX*宽度 移到 0（视差），暗化同步递减 */
-    const syncPreview = (preview: SwipePreview | null, dragX: number, width: number) => {
+    /** 上一层只露出「当前层让出来的那一条」（dragX 宽），不做视差位移：
+     *  ① 视差会让上一层缺一条边，看起来「只有一半」；用户要的是整页整体切换。
+     *  ② 不裁的话，短页面（如提醒设置内容只有 195px 高）下方会透出上一层的其余内容，
+     *     两页内容叠在一起更显得只有半页。
+     *  用 clip-path 而不是改 right/width：只裁绘制、不触发重排，跟手更跟手。 */
+    const syncPreview = (preview: SwipePreview | null, dragX: number) => {
       if (!preview) return;
-      const progress = width > 0 ? Math.min(1, dragX / width) : 0;
-      preview.layer.style.transform = `translateX(${-PARALLAX * width * (1 - progress)}px)`;
+      const width = preview.layer.offsetWidth || 1;
+      preview.layer.style.clipPath = `inset(0 calc(100% - ${Math.max(0, dragX)}px) 0 0)`;
+      const progress = Math.min(1, dragX / width);
       if (preview.dim) preview.dim.style.opacity = String(DIM * (1 - progress));
     };
     const onStart = (event: TouchEvent) => {
@@ -1893,9 +1981,14 @@ function useEdgeSwipeBack({ enabled, onBack }: { enabled: boolean; onBack: () =>
       if (!s.engaged) {
         if (dx > START && dx > Math.abs(dy) * RATIO) {
           s.engaged = true;
-          s.preview = mountPreview();
           const track = trackRef.current;
-          if (track) track.style.background = SWIPE_TRACK_BG; // 遮住下层，只在手势期间
+          // 轨道带上 transform 之前，先量 fixed 后代的静止视口位置——transform 会偷走它们的
+          // 包含块，短页的 FAB 会从屏幕底部瞬移到轨道顶、长页的直接出屏不见（像被甩下）
+          const rest = track ? measureFixedRest(track) : null;
+          s.fixedRest = rest?.byEl ?? null;
+          s.fixedDone = false;
+          s.preview = mountPreview(rest?.byClass);
+          if (track) paintTrackBackground(track); // 遮住下层，只在手势期间
         } else if (Math.abs(dy) > START && Math.abs(dy) > Math.abs(dx)) {
           // 纵向滚动，放弃接管，让页面正常滚动
           s.startX = 0;
@@ -1912,10 +2005,18 @@ function useEdgeSwipeBack({ enabled, onBack }: { enabled: boolean; onBack: () =>
       const track = trackRef.current;
       if (track) {
         track.style.transition = "none";
+        // 首次 engage：先把轨道摆到 translateX(0)——非 none 的 transform 才会偷走 fixed
+        // 的包含块，而 0 位移不掺入手指位移；带着 dragX 量会把当前位移也算进补偿量里，
+        // X 向就差一个 engage 时的 dragX（实测 FAB 只跟手 2/3）。
+        if (s.fixedRest && !s.fixedDone) {
+          s.fixedDone = true;
+          track.style.transform = "translateX(0px)";
+          s.fixedTouched = applyFixedCompensation(fixedDescendants(track), s.fixedRest);
+        }
         track.style.transform = `translateX(${s.dragX}px)`;
         track.style.opacity = "1";
       }
-      syncPreview(s.preview, s.dragX, track?.offsetWidth ?? 0);
+      syncPreview(s.preview, s.dragX);
     };
     const onEnd = () => {
       const s = stateRef.current;
@@ -1927,7 +2028,7 @@ function useEdgeSwipeBack({ enabled, onBack }: { enabled: boolean; onBack: () =>
       }
       const width = track?.offsetWidth ?? 0;
       if (s.dragX >= THRESHOLD) {
-        // 完成：当前层继续滑出屏幕，上一层归位（比回弹短，收尾更干脆）
+        // 完成：当前层继续滑出屏幕，同时上一层展开到整屏
         s.animating = true;
         if (track) {
           track.style.transition = `transform ${COMMIT}ms ${SWIPE_EASE}, opacity ${COMMIT}ms ease`;
@@ -1935,8 +2036,8 @@ function useEdgeSwipeBack({ enabled, onBack }: { enabled: boolean; onBack: () =>
           track.style.opacity = "0.35";
         }
         if (preview) {
-          preview.layer.style.transition = `transform ${COMMIT}ms ${SWIPE_EASE}`;
-          preview.layer.style.transform = "translateX(0)";
+          preview.layer.style.transition = `clip-path ${COMMIT}ms ${SWIPE_EASE}`;
+          preview.layer.style.clipPath = "inset(0 0 0 0)";
           if (preview.dim) {
             preview.dim.style.transition = `opacity ${COMMIT}ms ease`;
             preview.dim.style.opacity = "0";
@@ -1945,20 +2046,26 @@ function useEdgeSwipeBack({ enabled, onBack }: { enabled: boolean; onBack: () =>
         window.setTimeout(() => {
           s.animating = false;
           clearTrack();
+          // 补偿样式和 clearTrack 同一同步块清掉：轨道一撤 transform，fixed 的包含块
+          // 就还回视口，晚一步清会让 FAB 带着补偿量闪一帧
+          clearFixedCompensation(s.fixedTouched);
+          s.fixedTouched = [];
+          s.fixedRest = null;
+          s.fixedDone = false;
           onBackRef.current();
           // 等上一层真实渲染出来再撤快照，否则中间会闪一帧空背景
           window.setTimeout(clearPreview, 60);
         }, COMMIT);
       } else {
-        // 未过阈值：当前层弹回原位，上一层退回视差起点
+        // 未过阈值：当前层弹回原位，上一层收回那条缝（裁成 0 宽）
         s.animating = true;
         if (track) {
           track.style.transition = `transform ${CANCEL}ms ${SWIPE_EASE}`;
           track.style.transform = "translateX(0)";
         }
         if (preview) {
-          preview.layer.style.transition = `transform ${CANCEL}ms ${SWIPE_EASE}`;
-          preview.layer.style.transform = `translateX(${-PARALLAX * width}px)`;
+          preview.layer.style.transition = `clip-path ${CANCEL}ms ${SWIPE_EASE}`;
+          preview.layer.style.clipPath = "inset(0 100% 0 0)";
           if (preview.dim) {
             preview.dim.style.transition = `opacity ${CANCEL}ms ease`;
             preview.dim.style.opacity = String(DIM);
@@ -1967,6 +2074,10 @@ function useEdgeSwipeBack({ enabled, onBack }: { enabled: boolean; onBack: () =>
         window.setTimeout(() => {
           s.animating = false;
           clearTrack();
+          clearFixedCompensation(s.fixedTouched);
+          s.fixedTouched = [];
+          s.fixedRest = null;
+          s.fixedDone = false;
           clearPreview();
         }, CANCEL);
       }

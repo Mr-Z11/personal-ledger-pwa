@@ -5,8 +5,8 @@ export const SWIPE_EASE = "cubic-bezier(.32,.72,0,1)";
 
 /** 模块签横向滑动切换参数：起点判定、纵向优先比、提交阈值、左边缘保护区
  * （clientX<32 的右滑归「边缘返回」，不抢手势）、贴边阻尼（已在首/末签时拉不动）、
- * 松手后位移到目标页/弹回的时长 */
-const TAB_SWIPE = { START: 12, RATIO: 1.2, THRESHOLD: 56, EDGE: 32, EDGE_DRAG: 0.2, COMMIT: 240, REBOUND: 240 };
+ * 松手后位移到目标页/弹回的时长（400/340ms：240ms 收尾太急，用户反馈「切换停留」要慢一点才自然） */
+const TAB_SWIPE = { START: 12, RATIO: 1.2, THRESHOLD: 56, EDGE: 32, EDGE_DRAG: 0.2, COMMIT: 400, REBOUND: 340 };
 
 /**
  * 模块签左右滑动切换（报表 / 规划），iOS 分页式：
@@ -51,10 +51,11 @@ export function useTabSwipe({ enabled, count, index, onChange, resetKey }: {
   /** 最近一次写入的位移串：用来在外部改变当前签时判断是否需要归位（避免打断手势动画） */
   const shiftRef = useRef("");
 
-  const apply = (shift: string, animated: boolean) => {
+  const apply = (shift: string, duration: number | null) => {
     const track = trackRef.current;
     if (!track) return;
-    track.style.transition = animated ? `transform ${TAB_SWIPE.COMMIT}ms ${SWIPE_EASE}` : "none";
+    // duration 为 null = 不过渡（跟手 / 归位）；切页与弹回时长不同，别写死成一个
+    track.style.transition = duration === null ? "none" : `transform ${duration}ms ${SWIPE_EASE}`;
     track.style.transform = `translateX(${shift})`;
     shiftRef.current = shift;
   };
@@ -65,22 +66,35 @@ export function useTabSwipe({ enabled, count, index, onChange, resetKey }: {
     // 相隔 2 签以上（点签条跳远）不滑：中间页根本没渲染，滑过去要穿过一片空白。
     // iOS 的分页控件也是点击即切，只有手势才逐页跟手滑动。
     const animated = Math.abs(clamped - indexRef.current) === 1;
-    apply(`${pageShift(clamped)}%`, animated);
+    apply(`${pageShift(clamped)}%`, animated ? TAB_SWIPE.COMMIT : null);
   }, [count]);
 
   /** 视口高度跟随当前页 + 外部改签后轨道归位：
    *  高度不跟随会被最高的那页撑高，切到短页面时底部一大片空白。
-   *  注意：只渲染当前页 ±1 页，所以 DOM 顺序 ≠ 签顺序，必须按 data-page 取页。 */
+   *  注意：只渲染当前页 ±1 页，所以 DOM 顺序 ≠ 签顺序，必须按 data-page 取页。
+   *  首次写入不过渡：刚进页面容器是 auto 高（= 已渲染页里最高的那位），直接过渡会看到
+   *  内容区莫名收缩一下；之后的写入（切签 / 内容增减）才走 CSS 的 400ms 柔和收敛。 */
+  const heightInited = useRef(false);
   useEffect(() => {
     const body = bodyRef.current;
     if (!body) return undefined;
     const target = `${pageShift(index)}%`;
     // 手势提交 / 点击切签已经把轨道放到目标位置了，这里再写一遍会打断过渡动画
-    if (shiftRef.current !== target) apply(target, false);
+    if (shiftRef.current !== target) apply(target, null);
     const page = body.querySelector<HTMLElement>(`.tab-swipe-page[data-page="${index}"]`);
     if (!page) return undefined;
     const sync = () => {
-      body.style.height = `${page.offsetHeight}px`;
+      const next = `${page.offsetHeight}px`;
+      if (body.style.height === next) return;
+      if (!heightInited.current) {
+        heightInited.current = true;
+        body.style.transition = "none";
+        body.style.height = next;
+        void body.offsetHeight; // 强制回流，让「不过渡」即时生效后再恢复
+        body.style.transition = "";
+        return;
+      }
+      body.style.height = next;
     };
     sync();
     if (typeof ResizeObserver === "undefined") return undefined;
@@ -105,7 +119,7 @@ export function useTabSwipe({ enabled, count, index, onChange, resetKey }: {
       const atEdge = (s.dx > 0 && current <= 0) || (s.dx < 0 && current >= count - 1);
       const factor = atEdge ? TAB_SWIPE.EDGE_DRAG : 1; // 分页滑动是 1:1 跟手
       // 与手指 1:1 位移（混合 % 与 px，CSS calc 支持），两侧相邻模块随之一同露出
-      apply(`calc(${pageShift(current)}% + ${s.dx * factor}px)`, false);
+      apply(`calc(${pageShift(current)}% + ${s.dx * factor}px)`, null);
     };
     const onStart = (event: TouchEvent) => {
       const touch = event.touches[0];
@@ -155,7 +169,7 @@ export function useTabSwipe({ enabled, count, index, onChange, resetKey }: {
         reset();
         if (next >= 0 && next < count) {
           s.animating = true;
-          apply(`${pageShift(next)}%`, true);
+          apply(`${pageShift(next)}%`, TAB_SWIPE.COMMIT);
           onChangeRef.current(next);
           window.setTimeout(() => {
             s.animating = false;
@@ -163,9 +177,9 @@ export function useTabSwipe({ enabled, count, index, onChange, resetKey }: {
           return;
         }
       }
-      // 未过阈值（或已在首/末签）：弹回当前页
+      // 未过阈值（或已在首/末签）：弹回当前页（时长用 REBOUND，比切页略短）
       s.animating = true;
-      apply(`${pageShift(current)}%`, true);
+      apply(`${pageShift(current)}%`, TAB_SWIPE.REBOUND);
       window.setTimeout(() => {
         s.animating = false;
       }, TAB_SWIPE.REBOUND);
