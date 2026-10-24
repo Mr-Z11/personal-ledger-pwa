@@ -1,6 +1,8 @@
 import {
   activeOnly,
+  calculateAccountBalance,
   centsToYuan,
+  isLiabilityAccount,
   monthKey,
   summarizeMonth,
   yuanToCents,
@@ -25,20 +27,28 @@ import {
   ChevronRight,
   Cloud,
   CloudOff,
+  Coins,
+  CreditCard,
   Database,
   Download,
   FolderPlus,
   Home,
   Info,
+  Landmark,
+  Lightbulb,
   ListFilter,
   LogOut,
+  MessageCircle,
   Pencil,
   PieChartIcon,
+  PiggyBank,
   Plus,
   RefreshCw,
   RotateCcw,
   Search,
   Settings2,
+  ShieldAlert,
+  Smartphone,
   Tag,
   Target,
   Trash2,
@@ -118,11 +128,26 @@ import {
 } from "./widgets";
 import { PlanView } from "./plan";
 
-type View = "overview" | "entry" | "transactions" | "reports" | "plan" | "search" | "settings" | "trash" | "data";
+type View = "overview" | "entry" | "transactions" | "reports" | "plan" | "search" | "settings";
 type LedgerGroupMode = "day" | "month" | "year";
 type ReportPeriod = "month" | "year";
 type ExportFormat = "ledger" | "portable" | "suishouji" | "qianji";
 type ExportFileType = "csv" | "xlsx";
+
+/** 二级/三级子模块（设置、报表里点进来的页面）：用导航栈管理，顶栏「返回」出栈 */
+type SubView =
+  | { kind: "trash" }
+  | { kind: "data" }
+  | { kind: "accounts" }
+  | { kind: "accountEditor"; account: Account | null }
+  | { kind: "categories" }
+  | { kind: "categoryList"; categoryKind: Category["kind"] }
+  | { kind: "categoryEditor"; category: Category | null; categoryKind: Category["kind"] }
+  | { kind: "budgets" }
+  | { kind: "budgetEditor"; budget: Budget | null }
+  | { kind: "reminders" }
+  | { kind: "reminderDetail"; which: "salary" | "dailyLimit" }
+  | { kind: "about" };
 
 const navItems: { id: View; label: string; icon: typeof Home }[] = [
   { id: "overview", label: "总览", icon: Home },
@@ -394,8 +419,6 @@ function otherCategory(categories: Category[], kind: Category["kind"]) {
 
 function viewTitle(view: View) {
   if (view === "entry") return "记一笔";
-  if (view === "trash") return "回收站";
-  if (view === "data") return "数据管理";
   return navItems.find((item) => item.id === view)?.label ?? "总览";
 }
 
@@ -406,10 +429,42 @@ const viewHeadingMap: Record<View, { strong: string; span: string; icon: typeof 
   search: { strong: "搜索记录", span: "关键词检索，按月/年汇总", icon: Search },
   reports: { strong: "消费分析", span: "趋势、预算、支出结构", icon: PieChartIcon },
   plan: { strong: "支出规划", span: "未来消费与总支出预测（去年同期为主）", icon: CalendarClock },
-  settings: { strong: "账户设置", span: "账户、分类、预算、数据", icon: Settings2 },
-  trash: { strong: "回收站", span: "已删除流水可恢复", icon: Undo2 },
-  data: { strong: "数据管理", span: "导出、导入与数据同步", icon: Database }
+  settings: { strong: "账户设置", span: "账户、分类、预算、数据", icon: Settings2 }
 };
+
+/** 二级/三级子模块的标题区（顶栏 app-heading 用） */
+function subHeading(sub: SubView): { strong: string; span: string; icon: typeof Home } {
+  switch (sub.kind) {
+    case "trash":
+      return { strong: "回收站", span: "已删除流水可恢复", icon: Undo2 };
+    case "data":
+      return { strong: "数据管理", span: "导出、导入与数据同步", icon: Database };
+    case "accounts":
+      return { strong: "账户管理", span: "账户、额度与资产总览", icon: Wallet };
+    case "accountEditor":
+      return { strong: sub.account ? "编辑账户" : "新增账户", span: "名称、类型与额度", icon: Pencil };
+    case "categories":
+      return { strong: "分类标签", span: "按支出、收入分类维护", icon: Tag };
+    case "categoryList":
+      return { strong: sub.categoryKind === "expense" ? "支出分类" : "收入分类", span: "点分类可编辑", icon: Tag };
+    case "categoryEditor":
+      return { strong: sub.category ? "编辑分类" : "新增分类", span: "名称与所属分类", icon: Pencil };
+    case "budgets":
+      return { strong: "预算管理", span: "日常消费与总开支两层预算", icon: Target };
+    case "budgetEditor":
+      return { strong: sub.budget ? "编辑预算" : "新增预算", span: "月份、类型与金额", icon: Pencil };
+    case "reminders":
+      return { strong: "提醒设置", span: "工资日与当日限额", icon: Bell };
+    case "reminderDetail":
+      return {
+        strong: sub.which === "salary" ? "工资日提醒" : "当日限额提醒",
+        span: sub.which === "salary" ? "纯本地提醒，离线也能用" : "达线警告与手机推送",
+        icon: BellRing
+      };
+    case "about":
+      return { strong: "关于与更新", span: "版本与更新检查", icon: Info };
+  }
+}
 
 function accountLimitText(account: Account) {
   const value = Math.abs(account.openingBalanceCents ?? 0);
@@ -606,6 +661,8 @@ export function App() {
   const [token, setToken] = useState(() => localStorage.getItem("ledger-token"));
   const [userName, setUserName] = useState(() => localStorage.getItem("ledger-user") ?? "");
   const [view, setView] = useState<View>("overview");
+  // 二级/三级子模块导航栈：设置/报表里点进来的页面都压栈，顶栏「返回」出栈
+  const [subStack, setSubStack] = useState<SubView[]>([]);
   const [message, setMessage] = useState("准备同步");
   const [busy, setBusy] = useState(false);
   const [accounts, setAccounts] = useState<Account[]>([]);
@@ -936,8 +993,188 @@ export function App() {
 
   const openEntry = useCallback(() => {
     setView("entry");
+    setSubStack([]);
     setEntryFocusSignal((value) => value + 1);
   }, []);
+
+  // 切换主视图时清空子模块栈；进入子模块用 pushSub
+  const goView = useCallback((next: View) => {
+    setView(next);
+    setSubStack([]);
+  }, []);
+  const pushSub = useCallback((item: SubView) => setSubStack((current) => [...current, item]), []);
+  const popSub = useCallback(() => setSubStack((current) => current.slice(0, -1)), []);
+  const sub = subStack.length > 0 ? subStack[subStack.length - 1] : null;
+
+  /** 二级/三级子模块渲染：设置与报表点进来的页面都走这里 */
+  function renderSubView(current: SubView) {
+    switch (current.kind) {
+      case "trash":
+        return (
+          <Trash
+            transactions={deletedTransactions}
+            accounts={accounts}
+            categories={categories}
+            onRestore={async (item) => {
+              const restored = { ...item, deletedAt: null, updatedAt: new Date().toISOString(), version: item.version + 1 };
+              await saveLocalAndQueue("transactions", restored);
+              setToast("流水已恢复");
+            }}
+            onPurge={(item) => purgeTransaction(item)}
+            onClear={() => clearTrash()}
+          />
+        );
+      case "data":
+        return (
+          <DataView
+            accounts={activeAccounts}
+            categories={activeCategories}
+            transactions={activeTransactions}
+            exportFormat={exportFormat}
+            exportFileType={exportFileType}
+            onExportFormatChange={setExportFormat}
+            onExportFileTypeChange={setExportFileType}
+            onExport={() => void exportData(token, exportFormat, exportFileType, activeAccounts, activeCategories, activeTransactions)}
+            onImportFile={(file) => importCsv(file, activeAccounts, activeCategories, saveLocalAndQueue)}
+            onImported={(count) => setToast(`已导入 ${count} 笔流水`)}
+            onImportError={(error) => setToast(error instanceof Error ? error.message : "导入失败")}
+          />
+        );
+      case "accounts":
+        return (
+          <AccountsView
+            accounts={activeAccounts}
+            transactions={activeTransactions}
+            onOpenAccount={(account) => pushSub({ kind: "accountEditor", account })}
+            onAddAccount={() => pushSub({ kind: "accountEditor", account: null })}
+          />
+        );
+      case "accountEditor":
+        return (
+          <AccountEditorPage
+            account={current.account}
+            onSave={async (item) => {
+              await saveLocalAndQueue("accounts", item);
+              setToast("账户已保存");
+            }}
+            onDelete={async (item) => {
+              const deleted = { ...item, deletedAt: new Date().toISOString(), updatedAt: new Date().toISOString(), version: item.version + 1 };
+              await saveLocalAndQueue("accounts", deleted);
+              setToast("账户已删除");
+            }}
+            onDone={popSub}
+          />
+        );
+      case "categories":
+        return (
+          <CategoriesView
+            categories={activeCategories}
+            onOpenKind={(categoryKind) => pushSub({ kind: "categoryList", categoryKind })}
+          />
+        );
+      case "categoryList":
+        return (
+          <CategoryListPage
+            categories={activeCategories}
+            categoryKind={current.categoryKind}
+            onOpenCategory={(category) => pushSub({ kind: "categoryEditor", category, categoryKind: current.categoryKind })}
+            onAddCategory={() => pushSub({ kind: "categoryEditor", category: null, categoryKind: current.categoryKind })}
+          />
+        );
+      case "categoryEditor":
+        return (
+          <CategoryEditorPage
+            category={current.category}
+            categoryKind={current.categoryKind}
+            categories={activeCategories}
+            onSave={async (item) => {
+              await saveLocalAndQueue("categories", item);
+              setToast("分类已保存");
+            }}
+            onDelete={async (items) => {
+              await saveManyLocalAndQueue("categories", items);
+              setToast(items.length > 1 ? `已删除 ${items.length} 个分类` : "分类已删除");
+            }}
+            onDone={popSub}
+          />
+        );
+      case "budgets":
+        return (
+          <BudgetsView
+            budgets={activeBudgets}
+            categories={activeCategories}
+            transactions={activeTransactions}
+            onOpenBudget={(budget) => pushSub({ kind: "budgetEditor", budget })}
+            onAddBudget={() => pushSub({ kind: "budgetEditor", budget: null })}
+          />
+        );
+      case "budgetEditor":
+        return (
+          <BudgetEditorPage
+            budget={current.budget}
+            budgets={activeBudgets}
+            categories={activeCategories}
+            onSave={async (item) => {
+              await saveLocalAndQueue("budgets", item);
+              setToast("预算已保存");
+            }}
+            onDelete={async (item) => {
+              const deleted = { ...item, deletedAt: new Date().toISOString(), updatedAt: new Date().toISOString(), version: item.version + 1 };
+              await saveLocalAndQueue("budgets", deleted);
+              setToast("预算已删除");
+            }}
+            onDone={popSub}
+          />
+        );
+      case "reminders":
+        return (
+          <RemindersView
+            onOpen={(which) => pushSub({ kind: "reminderDetail", which })}
+          />
+        );
+      case "reminderDetail":
+        return (
+          <ReminderDetailPage
+            which={current.which}
+            token={token ?? ""}
+            salarySettings={salarySettings}
+            onSalarySettingsChange={(next) => {
+              setSalarySettings(next);
+              saveSalarySettings(next);
+              setSalaryDismissed(salaryBannerDismissedKey());
+              setToast("工资日提醒设置已保存");
+            }}
+            dailyLimitSettings={dailyLimitSettings}
+            onDailyLimitSettingsChange={(next) => {
+              setDailyLimitSettings(next);
+              saveDailyLimitAlertSettings(next);
+              void syncDailyLimitSettings(next);
+              setToast("当日限额提醒设置已保存");
+            }}
+            onToast={setToast}
+          />
+        );
+      case "about":
+        return (
+          <section className="settings-stack">
+            <div className="settings-section data-section">
+              <div className="data-section-head">
+                <span className="settings-row-icon tone-green"><Info size={16} /></span>
+                <span className="settings-row-text">
+                  <strong>关于与更新</strong>
+                  <small>当前应用版本（git 短 hash）与更新检查</small>
+                </span>
+              </div>
+              <div className="settings-section-body">
+                <AppVersionPanel onToast={setToast} />
+              </div>
+            </div>
+          </section>
+        );
+      default:
+        return null;
+    }
+  }
 
   if (!token) {
     return <AuthScreen onAuth={async (result) => {
@@ -963,7 +1200,7 @@ export function App() {
           {navItems.map((item) => {
             const Icon = item.icon;
             return (
-              <button className={view === item.id ? "active" : ""} key={item.id} onClick={() => setView(item.id)} title={item.label}>
+              <button className={view === item.id && !sub ? "active" : ""} key={item.id} onClick={() => goView(item.id)} title={item.label}>
                 <Icon size={18} />
                 <span>{item.label}</span>
               </button>
@@ -991,15 +1228,15 @@ export function App() {
         )}
         <header className="topbar">
           <div className="page-heading">
-            {(view === "trash" || view === "data") && (
-              <button type="button" className="back-button" onClick={() => setView("settings")} title="返回设置">
+            {sub && (
+              <button type="button" className="back-button" onClick={popSub} title="返回上一级">
                 <ChevronLeft size={16} />
                 <span>返回</span>
               </button>
             )}
             <div className="page-heading-text">
               <span className="eyebrow">{currentMonth}</span>
-              <h1>{viewTitle(view)}</h1>
+              <h1>{sub ? subHeading(sub).strong : viewTitle(view)}</h1>
             </div>
           </div>
           <div className="app-heading">
@@ -1019,10 +1256,10 @@ export function App() {
                 {(outboxCount > 0 || busy) && <RefreshCw size={11} className={busy ? "spin" : ""} />}
               </button>
             )}
-            <div className="app-heading-mark">{(() => { const HeadingIcon = viewHeadingMap[view]?.icon ?? Home; return <HeadingIcon size={18} />; })()}</div>
+            <div className="app-heading-mark">{(() => { const heading = sub ? subHeading(sub) : viewHeadingMap[view]; const HeadingIcon = heading?.icon ?? Home; return <HeadingIcon size={18} />; })()}</div>
             <div>
-              <strong>{viewHeadingMap[view]?.strong ?? "总览"}</strong>
-              <span>{viewHeadingMap[view]?.span ?? ""}</span>
+              <strong>{sub ? subHeading(sub).strong : viewHeadingMap[view]?.strong ?? "总览"}</strong>
+              <span>{sub ? subHeading(sub).span : viewHeadingMap[view]?.span ?? ""}</span>
             </div>
           </div>
         </header>
@@ -1037,6 +1274,10 @@ export function App() {
           />
         )}
 
+        {sub ? (
+          renderSubView(sub)
+        ) : (
+          <>
         {view === "overview" && (
           <Overview summary={dailySummary} budgetCents={currentBudgetCents} totalBudgetCents={currentTotalBudgetCents} accounts={activeAccounts} categories={activeCategories} transactions={activeTransactions}
             plannedPurchases={activePlannedPurchases}
@@ -1123,79 +1364,14 @@ export function App() {
         )}
         {view === "settings" && (
           <SettingsPanel
-            accounts={activeAccounts}
-            categories={activeCategories}
-            transactions={activeTransactions}
-            budgets={activeBudgets}
-            onSaveAccount={async (item) => {
-              await saveLocalAndQueue("accounts", item);
-              setToast("账户已保存");
-            }}
-            onDeleteAccount={async (item) => {
-              const deleted = { ...item, deletedAt: new Date().toISOString(), updatedAt: new Date().toISOString(), version: item.version + 1 };
-              await saveLocalAndQueue("accounts", deleted);
-              setToast("账户已删除");
-            }}
-            onSaveBudget={async (item) => {
-              await saveLocalAndQueue("budgets", item);
-              setToast("预算已保存");
-            }}
-            onDeleteBudget={async (item) => {
-              const deleted = { ...item, deletedAt: new Date().toISOString(), updatedAt: new Date().toISOString(), version: item.version + 1 };
-              await saveLocalAndQueue("budgets", deleted);
-              setToast("预算已删除");
-            }}
-            salarySettings={salarySettings}
-            onSalarySettingsChange={(next) => {
-              setSalarySettings(next);
-              saveSalarySettings(next);
-              setSalaryDismissed(salaryBannerDismissedKey());
-              setToast("工资日提醒设置已保存");
-            }}
-            dailyLimitSettings={dailyLimitSettings}
-            onDailyLimitSettingsChange={(next) => {
-              setDailyLimitSettings(next);
-              saveDailyLimitAlertSettings(next);
-              void syncDailyLimitSettings(next);
-              setToast("当日限额提醒设置已保存");
-            }}
-            token={token}
-            onToast={setToast}
             trashCount={deletedTransactions.length}
-            onOpenTrash={() => setView("trash")}
-            onOpenData={() => setView("data")}
-            onSaveCategory={(item) => saveLocalAndQueue("categories", item)}
-            onDeleteCategories={(items) => saveManyLocalAndQueue("categories", items)}
+            onOpen={(item) => pushSub(item)}
+            accountCount={activeAccounts.length}
+            categoryCount={activeCategories.length}
+            budgetCount={activeBudgets.length}
           />
         )}
-        {view === "data" && (
-          <DataView
-            accounts={activeAccounts}
-            categories={activeCategories}
-            transactions={activeTransactions}
-            exportFormat={exportFormat}
-            exportFileType={exportFileType}
-            onExportFormatChange={setExportFormat}
-            onExportFileTypeChange={setExportFileType}
-            onExport={() => void exportData(token, exportFormat, exportFileType, activeAccounts, activeCategories, activeTransactions)}
-            onImportFile={(file) => importCsv(file, activeAccounts, activeCategories, saveLocalAndQueue)}
-            onImported={(count) => setToast(`已导入 ${count} 笔流水`)}
-            onImportError={(error) => setToast(error instanceof Error ? error.message : "导入失败")}
-          />
-        )}
-        {view === "trash" && (
-          <Trash
-            transactions={deletedTransactions}
-            accounts={accounts}
-            categories={categories}
-            onRestore={async (item) => {
-              const restored = { ...item, deletedAt: null, updatedAt: new Date().toISOString(), version: item.version + 1 };
-              await saveLocalAndQueue("transactions", restored);
-              setToast("流水已恢复");
-            }}
-            onPurge={(item) => purgeTransaction(item)}
-            onClear={() => clearTrash()}
-          />
+          </>
         )}
         {dailyLimitHit && !dailyLimitOverlayClosed && (
           <DailyLimitOverlay
@@ -2327,64 +2503,30 @@ function TransactionActionSheet({ transaction, accounts, categories, onClose, on
   );
 }
 
+/** 设置页（一级）：工具卡 + 「基础功能」导航行，全部进入二级子模块 */
 function SettingsPanel({
-  accounts,
-  categories,
-  transactions,
-  budgets,
-  onSaveAccount,
-  onDeleteAccount,
-  onSaveBudget,
-  onDeleteBudget,
-  onSaveCategory,
-  onDeleteCategories,
-  salarySettings,
-  onSalarySettingsChange,
-  dailyLimitSettings,
-  onDailyLimitSettingsChange,
-  token,
-  onToast,
   trashCount,
-  onOpenTrash,
-  onOpenData
+  accountCount,
+  categoryCount,
+  budgetCount,
+  onOpen
 }: {
-  accounts: Account[];
-  categories: Category[];
-  transactions: Transaction[];
-  budgets: Budget[];
-  onSaveAccount: (item: Account) => Promise<void>;
-  onDeleteAccount: (item: Account) => Promise<void>;
-  onSaveBudget: (item: Budget) => Promise<void>;
-  onDeleteBudget: (item: Budget) => Promise<void>;
-  onSaveCategory: (item: Category) => Promise<void>;
-  onDeleteCategories: (items: Category[]) => Promise<void>;
-  salarySettings: SalarySettings;
-  onSalarySettingsChange: (settings: SalarySettings) => void;
-  dailyLimitSettings: DailyLimitAlertSettings;
-  onDailyLimitSettingsChange: (settings: DailyLimitAlertSettings) => void;
-  token: string;
-  onToast: (message: string) => void;
   trashCount: number;
-  onOpenTrash: () => void;
-  onOpenData: () => void;
+  accountCount: number;
+  categoryCount: number;
+  budgetCount: number;
+  onOpen: (item: SubView) => void;
 }) {
-  // 手风琴：同一时刻只展开一个分区（清爽，也避免长页面）
-  const [openRow, setOpenRow] = useState<string | null>(null);
-
-  function toggleRow(id: string) {
-    setOpenRow((current) => (current === id ? null : id));
-  }
-
   return (
     <section className="settings-stack">
       <div className="settings-tools-grid">
-        <button type="button" className="settings-tool-card tone-danger" onClick={onOpenTrash}>
+        <button type="button" className="settings-tool-card tone-danger" onClick={() => onOpen({ kind: "trash" })}>
           <span className="settings-tool-icon"><Trash2 size={18} /></span>
           <strong>流水回收站</strong>
           <small>可恢复历史删除流水</small>
           {trashCount > 0 && <span className="settings-tool-badge">{trashCount > 99 ? "99+" : trashCount}</span>}
         </button>
-        <button type="button" className="settings-tool-card tone-teal" onClick={onOpenData}>
+        <button type="button" className="settings-tool-card tone-teal" onClick={() => onOpen({ kind: "data" })}>
           <span className="settings-tool-icon"><Database size={18} /></span>
           <strong>数据管理</strong>
           <small>导出、导入与数据同步</small>
@@ -2394,29 +2536,11 @@ function SettingsPanel({
       <p className="settings-group-label">基础功能</p>
 
       <div className="settings-list">
-        <SettingsRow id="accounts" icon={Wallet} tone="teal" title="账户管理" subtitle="维护储蓄卡、消费卡和额度" open={openRow === "accounts"} onToggle={toggleRow}>
-          <AccountsPanel accounts={accounts} onSave={onSaveAccount} onDelete={onDeleteAccount} />
-        </SettingsRow>
-        <SettingsRow id="budgets" icon={Target} tone="purple" title="预算管理" subtitle="日常消费与总开支两层预算" open={openRow === "budgets"} onToggle={toggleRow}>
-          <BudgetPanel budgets={budgets} categories={categories} transactions={transactions} onSave={onSaveBudget} onDelete={onDeleteBudget} />
-        </SettingsRow>
-        <SettingsRow id="categories" icon={Tag} tone="green" title="分类标签" subtitle="按一级、二级分类折叠维护" open={openRow === "categories"} onToggle={toggleRow}>
-          <CategoriesPanel categories={categories} onSave={onSaveCategory} onDelete={onDeleteCategories} />
-        </SettingsRow>
-        <SettingsRow id="reminders" icon={Bell} tone="gold" title="提醒设置" subtitle="工资日、当日限额与手机推送" open={openRow === "reminders"} onToggle={toggleRow}>
-          <div className="settings-subblock">
-            <h3>工资日提醒<InfoTip text="纯本地提醒，随时可改，离线、无服务器也能正常运作。" /></h3>
-            <LocalSalaryReminderPanel value={salarySettings} onChange={onSalarySettingsChange} />
-          </div>
-          <div className="settings-subblock">
-            <h3>当日限额提醒<InfoTip text="今日消费达到日限额（月日常预算 ÷ 当月天数，含误差线）时全屏红色警告并推送手机提醒。" /></h3>
-            <LocalDailyLimitAlertPanel value={dailyLimitSettings} onChange={onDailyLimitSettingsChange} />
-            <PushAlertPanel token={token} onToast={onToast} />
-          </div>
-        </SettingsRow>
-        <SettingsRow id="about" icon={Info} tone="green" title="关于与更新" subtitle="当前版本与更新检查" open={openRow === "about"} onToggle={toggleRow}>
-          <AppVersionPanel onToast={onToast} />
-        </SettingsRow>
+        <SettingsRow icon={Wallet} tone="teal" title="账户管理" subtitle={`${accountCount} 个账户 · 额度与资产总览`} onClick={() => onOpen({ kind: "accounts" })} />
+        <SettingsRow icon={Target} tone="purple" title="预算管理" subtitle={`${budgetCount} 项预算 · 日常消费与总开支`} onClick={() => onOpen({ kind: "budgets" })} />
+        <SettingsRow icon={Tag} tone="green" title="分类标签" subtitle={`${categoryCount} 个分类 · 支出与收入`} onClick={() => onOpen({ kind: "categories" })} />
+        <SettingsRow icon={Bell} tone="gold" title="提醒设置" subtitle="工资日、当日限额与手机推送" onClick={() => onOpen({ kind: "reminders" })} />
+        <SettingsRow icon={Info} tone="green" title="关于与更新" subtitle="当前版本与更新检查" onClick={() => onOpen({ kind: "about" })} />
       </div>
     </section>
   );
@@ -2521,6 +2645,593 @@ function DataView({
           <SyncSettingsPanel />
         </div>
       </div>
+    </section>
+  );
+}
+
+/* ============ 二级/三级子模块：账户管理 ============ */
+
+const accountTypeMeta: Record<Account["type"], { label: string; group: string; icon: typeof Wallet; color: string }> = {
+  cash: { label: "现金", group: "现金账户", icon: Banknote, color: "#c9873a" },
+  bank: { label: "银行卡", group: "储蓄账户", icon: Landmark, color: "#1f5f74" },
+  alipay: { label: "支付宝", group: "虚拟账户", icon: Smartphone, color: "#1769aa" },
+  wechat: { label: "微信", group: "虚拟账户", icon: MessageCircle, color: "#24834f" },
+  credit: { label: "信用卡", group: "信用账户", icon: CreditCard, color: "#b84531" },
+  investment: { label: "投资", group: "投资账户", icon: TrendingUp, color: "#6b6f3f" },
+  loan: { label: "贷款/债务", group: "负债账户", icon: PiggyBank, color: "#8a5fb0" },
+  other: { label: "其他", group: "其他账户", icon: Wallet, color: "#8a7154" }
+};
+
+const accountGroupOrder: Account["type"][] = ["cash", "bank", "alipay", "wechat", "credit", "investment", "loan", "other"];
+
+/** 账户管理（二级页）：净资产总览 + 按类型分组的账户行（图标 + 名称 + 余额） */
+function AccountsView({ accounts, transactions, onOpenAccount, onAddAccount }: {
+  accounts: Account[];
+  transactions: Transaction[];
+  onOpenAccount: (account: Account) => void;
+  onAddAccount: () => void;
+}) {
+  const rows = accounts.map((account) => ({
+    account,
+    balance: calculateAccountBalance(account, transactions),
+    meta: accountTypeMeta[account.type] ?? accountTypeMeta.other
+  }));
+  const assetCents = rows.filter((row) => !isLiabilityAccount(row.account)).reduce((sum, row) => sum + row.balance, 0);
+  const liabilityCents = rows.filter((row) => isLiabilityAccount(row.account)).reduce((sum, row) => sum + Math.abs(row.balance), 0);
+  const netWorthCents = assetCents - liabilityCents;
+  const groups = accountGroupOrder
+    .map((type) => ({ type, meta: accountTypeMeta[type], items: rows.filter((row) => row.account.type === type) }))
+    .filter((group) => group.items.length > 0);
+
+  return (
+    <section className="settings-stack">
+      <div className="panel asset-summary">
+        <div className="asset-summary-main">
+          <span>净资产</span>
+          <strong>¥{centsToYuan(netWorthCents)}</strong>
+        </div>
+        <div className="asset-summary-side">
+          <span>总资产 ¥{centsToYuan(assetCents)}</span>
+          <em>总负债 ¥{centsToYuan(liabilityCents)}</em>
+        </div>
+      </div>
+      {groups.map((group) => (
+        <div className="settings-section account-group" key={group.type}>
+          <div className="account-group-head">
+            <span>{group.meta.group}</span>
+            <small>{group.items.length} 个</small>
+          </div>
+          <div className="account-group-rows">
+            {group.items.map(({ account, balance, meta }) => {
+              const Icon = meta.icon;
+              return (
+                <button type="button" className="account-row" key={account.id} onClick={() => onOpenAccount(account)}>
+                  <span className="account-row-icon" style={{ background: `${meta.color}1f`, color: meta.color }}><Icon size={17} /></span>
+                  <span className="account-row-text">
+                    <strong>{account.name}</strong>
+                    <small>{meta.label}{account.openingBalanceCents ? ` · 额度 ¥${centsToYuan(Math.abs(account.openingBalanceCents))}` : ""}</small>
+                  </span>
+                  <span className="account-row-amount">¥{centsToYuan(balance)}</span>
+                  <ChevronRight size={15} className="settings-row-chevron" />
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      ))}
+      {accounts.length === 0 && <p className="empty">还没有账户，点下方「新增账户」添加一个吧。</p>}
+      <button type="button" className="primary add-entry-button" onClick={onAddAccount}><Plus size={16} />新增账户</button>
+    </section>
+  );
+}
+
+/** 账户编辑/新增（三级页） */
+function AccountEditorPage({ account, onSave, onDelete, onDone }: {
+  account: Account | null;
+  onSave: (item: Account) => Promise<void>;
+  onDelete: (item: Account) => Promise<void>;
+  onDone: () => void;
+}) {
+  const [name, setName] = useState(account?.name ?? "");
+  const [type, setType] = useState<Account["type"]>(account?.type ?? "bank");
+  const [color, setColor] = useState(account?.color ?? accountTypeMeta.bank.color);
+  const [limit, setLimit] = useState(account?.openingBalanceCents ? centsToYuan(Math.abs(account.openingBalanceCents)) : "");
+
+  async function submit(event: React.FormEvent) {
+    event.preventDefault();
+    blurActiveElement();
+    await onSave({
+      ...(account ?? entityStamp()),
+      name: name.trim(),
+      type,
+      color,
+      openingBalanceCents: limit ? yuanToCents(limit) : 0,
+      version: account ? account.version + 1 : 1,
+      updatedAt: new Date().toISOString(),
+      deletedAt: null
+    });
+    onDone();
+  }
+
+  async function remove() {
+    if (!account) return;
+    if (!window.confirm(`删除账户“${account.name}”？历史流水会保留，只是不再作为可选账户显示。`)) return;
+    blurActiveElement();
+    await onDelete(account);
+    onDone();
+  }
+
+  return (
+    <section className="settings-stack">
+      <form className="panel form-stack editor-page" onSubmit={submit}>
+        <label>账户名称
+          <input value={name} onChange={(event) => setName(event.target.value)} placeholder="账户名称" required autoFocus={!account} />
+        </label>
+        <label>账户类型</label>
+        <div className="type-picker">
+          {accountGroupOrder.map((item) => {
+            const meta = accountTypeMeta[item];
+            const Icon = meta.icon;
+            return (
+              <button
+                type="button"
+                key={item}
+                className={type === item ? "type-option active" : "type-option"}
+                style={type === item ? { borderColor: meta.color, color: meta.color, background: `${meta.color}14` } : undefined}
+                onClick={() => {
+                  setType(item);
+                  setColor(meta.color);
+                }}
+              >
+                <Icon size={15} />
+                <span>{meta.label}</span>
+              </button>
+            );
+          })}
+        </div>
+        <label>额度 / 初始余额（可选）
+          <input value={limit} onChange={(event) => setLimit(event.target.value)} placeholder="0.00" inputMode="decimal" />
+        </label>
+        <label>标识颜色
+          <input value={color} onChange={(event) => setColor(event.target.value)} type="color" />
+        </label>
+        <button className="primary" type="submit">保存账户</button>
+        {account && (
+          <button type="button" className="ghost danger" onClick={() => void remove()}><Trash2 size={15} />删除账户</button>
+        )}
+      </form>
+    </section>
+  );
+}
+
+/* ============ 二级/三级子模块：分类标签 ============ */
+
+/** 二级入口行（图标 + 标题 + 副标题 + 数量 + chevron） */
+function SubEntryRow({ icon: Icon, tone, title, subtitle, count, onClick }: {
+  icon: typeof Wallet;
+  tone: "danger" | "teal" | "green" | "gold" | "purple";
+  title: string;
+  subtitle: string;
+  count?: number;
+  onClick: () => void;
+}) {
+  return (
+    <button type="button" className="settings-section sub-entry-row" onClick={onClick}>
+      <span className="settings-row-head">
+        <span className={`settings-row-icon tone-${tone} sub-entry-icon`}><Icon size={19} /></span>
+        <span className="settings-row-text">
+          <strong>{title}</strong>
+          <small>{subtitle}</small>
+        </span>
+        {count !== undefined && <span className="sub-entry-count">{count}</span>}
+        <ChevronRight size={16} className="settings-row-chevron" />
+      </span>
+    </button>
+  );
+}
+
+/** 分类标签（二级页）：支出分类 / 收入分类 两个入口 */
+function CategoriesView({ categories, onOpenKind }: {
+  categories: Category[];
+  onOpenKind: (categoryKind: Category["kind"]) => void;
+}) {
+  const expenseCount = categories.filter((item) => item.kind === "expense").length;
+  const incomeCount = categories.filter((item) => item.kind === "income").length;
+  return (
+    <section className="settings-stack">
+      <div className="settings-list">
+        <SubEntryRow
+          icon={ArrowUpRight}
+          tone="danger"
+          title="支出分类"
+          subtitle="查看支出分类统计，或自定义支出分类"
+          count={expenseCount}
+          onClick={() => onOpenKind("expense")}
+        />
+        <SubEntryRow
+          icon={ArrowDownLeft}
+          tone="green"
+          title="收入分类"
+          subtitle="查看收入分类统计，或自定义收入分类"
+          count={incomeCount}
+          onClick={() => onOpenKind("income")}
+        />
+      </div>
+    </section>
+  );
+}
+
+/** 分类列表（三级页）：一级分类 + 二级分类，全部带彩色图标砖 */
+function CategoryListPage({ categories, categoryKind, onOpenCategory, onAddCategory }: {
+  categories: Category[];
+  categoryKind: Category["kind"];
+  onOpenCategory: (category: Category) => void;
+  onAddCategory: () => void;
+}) {
+  const list = categories.filter((item) => item.kind === categoryKind);
+  const parents = list.filter((item) => !item.parentId);
+  const childrenOf = (id: string) => list.filter((item) => item.parentId === id);
+
+  return (
+    <section className="settings-stack">
+      <div className="settings-section account-group">
+        <div className="account-group-head">
+          <span>{categoryKind === "expense" ? "支出分类" : "收入分类"}</span>
+          <small>{list.length} 个</small>
+        </div>
+        <div className="account-group-rows">
+          {parents.length === 0 && <p className="empty">还没有分类，点下方「新增分类」添加一个吧。</p>}
+          {parents.map((parent) => {
+            const children = childrenOf(parent.id);
+            return (
+              <Fragment key={parent.id}>
+                <button type="button" className="account-row category-row" onClick={() => onOpenCategory(parent)}>
+                  <span className="account-row-icon" style={{ background: `${parent.color}1f`, color: parent.color }}>{parent.name.slice(0, 1)}</span>
+                  <span className="account-row-text">
+                    <strong>{parent.name}</strong>
+                    <small>{children.length} 个子分类</small>
+                  </span>
+                  <ChevronRight size={15} className="settings-row-chevron" />
+                </button>
+                {children.map((child) => (
+                  <button type="button" className="account-row category-row child" key={child.id} onClick={() => onOpenCategory(child)}>
+                    <span className="account-row-icon" style={{ background: `${child.color}1f`, color: child.color }}>{child.name.slice(0, 1)}</span>
+                    <span className="account-row-text">
+                      <strong>{child.name}</strong>
+                      <small>{parent.name}</small>
+                    </span>
+                    <ChevronRight size={15} className="settings-row-chevron" />
+                  </button>
+                ))}
+              </Fragment>
+            );
+          })}
+        </div>
+      </div>
+      <button type="button" className="primary add-entry-button" onClick={onAddCategory}><Plus size={16} />新增分类</button>
+    </section>
+  );
+}
+
+/** 分类编辑/新增（四级页） */
+function CategoryEditorPage({ category, categoryKind, categories, onSave, onDelete, onDone }: {
+  category: Category | null;
+  categoryKind: Category["kind"];
+  categories: Category[];
+  onSave: (item: Category) => Promise<void>;
+  onDelete: (items: Category[]) => Promise<void>;
+  onDone: () => void;
+}) {
+  const activeCategories = activeOnly(categories);
+  const [name, setName] = useState(category?.name ?? "");
+  const [kind, setKind] = useState<Category["kind"]>(category?.kind ?? categoryKind);
+  const [parentId, setParentId] = useState(category?.parentId ?? "");
+  const topCategories = activeCategories.filter((item) => !item.parentId && item.kind === kind && item.id !== category?.id);
+
+  async function submit(event: React.FormEvent) {
+    event.preventDefault();
+    blurActiveElement();
+    let nextParentId: string | null = parentId || null;
+    if (!category && !nextParentId) {
+      // 新分类默认放进「其他」
+      let parent = otherCategory(activeCategories, kind);
+      if (!parent) {
+        parent = makeCategory({ name: "其他", kind, parentId: null, icon: "folder", color: kind === "expense" ? "#6b6f3f" : "#2f7d4f" });
+        await onSave(parent);
+      }
+      nextParentId = parent.id;
+    }
+    await onSave({
+      ...(category ?? makeCategory({ name, kind, parentId: nextParentId })),
+      name: name.trim(),
+      kind,
+      parentId: nextParentId,
+      version: category ? category.version + 1 : 1,
+      updatedAt: new Date().toISOString(),
+      deletedAt: null
+    });
+    onDone();
+  }
+
+  async function remove() {
+    if (!category) return;
+    const children = activeCategories.filter((item) => item.parentId === category.id);
+    const message = children.length > 0
+      ? `删除“${category.name}”及 ${children.length} 个子分类？历史流水会保留。`
+      : `删除分类“${category.name}”？历史流水会保留。`;
+    if (!window.confirm(message)) return;
+    blurActiveElement();
+    const now = new Date().toISOString();
+    await onDelete([category, ...children].map((item) => ({
+      ...item,
+      deletedAt: now,
+      updatedAt: now,
+      version: item.version + 1
+    })));
+    onDone();
+  }
+
+  return (
+    <section className="settings-stack">
+      <form className="panel form-stack editor-page" onSubmit={submit}>
+        <label>分类名称
+          <input value={name} onChange={(event) => setName(event.target.value)} placeholder="分类名称" required autoFocus={!category} />
+        </label>
+        <label>分类方向
+          <select value={kind} onChange={(event) => setKind(event.target.value as Category["kind"])}>
+            <option value="expense">支出</option>
+            <option value="income">收入</option>
+          </select>
+        </label>
+        <label>所属分类
+          <select value={parentId} onChange={(event) => setParentId(event.target.value)}>
+            <option value="">作为一级分类</option>
+            {topCategories.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}
+          </select>
+        </label>
+        <button className="primary" type="submit">保存分类</button>
+        {category && (
+          <button type="button" className="ghost danger" onClick={() => void remove()}><Trash2 size={15} />删除分类</button>
+        )}
+      </form>
+    </section>
+  );
+}
+
+/* ============ 二级/三级子模块：预算管理 ============ */
+
+/** 预算管理（二级页）：本月预算汇总 + 预算行 */
+function BudgetsView({ budgets, categories, transactions, onOpenBudget, onAddBudget }: {
+  budgets: Budget[];
+  categories: Category[];
+  transactions: Transaction[];
+  onOpenBudget: (budget: Budget) => void;
+  onAddBudget: () => void;
+}) {
+  const month = monthKey();
+  const monthTransactions = transactions.filter((item) => item.occurredAt.startsWith(month));
+  const monthExpensesAll = monthTransactions.filter((item) => item.type === "expense");
+  const monthDailyExpenses = dailyExpenseTransactions(monthTransactions, categories);
+  const monthDailySpent = monthDailyExpenses.reduce((sum, item) => sum + item.amountCents, 0);
+  const monthTotalSpent = monthExpensesAll.reduce((sum, item) => sum + item.amountCents, 0);
+  const monthSpecialSpent = monthTotalSpent - monthDailySpent;
+  const monthBudgets = budgets.filter((budget) => budget.month === month);
+  const dailyOverallBudget = monthBudgets.find((budget) => !budget.categoryId && budgetScope(budget) === "daily");
+  const totalBudget = monthBudgets.find((budget) => !budget.categoryId && budgetScope(budget) === "total");
+  const categoryBudgets = monthBudgets.filter((budget) => budget.categoryId);
+  const dailyBudgetCents = dailyOverallBudget?.amountCents ?? 0;
+  const dailyUsage = dailyBudgetCents > 0 ? Math.round((monthDailySpent / dailyBudgetCents) * 100) : 0;
+
+  function spentFor(budget: Budget) {
+    if (budget.categoryId) {
+      return monthExpensesAll.filter((item) => item.categoryId === budget.categoryId).reduce((sum, item) => sum + item.amountCents, 0);
+    }
+    return budgetScope(budget) === "total" ? monthTotalSpent : monthDailySpent;
+  }
+
+  function labelFor(budget: Budget) {
+    if (budget.categoryId) return categories.find((item) => item.id === budget.categoryId)?.name ?? "分类预算";
+    return budgetScope(budget) === "total" ? "总开支" : "日常消费";
+  }
+
+  const rows: { budget: Budget; icon: typeof Wallet; tone: string }[] = [];
+  if (dailyOverallBudget) rows.push({ budget: dailyOverallBudget, icon: CalendarClock, tone: "#1f5f74" });
+  if (totalBudget) rows.push({ budget: totalBudget, icon: Target, tone: "#8a5fb0" });
+  categoryBudgets.forEach((budget) => rows.push({ budget, icon: Tag, tone: "#2f7d4f" }));
+
+  return (
+    <section className="settings-stack">
+      <div className="panel asset-summary">
+        <div className="asset-summary-main">
+          <span>{monthLabel(month)}日常预算</span>
+          <strong>{dailyBudgetCents > 0 ? `${dailyUsage}%` : "未设置"}</strong>
+        </div>
+        <div className="asset-summary-side">
+          <span>已花 ¥{centsToYuan(monthDailySpent)}{dailyBudgetCents > 0 ? ` / ¥${centsToYuan(dailyBudgetCents)}` : ""}</span>
+          <em>专项支出 ¥{centsToYuan(monthSpecialSpent)}</em>
+        </div>
+      </div>
+      <div className="settings-section account-group">
+        <div className="account-group-head">
+          <span>预算列表</span>
+          <small>{rows.length} 项</small>
+        </div>
+        <div className="account-group-rows">
+          {rows.length === 0 && <p className="empty">本月还没有预算，点下方「新增预算」设置一个吧。</p>}
+          {rows.map(({ budget, icon: Icon, tone }) => {
+            const spent = spentFor(budget);
+            const ratio = Math.min(100, Math.round((spent / Math.max(1, budget.amountCents)) * 100));
+            const over = spent > budget.amountCents;
+            return (
+              <button type="button" className="account-row budget-row" key={budget.id} onClick={() => onOpenBudget(budget)}>
+                <span className="account-row-icon" style={{ background: `${tone}1f`, color: tone }}><Icon size={17} /></span>
+                <span className="account-row-text">
+                  <strong>{labelFor(budget)}</strong>
+                  <small>¥{centsToYuan(spent)} / ¥{centsToYuan(budget.amountCents)}{over ? " · 已超支" : ""}</small>
+                  <span className={over ? "bar over" : "bar"}><i style={{ width: `${ratio}%` }} /></span>
+                </span>
+                <ChevronRight size={15} className="settings-row-chevron" />
+              </button>
+            );
+          })}
+        </div>
+      </div>
+      <button type="button" className="primary add-entry-button" onClick={onAddBudget}><Plus size={16} />新增预算</button>
+    </section>
+  );
+}
+
+/** 预算编辑/新增（三级页） */
+function BudgetEditorPage({ budget, budgets, categories, onSave, onDelete, onDone }: {
+  budget: Budget | null;
+  budgets: Budget[];
+  categories: Category[];
+  onSave: (item: Budget) => Promise<void>;
+  onDelete: (item: Budget) => Promise<void>;
+  onDone: () => void;
+}) {
+  const [month, setMonth] = useState(budget?.month ?? monthKey());
+  const [budgetKind, setBudgetKind] = useState<"daily" | "total" | "category">(
+    budget ? (budget.categoryId ? "category" : budgetScope(budget) === "total" ? "total" : "daily") : "daily"
+  );
+  const [categoryId, setCategoryId] = useState(budget?.categoryId ?? "");
+  const [amount, setAmount] = useState(budget ? centsToYuan(budget.amountCents) : "");
+  const expenseCategories = categories.filter((item) => item.kind === "expense");
+
+  async function submit(event: React.FormEvent) {
+    event.preventDefault();
+    blurActiveElement();
+    const resolvedCategoryId = budgetKind === "category" ? categoryId || null : null;
+    const resolvedScope = budgetKind === "total" ? "total" as const : "daily" as const;
+    const duplicate = budgets.find((item) =>
+      item.id !== budget?.id &&
+      item.month === month &&
+      (item.categoryId ?? null) === resolvedCategoryId &&
+      (!resolvedCategoryId ? budgetScope(item) === resolvedScope : true)
+    );
+    const existing = budget ?? duplicate;
+    const base = existing ?? entityStamp();
+    await onSave({
+      ...base,
+      month,
+      categoryId: resolvedCategoryId,
+      scope: resolvedScope,
+      amountCents: yuanToCents(amount),
+      version: existing ? existing.version + 1 : base.version,
+      updatedAt: new Date().toISOString(),
+      deletedAt: null
+    });
+    onDone();
+  }
+
+  async function remove() {
+    if (!budget) return;
+    if (!window.confirm(`删除${budget.month} 的这条预算？`)) return;
+    blurActiveElement();
+    await onDelete(budget);
+    onDone();
+  }
+
+  return (
+    <section className="settings-stack">
+      <form className="panel form-stack editor-page" onSubmit={submit}>
+        <label>预算月份
+          <MonthField value={month} onChange={setMonth} label="预算月份" />
+        </label>
+        <label>预算类型
+          <select value={budgetKind} onChange={(event) => setBudgetKind(event.target.value as "daily" | "total" | "category")}>
+            <option value="daily">日常消费总预算</option>
+            <option value="total">总开支预算（含日常消费）</option>
+            <option value="category">分类预算（归入日常消费）</option>
+          </select>
+        </label>
+        {budgetKind === "category" && (
+          <label>预算分类
+            <select value={categoryId} onChange={(event) => setCategoryId(event.target.value)} required>
+              <option value="" disabled>选择分类</option>
+              {expenseCategories.map((category) => <option key={category.id} value={category.id}>{category.name}</option>)}
+            </select>
+          </label>
+        )}
+        <label>预算金额
+          <input value={amount} onChange={(event) => setAmount(event.target.value)} placeholder="0.00" inputMode="decimal" required autoFocus={!budget} />
+        </label>
+        <button className="primary" type="submit">保存预算</button>
+        {budget && (
+          <button type="button" className="ghost danger" onClick={() => void remove()}><Trash2 size={15} />删除预算</button>
+        )}
+      </form>
+    </section>
+  );
+}
+
+/* ============ 二级/三级子模块：提醒设置与关于 ============ */
+
+/** 提醒设置（二级页）：工资日提醒 / 当日限额提醒 两个入口 */
+function RemindersView({ onOpen }: { onOpen: (which: "salary" | "dailyLimit") => void }) {
+  return (
+    <section className="settings-stack">
+      <div className="settings-list">
+        <SubEntryRow icon={Banknote} tone="gold" title="工资日提醒" subtitle="纯本地提醒，离线、无服务器也能用" onClick={() => onOpen("salary")} />
+        <SubEntryRow icon={BellRing} tone="danger" title="当日限额提醒" subtitle="达线全屏警告与手机推送" onClick={() => onOpen("dailyLimit")} />
+      </div>
+    </section>
+  );
+}
+
+/** 提醒详情（三级页） */
+function ReminderDetailPage({ which, token, salarySettings, onSalarySettingsChange, dailyLimitSettings, onDailyLimitSettingsChange, onToast }: {
+  which: "salary" | "dailyLimit";
+  token: string;
+  salarySettings: SalarySettings;
+  onSalarySettingsChange: (settings: SalarySettings) => void;
+  dailyLimitSettings: DailyLimitAlertSettings;
+  onDailyLimitSettingsChange: (settings: DailyLimitAlertSettings) => void;
+  onToast: (message: string) => void;
+}) {
+  return (
+    <section className="settings-stack">
+      {which === "salary" ? (
+        <div className="settings-section data-section">
+          <div className="data-section-head">
+            <span className="settings-row-icon tone-gold"><Banknote size={16} /></span>
+            <span className="settings-row-text">
+              <strong>工资日提醒</strong>
+              <small>纯本地提醒，随时可改</small>
+            </span>
+          </div>
+          <div className="settings-section-body">
+            <LocalSalaryReminderPanel value={salarySettings} onChange={onSalarySettingsChange} />
+          </div>
+        </div>
+      ) : (
+        <>
+          <div className="settings-section data-section">
+            <div className="data-section-head">
+              <span className="settings-row-icon tone-danger"><BellRing size={16} /></span>
+              <span className="settings-row-text">
+                <strong>当日限额提醒</strong>
+                <small>今日消费达到日限额时全屏红色警告并推送手机提醒</small>
+              </span>
+            </div>
+            <div className="settings-section-body">
+              <LocalDailyLimitAlertPanel value={dailyLimitSettings} onChange={onDailyLimitSettingsChange} />
+            </div>
+          </div>
+          <div className="settings-section data-section">
+            <div className="data-section-head">
+              <span className="settings-row-icon tone-teal"><Bell size={16} /></span>
+              <span className="settings-row-text">
+                <strong>手机推送</strong>
+                <small>应用关闭也能收到的服务端推送</small>
+              </span>
+            </div>
+            <div className="settings-section-body">
+              <PushAlertPanel token={token} onToast={onToast} />
+            </div>
+          </div>
+        </>
+      )}
     </section>
   );
 }
@@ -2643,29 +3354,25 @@ function PushAlertPanel({ token, onToast }: { token: string; onToast: (message: 
   );
 }
 
-/** 设置页列表行（随手记风格）：彩色图标砖 + 标题/副标题 + chevron，点击展开/收起分区 */
-function SettingsRow({ id, icon: Icon, tone, title, subtitle, open, onToggle, children }: {
-  id: string;
+/** 设置页导航行（随手记风格）：彩色图标砖 + 标题/副标题 + chevron，点击进入二级子模块 */
+function SettingsRow({ icon: Icon, tone, title, subtitle, onClick }: {
   icon: typeof Wallet;
   tone: "danger" | "teal" | "green" | "gold" | "purple";
   title: string;
   subtitle: string;
-  open: boolean;
-  onToggle: (id: string) => void;
-  children: ReactNode;
+  onClick: () => void;
 }) {
   return (
-    <div className={`settings-section settings-row tone-${tone}${open ? " open" : ""}`} id={`settings-row-${id}`}>
-      <button type="button" className="settings-row-head" aria-expanded={open} onClick={() => onToggle(id)}>
+    <button type="button" className="settings-section settings-row" onClick={onClick}>
+      <span className="settings-row-head">
         <span className={`settings-row-icon tone-${tone}`}><Icon size={17} /></span>
         <span className="settings-row-text">
           <strong>{title}</strong>
           <small>{subtitle}</small>
         </span>
         <ChevronRight size={16} className="settings-row-chevron" />
-      </button>
-      {open && <div className="settings-section-body">{children}</div>}
-    </div>
+      </span>
+    </button>
   );
 }
 
@@ -2814,544 +3521,13 @@ function SyncSettingsPanel() {
   );
 }
 
-function AccountsPanel({ accounts, onSave, onDelete }: { accounts: Account[]; onSave: (item: Account) => Promise<void>; onDelete: (item: Account) => Promise<void> }) {
-  const [name, setName] = useState("");
-  const [type, setType] = useState<Account["type"]>("bank");
-  const [color, setColor] = useState("#1f5f74");
-  const [limit, setLimit] = useState("");
-  const [editing, setEditing] = useState<Account | null>(null);
-  const [showNewForm, setShowNewForm] = useState(false);
-
-  function resetForm() {
-    setEditing(null);
-    setName("");
-    setType("bank");
-    setColor("#1f5f74");
-    setLimit("");
-  }
-
-  function editAccount(account: Account) {
-    setShowNewForm(false);
-    setEditing(account);
-    setName(account.name);
-    setType(account.type);
-    setColor(account.color);
-    setLimit(account.openingBalanceCents ? centsToYuan(Math.abs(account.openingBalanceCents)) : "");
-  }
-
-  async function deleteAccount(account: Account) {
-    const confirmed = window.confirm(`删除账户“${account.name}”？历史流水会保留，只是不再作为可选账户显示。`);
-    if (!confirmed) return;
-    if (editing?.id === account.id) resetForm();
-    await onDelete(account);
-  }
-
-  async function submit(event: React.FormEvent) {
-    event.preventDefault();
-    blurActiveElement();
-    const wasEditing = !!editing;
-    await onSave({
-      ...(editing ?? entityStamp()),
-      name,
-      type,
-      openingBalanceCents: limit ? yuanToCents(limit) : 0,
-      color,
-      version: editing ? editing.version + 1 : 1,
-      updatedAt: new Date().toISOString(),
-      deletedAt: null
-    });
-    resetForm();
-    // 新增保存后收起表单，把界面还给账户列表；编辑则在原地结束
-    if (!wasEditing) setShowNewForm(false);
-  }
-
-  function renderForm() {
-    return (
-      <form className="panel form-stack account-editor-panel inline-edit-form" onSubmit={submit}>
-        <div className="inline-form-head">
-          <div>
-            <h2>{editing ? "编辑账户" : "新增账户"}{!editing && <InfoTip text="新增一个账户，记账时可快速选择；也可以设置额度。" />}</h2>
-            {editing && <p>正在编辑：{editing.name}</p>}
-          </div>
-        </div>
-        <input value={name} onChange={(event) => setName(event.target.value)} placeholder="账户名称" required autoFocus={!editing} />
-        <select value={type} onChange={(event) => setType(event.target.value as Account["type"])}>
-          <option value="bank">银行卡</option>
-          <option value="cash">现金</option>
-          <option value="credit">信用卡</option>
-          <option value="alipay">支付宝</option>
-          <option value="wechat">微信</option>
-          <option value="investment">投资</option>
-          <option value="loan">贷款/债务</option>
-          <option value="other">其他</option>
-        </select>
-        <input value={limit} onChange={(event) => setLimit(event.target.value)} placeholder="额度（可选）" inputMode="decimal" />
-        <input value={color} onChange={(event) => setColor(event.target.value)} type="color" />
-        <button className="primary">保存账户</button>
-        {editing
-          ? <button type="button" className="ghost" onClick={resetForm}>取消编辑</button>
-          : <button type="button" className="ghost" onClick={() => setShowNewForm(false)}>收起</button>}
-      </form>
-    );
-  }
-
-  return (
-    <div className="panel management-panel">
-      <div className="account-toolbar">
-        {!editing && (
-          <>
-            <button
-              type="button"
-              className={showNewForm ? "account-add-toggle active" : "account-add-toggle"}
-              onClick={() => setShowNewForm((value) => !value)}
-            >
-              <Plus size={15} />{showNewForm ? "收起新增" : "新增账户"}
-            </button>
-            <InfoTip text="记账时选择的资金账户；删除账户后历史流水会保留。" />
-          </>
-        )}
-      </div>
-      {(showNewForm || editing) && renderForm()}
-      <div className="account-list">
-        {accounts.length === 0 ? (
-          <p className="empty">还没有账户，点击上方「新增账户」添加一个吧。</p>
-        ) : (
-          accounts.map((account) => (
-            <div className="account-line" key={account.id}>
-              <i style={{ background: account.color }} />
-              <div className="account-info">
-                <span className="account-name" title={account.name}>{account.name}</span>
-                <em className="account-meta">{accountTypeLabels[account.type]} · 额度 {accountLimitText(account)}</em>
-              </div>
-              <div className="account-actions">
-                <button className="text-action icon-only" onClick={() => editAccount(account)} type="button" title="编辑" aria-label="编辑"><Pencil size={15} /><span className="action-label">编辑</span></button>
-                <button className="text-action danger icon-only" onClick={() => void deleteAccount(account)} type="button" title="删除" aria-label="删除"><Trash2 size={15} /><span className="action-label">删除</span></button>
-              </div>
-            </div>
-          ))
-        )}
-      </div>
-    </div>
-  );
-}
-
-function CategoriesPanel({ categories, onSave, onDelete }: { categories: Category[]; onSave: (item: Category) => Promise<void>; onDelete: (items: Category[]) => Promise<void> }) {
-  const [name, setName] = useState("");
-  const [kind, setKind] = useState<Category["kind"]>("expense");
-  const [visibleKind, setVisibleKind] = useState<Category["kind"]>("expense");
-  const [parentId, setParentId] = useState("__other__");
-  const [editing, setEditing] = useState<Category | null>(null);
-  const [showNewForm, setShowNewForm] = useState(false);
-  const [openCategoryIds, setOpenCategoryIds] = useState<Set<string>>(() => new Set());
-  const inlineEditorRef = useRef<HTMLFormElement | null>(null);
-  const activeCategories = activeOnly(categories);
-  const topCategories = activeCategories.filter((category) => !category.parentId && category.kind === kind && category.id !== editing?.id);
-  const groupedParents = activeCategories.filter((category) => !category.parentId && category.kind === visibleKind);
-
-  function resetEditor() {
-    setEditing(null);
-    setName("");
-    setParentId("__other__");
-  }
-
-  function editCategory(category: Category) {
-    setShowNewForm(false);
-    setEditing(category);
-    setName(category.name);
-    setKind(category.kind);
-    setVisibleKind(category.kind);
-    setParentId(category.parentId ?? "");
-    if (category.parentId) {
-      setOpenCategoryIds((current) => {
-        const next = new Set(current);
-        next.add(category.parentId as string);
-        return next;
-      });
-    }
-  }
-
-  function toggleCategoryGroup(id: string) {
-    const next = new Set(openCategoryIds);
-    if (next.has(id)) {
-      next.delete(id);
-      if (editing?.parentId === id) resetEditor();
-    } else {
-      next.add(id);
-    }
-    setOpenCategoryIds(next);
-  }
-
-  // 编辑表单就近渲染在被编辑的分类行下方，避免用户再滚回面板顶部
-  useEffect(() => {
-    if (!editing) return;
-    inlineEditorRef.current?.scrollIntoView({ block: "nearest", behavior: "smooth" });
-  }, [editing?.id]);
-
-  async function deleteCategory(category: Category) {
-    const children = activeCategories.filter((item) => item.parentId === category.id);
-    const confirmed = window.confirm(children.length > 0
-      ? `删除“${category.name}”及 ${children.length} 个子分类？历史流水会保留。`
-      : `删除分类“${category.name}”？历史流水会保留。`);
-    if (!confirmed) return;
-    const now = new Date().toISOString();
-    const deleted = [category, ...children].map((item) => ({
-      ...item,
-      deletedAt: now,
-      updatedAt: now,
-      version: item.version + 1
-    }));
-    if (editing && deleted.some((item) => item.id === editing.id)) {
-      resetEditor();
-    }
-    await onDelete(deleted);
-  }
-
-  async function submit(event: React.FormEvent) {
-    event.preventDefault();
-    blurActiveElement();
-    let nextParentId: string | null = parentId || null;
-    if (!editing && parentId === "__other__") {
-      let parent = otherCategory(activeCategories, kind);
-      if (!parent) {
-        parent = makeCategory({ name: "其他", kind, parentId: null, icon: "folder", color: kind === "expense" ? "#6b6f3f" : "#2f7d4f" });
-        await onSave(parent);
-      }
-      nextParentId = parent.id;
-    }
-    await onSave({
-      ...(editing ?? makeCategory({ name, kind, parentId: nextParentId })),
-      name,
-      kind,
-      parentId: nextParentId,
-      version: editing ? editing.version + 1 : 1,
-      updatedAt: new Date().toISOString(),
-      deletedAt: null
-    });
-    resetEditor();
-    // 新增保存后收起表单，把界面还给分类列表；编辑则在行内结束
-    if (!editing) setShowNewForm(false);
-  }
-
-  function renderEditor(placement: "top" | "inline") {
-    const inline = placement === "inline";
-    return (
-      <form
-        ref={inline ? inlineEditorRef : undefined}
-        className={inline ? "panel form-stack category-editor-panel inline-edit-form" : "panel form-stack category-editor-panel"}
-        onSubmit={submit}
-      >
-        <div className="inline-form-head">
-          <div>
-            <h2>{editing ? (inline ? "编辑当前分类" : "编辑分类") : "新增分类"}{!editing && <InfoTip text="新增分类会优先放入“其他”，也可以手动选择一级分类。" />}</h2>
-            {editing && <p>正在编辑：{categoryPath(editing, activeCategories)}</p>}
-          </div>
-        </div>
-        <input value={name} onChange={(event) => setName(event.target.value)} placeholder="分类名称" required autoFocus={!editing} />
-        <select value={kind} onChange={(event) => setKind(event.target.value as Category["kind"])}>
-          <option value="expense">消费</option>
-          <option value="income">收入</option>
-        </select>
-        <select value={parentId} onChange={(event) => setParentId(event.target.value)}>
-          <option value="">作为一级分类</option>
-          {!editing && <option value="__other__">放入其他（默认）</option>}
-          {topCategories.map((category) => <option key={category.id} value={category.id}>{category.name}</option>)}
-        </select>
-        <button className="primary">保存分类</button>
-        {editing
-          ? <button type="button" className="ghost" onClick={resetEditor}>取消编辑</button>
-          : <button type="button" className="ghost" onClick={() => setShowNewForm(false)}>收起</button>}
-      </form>
-    );
-  }
-
-  return (
-    <div className="panel management-panel">
-      <div className="category-toolbar">
-        <div className="category-kind-wrap">
-          <div className="segmented compact category-kind-tabs">
-            {(["expense", "income"] as Category["kind"][]).map((item) => (
-              <button
-                key={item}
-                type="button"
-                className={visibleKind === item ? "active" : ""}
-                onClick={() => {
-                  setVisibleKind(item);
-                  if (editing) {
-                    if (editing.kind !== item) resetEditor();
-                  } else {
-                    setKind(item);
-                  }
-                }}
-              >
-                {item === "expense" ? "消费分类" : "收入分类"}
-              </button>
-            ))}
-          </div>
-          <InfoTip text="先选择一级方向（消费/收入），再展开维护二级分类，日常只维护消费分类即可；删除分类后历史流水会保留。" />
-        </div>
-        {!editing && (
-          <button
-            type="button"
-            className={showNewForm ? "category-add-toggle active" : "category-add-toggle"}
-            onClick={() => setShowNewForm((value) => !value)}
-          >
-            <Plus size={15} />{showNewForm ? "收起新增" : "新增分类"}
-          </button>
-        )}
-      </div>
-      {!editing && showNewForm && renderEditor("inline")}
-      <div className="category-tree">
-        {groupedParents.map((parent) => {
-          const children = activeCategories.filter((category) => category.parentId === parent.id);
-          const open = openCategoryIds.has(parent.id);
-          const parentEditing = editing?.id === parent.id;
-          return (
-            <div className="category-group" key={parent.id}>
-              <div className={parentEditing ? "category-line editing" : "category-line"}>
-                <button className="category-toggle" type="button" onClick={() => toggleCategoryGroup(parent.id)}>
-                  <strong>{parent.name}</strong>
-                  <span>{children.length} 个子分类 · {open ? "收起" : "展开"}</span>
-                </button>
-                <button className="text-action" onClick={() => editCategory(parent)} type="button" title="编辑分类" aria-label="编辑分类"><Pencil size={15} /><span>编辑</span></button>
-                <button className="text-action danger" onClick={() => void deleteCategory(parent)} type="button" title="删除分类" aria-label="删除分类"><Trash2 size={15} /><span>删除</span></button>
-              </div>
-              {parentEditing && renderEditor("inline")}
-              {open && children.map((child) => (
-                <Fragment key={child.id}>
-                  <div className={editing?.id === child.id ? "category-line child editing" : "category-line child"}>
-                    <span>{child.name}</span>
-                    <button className="text-action" onClick={() => editCategory(child)} type="button" title="编辑分类" aria-label="编辑分类"><Pencil size={15} /><span>编辑</span></button>
-                    <button className="text-action danger" onClick={() => void deleteCategory(child)} type="button" title="删除分类" aria-label="删除分类"><Trash2 size={15} /><span>删除</span></button>
-                  </div>
-                  {editing?.id === child.id && renderEditor("inline")}
-                </Fragment>
-              ))}
-            </div>
-          );
-        })}
-      </div>
-    </div>
-  );
-}
-
-function BudgetPanel({ budgets, categories, transactions, onSave, onDelete }: {
-  budgets: Budget[];
-  categories: Category[];
-  transactions: Transaction[];
-  onSave: (item: Budget) => Promise<void>;
-  onDelete: (item: Budget) => Promise<void>;
-}) {
-  const [month, setMonth] = useState(monthKey());
-  const [budgetKind, setBudgetKind] = useState<"daily" | "total" | "category">("daily");
-  const [categoryId, setCategoryId] = useState("");
-  const [amount, setAmount] = useState("");
-  const [editing, setEditing] = useState<Budget | null>(null);
-  const [showNewForm, setShowNewForm] = useState(false);
-  const expenseCategories = categories.filter((item) => item.kind === "expense");
-  const monthTransactions = transactions.filter((item) => item.occurredAt.startsWith(month));
-  const monthExpensesAll = monthTransactions.filter((item) => item.type === "expense");
-  const monthDailyExpenses = dailyExpenseTransactions(monthTransactions, categories);
-  const monthDailySpent = monthDailyExpenses.reduce((sum, item) => sum + item.amountCents, 0);
-  const monthTotalSpent = monthExpensesAll.reduce((sum, item) => sum + item.amountCents, 0);
-  const monthSpecialSpent = monthTotalSpent - monthDailySpent;
-
-  const monthBudgets = budgets.filter((budget) => budget.month === month);
-  const dailyOverallBudget = monthBudgets.find((budget) => !budget.categoryId && budgetScope(budget) === "daily");
-  const totalBudget = monthBudgets.find((budget) => !budget.categoryId && budgetScope(budget) === "total");
-  const categoryBudgets = monthBudgets.filter((budget) => budget.categoryId);
-
-  function editBudget(budget: Budget) {
-    setEditing(budget);
-    setMonth(budget.month);
-    setBudgetKind(budget.categoryId ? "category" : budgetScope(budget) === "total" ? "total" : "daily");
-    setCategoryId(budget.categoryId ?? "");
-    setAmount(centsToYuan(budget.amountCents));
-  }
-
-  function resetForm() {
-    // 预算行内编辑保存/取消后表单卸载：先收键盘再兜底同步标记，
-    // 避免聚焦中的金额框被移除导致底部菜单栏被卡住
-    blurActiveElement();
-    window.setTimeout(syncKeyboardFlag, 350);
-    setEditing(null);
-    setBudgetKind("daily");
-    setCategoryId("");
-    setAmount("");
-  }
-
-  function budgetLabel(budget: Budget) {
-    if (budget.categoryId) return categories.find((item) => item.id === budget.categoryId)?.name ?? "分类预算";
-    return budgetScope(budget) === "total" ? "总开支" : "日常消费";
-  }
-
-  function spentFor(budget: Budget) {
-    if (budget.categoryId) {
-      return monthExpensesAll.filter((item) => item.categoryId === budget.categoryId).reduce((sum, item) => sum + item.amountCents, 0);
-    }
-    return budgetScope(budget) === "total" ? monthTotalSpent : monthDailySpent;
-  }
-
-  async function deleteBudget(budget: Budget) {
-    const label = budgetLabel(budget);
-    if (!window.confirm(`删除"${label}"${budget.month} 的预算？`)) return;
-    if (editing?.id === budget.id) resetForm();
-    await onDelete(budget);
-  }
-
-  async function submit(event: React.FormEvent) {
-    event.preventDefault();
-    const wasEditing = !!editing;
-    const resolvedCategoryId = budgetKind === "category" ? categoryId || null : null;
-    const resolvedScope = budgetKind === "total" ? "total" as const : "daily" as const;
-    const duplicate = budgets.find((item) =>
-      item.id !== editing?.id &&
-      item.month === month &&
-      (item.categoryId ?? null) === resolvedCategoryId &&
-      (!resolvedCategoryId ? budgetScope(item) === resolvedScope : true)
-    );
-    const existing = editing ?? duplicate;
-    const base = existing ?? entityStamp();
-    await onSave({
-      ...base,
-      month,
-      categoryId: resolvedCategoryId,
-      scope: resolvedScope,
-      amountCents: yuanToCents(amount),
-      version: existing ? existing.version + 1 : base.version,
-      updatedAt: new Date().toISOString(),
-      deletedAt: null
-    });
-    resetForm();
-    // 新增保存后收起表单，把界面还给预算列表；编辑则在行内原地结束
-    if (!wasEditing) setShowNewForm(false);
-  }
-
-  function renderBudgetLine(budget: Budget, tip?: ReactNode) {
-    const spent = spentFor(budget);
-    const ratio = Math.min(100, Math.round((spent / budget.amountCents) * 100));
-    const over = spent > budget.amountCents;
-    const isEditing = editing?.id === budget.id;
-    return (
-      <div className={isEditing ? "budget-line editing" : "budget-line"} key={budget.id}>
-        {isEditing ? (
-          <form className="budget-inline" onSubmit={submit}>
-            <div className="budget-inline-head">
-              <span className="budget-inline-title">编辑 · {budgetLabel(budget)}</span>
-              <span className="budget-inline-spent">已花 ¥{centsToYuan(spent)} / 预算 ¥{centsToYuan(budget.amountCents)}</span>
-            </div>
-            <div className="budget-inline-fields">
-              <MonthField value={month} onChange={setMonth} label="预算月份" />
-              <label>预算类型
-                <select value={budgetKind} onChange={(event) => setBudgetKind(event.target.value as "daily" | "total" | "category")}>
-                  <option value="daily">日常消费总预算</option>
-                  <option value="total">总开支预算（含日常消费）</option>
-                  <option value="category">分类预算（归入日常消费）</option>
-                </select>
-              </label>
-              {budgetKind === "category" && (
-                <select value={categoryId} onChange={(event) => setCategoryId(event.target.value)} required>
-                  <option value="" disabled>选择分类</option>
-                  {expenseCategories.map((category) => <option key={category.id} value={category.id}>{category.name}</option>)}
-                </select>
-              )}
-              <input value={amount} onChange={(event) => setAmount(event.target.value)} placeholder="预算金额" inputMode="decimal" required autoFocus />
-            </div>
-            <div className="budget-inline-actions">
-              <button className="primary" type="submit">保存修改</button>
-              <button type="button" className="ghost" onClick={resetForm}>取消</button>
-            </div>
-          </form>
-        ) : (
-          <>
-            <div className="budget-info">
-              <span className="budget-name"><span className="budget-name-text">{budgetLabel(budget)}</span>{tip ? <InfoTip text={tip} /> : null}</span>
-              <span className="budget-amount">
-                ¥{centsToYuan(spent)} / ¥{centsToYuan(budget.amountCents)}
-                {over && <em className="budget-over">超</em>}
-              </span>
-            </div>
-            <div className={over ? "bar over" : "bar"} style={{ width: "3.5rem" }}><i style={{ width: `${ratio}%` }} /></div>
-            <div className="budget-line-actions">
-              <button className="text-action" onClick={() => editBudget(budget)} type="button"><Pencil size={15} /><span>编辑</span></button>
-              <button className="text-action danger" onClick={() => void deleteBudget(budget)} type="button"><Trash2 size={15} /><span>删除</span></button>
-            </div>
-          </>
-        )}
-      </div>
-    );
-  }
-
-  return (
-    <section className="grid two">
-      <div className="budget-columns">
-        <div className="panel budget-scope-panel">
-          <div className="budget-list">
-            {dailyOverallBudget
-              ? renderBudgetLine(dailyOverallBudget, <>不含贷款、保险、教育等专项支出</>)
-              : <p className="empty">尚未设置日常消费总预算<InfoTip text="不含贷款、保险、教育等专项支出" /></p>}
-            {categoryBudgets.map((budget) => renderBudgetLine(budget))}
-          </div>
-        </div>
-        <div className="panel budget-scope-panel">
-          <div className="budget-list">
-            {totalBudget
-              ? renderBudgetLine(totalBudget, <>包含日常消费 ¥{centsToYuan(monthDailySpent)} + 专项支出 ¥{centsToYuan(monthSpecialSpent)}</>)
-              : <p className="empty">尚未设置总开支预算<InfoTip text={<>包含日常消费 ¥{centsToYuan(monthDailySpent)} + 专项支出 ¥{centsToYuan(monthSpecialSpent)}</>} /></p>}
-          </div>
-        </div>
-      </div>
-      {editing ? (
-        <div className="panel budget-add-hint">
-          <p>正在编辑「{budgetLabel(editing)}」——直接在上方对应预算行内修改并保存。</p>
-        </div>
-      ) : (
-        <div className="panel budget-add-panel">
-          <div className="budget-toolbar">
-            <button
-              type="button"
-              className={showNewForm ? "budget-add-toggle active" : "budget-add-toggle"}
-              onClick={() => setShowNewForm((value) => !value)}
-            >
-              <Plus size={15} />{showNewForm ? "收起新增" : "新增预算"}
-            </button>
-          </div>
-          {showNewForm && (
-            <form className="panel form-stack budget-editor-panel inline-edit-form" onSubmit={submit}>
-              <div className="inline-form-head">
-                <div>
-                  <h2>新增预算<InfoTip text="设置日常消费、总开支或某个分类的月度预算。" /></h2>
-                </div>
-              </div>
-              <MonthField value={month} onChange={setMonth} label="预算月份" />
-              <label>预算类型
-                <select value={budgetKind} onChange={(event) => setBudgetKind(event.target.value as "daily" | "total" | "category")}>
-                  <option value="daily">日常消费总预算</option>
-                  <option value="total">总开支预算（含日常消费）</option>
-                  <option value="category">分类预算（归入日常消费）</option>
-                </select>
-              </label>
-              {budgetKind === "category" && (
-                <select value={categoryId} onChange={(event) => setCategoryId(event.target.value)} required>
-                  <option value="" disabled>选择分类</option>
-                  {expenseCategories.map((category) => <option key={category.id} value={category.id}>{category.name}</option>)}
-                </select>
-              )}
-              <input value={amount} onChange={(event) => setAmount(event.target.value)} placeholder="预算金额" inputMode="decimal" required autoFocus />
-              <button className="primary">保存预算</button>
-              <button type="button" className="ghost" onClick={() => setShowNewForm(false)}>收起</button>
-            </form>
-          )}
-        </div>
-      )}
-    </section>
-  );
-}
-
-function InteractiveDonut({ data, total, selectedIndex, onSelect, kind }: {
+function InteractiveDonut({ data, total, selectedIndex, onSelect, onCycleSelect, kind }: {
   data: { id: string; name: string; value: number; color: string }[];
   total: number;
   selectedIndex: number;
   onSelect: (index: number) => void;
+  /** 上一项/下一项：只切换选中不改导航（报表页点击扇区才会进分类流水子页） */
+  onCycleSelect?: (index: number) => void;
   kind: Category["kind"];
 }) {
   const selected = data[selectedIndex];
@@ -3367,7 +3543,9 @@ function InteractiveDonut({ data, total, selectedIndex, onSelect, kind }: {
 
   function selectOffset(offset: number) {
     if (data.length === 0) return;
-    onSelect((selectedIndex + offset + data.length) % data.length);
+    const next = (selectedIndex + offset + data.length) % data.length;
+    if (onCycleSelect) onCycleSelect(next);
+    else onSelect(next);
   }
 
   if (data.length === 0) {
@@ -3428,6 +3606,14 @@ type AnalysisFinding = {
   transactions: Transaction[];
   sortValue: number;
 };
+
+/** 报表板块子页（本地导航栈，顶栏无返回按钮时用页内返回头） */
+type ReportSubPage =
+  | { kind: "insights" }
+  | { kind: "insightDetail"; id: string }
+  | { kind: "anomalies" }
+  | { kind: "anomalyDetail"; id: string }
+  | { kind: "categoryDetail"; id: string };
 
 function AnalysisNoteEditor({ value, placeholder, onSave, compact = false }: {
   value: string;
@@ -3523,7 +3709,10 @@ function Reports({ transactions, accounts, categories, budgets, analysisNotes, o
   const [selectedCategoryIndex, setSelectedCategoryIndex] = useState<number | null>(null);
   const [selectedTrendIndex, setSelectedTrendIndex] = useState<number | null>(null);
   const [selectedTotalTrendIndex, setSelectedTotalTrendIndex] = useState<number | null>(null);
-  const [expandedInsightId, setExpandedInsightId] = useState<string | null>(null);
+  const [reportSubStack, setReportSubStack] = useState<ReportSubPage[]>([]);
+  const reportSub = reportSubStack.length > 0 ? reportSubStack[reportSubStack.length - 1] : null;
+  const pushReportSub = (page: ReportSubPage) => setReportSubStack((stack) => [...stack, page]);
+  const popReportSub = () => setReportSubStack((stack) => stack.slice(0, -1));
   const [detailTransaction, setDetailTransaction] = useState<Transaction | null>(null);
   const categoryKind: Category["kind"] = "expense";
   const selectedYear = year.trim() || currentYear;
@@ -3606,12 +3795,6 @@ function Reports({ transactions, accounts, categories, budgets, analysisNotes, o
   const topThreeExpense = categoryData.slice(0, 3).reduce((sum, item) => sum + item.value, 0);
   const concentrationRatio = periodSummary.expenseCents > 0 ? Math.round((topThreeExpense / periodSummary.expenseCents) * 100) : 0;
   const specialTop = specialCategoryData[0];
-  const selectedCategory = selectedCategoryIndex === null ? undefined : categoryData[selectedCategoryIndex];
-  const selectedCategoryTransactions = selectedCategory
-    ? dailyReportTransactions
-      .filter((item) => selectedCategory.id === "uncategorized" ? !item.categoryId : item.categoryId === selectedCategory.id)
-      .sort((left, right) => right.occurredAt.localeCompare(left.occurredAt))
-    : [];
 
   const dailyTrendData = Array.from({ length: period === "month" ? 12 : 6 }, (_, index) => {
     const key = period === "month"
@@ -3904,33 +4087,237 @@ function Reports({ transactions, accounts, categories, budgets, analysisNotes, o
   }, [expenseTrendAnchorMonth, totalExpenseTrendData.length]);
 
   useEffect(() => {
-    setExpandedInsightId(null);
     setDetailTransaction(null);
+    setReportSubStack([]);
   }, [month, period, selectedYear]);
+
+  const reportToolbar = (
+    <div className="panel report-toolbar">
+      <div>
+        <h2>分析报表</h2>
+        <span>{periodLabel} · 日常消费看趋势，专项支出单独统计</span>
+      </div>
+      <div className="report-controls">
+        <div className="segmented compact">
+          {(["month", "year"] as ReportPeriod[]).map((item) => (
+            <button key={item} type="button" className={period === item ? "active" : ""} onClick={() => setPeriod(item)}>
+              {item === "month" ? "按月" : "按年"}
+            </button>
+          ))}
+        </div>
+        {period === "month" ? (
+          <MonthField value={month} onChange={setMonth} label="报表月份" className="report-period-field" />
+        ) : (
+          <input className="year-input" value={year} onChange={(event) => setYear(event.target.value)} type="number" min="1970" max="2100" />
+        )}
+      </div>
+    </div>
+  );
+
+  const activeInsight = reportSub?.kind === "insightDetail"
+    ? insightCards.find((card) => card.id === reportSub.id)
+    : undefined;
+  const activeFinding = reportSub?.kind === "anomalyDetail"
+    ? monthlyAnalysis.findings.find((finding) => finding.id === reportSub.id)
+    : undefined;
+  const activeCategory = reportSub?.kind === "categoryDetail"
+    ? categoryData.find((entry) => entry.id === reportSub.id)
+    : undefined;
+  const activeCategoryTransactions = activeCategory
+    ? dailyReportTransactions
+      .filter((item) => activeCategory.id === "uncategorized" ? !item.categoryId : item.categoryId === activeCategory.id)
+      .sort((left, right) => right.occurredAt.localeCompare(left.occurredAt))
+    : [];
+  const reportSubHead = (() => {
+    switch (reportSub?.kind) {
+      case "insights":
+        return { title: "核心洞察", subtitle: `${periodLabel} · ${insightCards.length} 项深度解读` };
+      case "insightDetail":
+        return { title: activeInsight?.title ?? "洞察详情", subtitle: `${activeInsight?.value ?? ""} · ${periodLabel}`.replace(/^ · /, "") };
+      case "anomalies":
+        return {
+          title: "消费异常分析",
+          subtitle: monthlyAnalysis.findings.length > 0
+            ? `${monthLabel(month)} · ${monthlyAnalysis.findings.length} 项提醒`
+            : `${monthLabel(month)} · 暂无异常`
+        };
+      case "anomalyDetail":
+        return { title: activeFinding?.title ?? "异常详情", subtitle: activeFinding?.value ?? periodLabel };
+      case "categoryDetail":
+        return { title: activeCategory?.name ?? "分类流水", subtitle: `${periodLabel} · ${activeCategoryTransactions.length} 笔明细` };
+      default:
+        return { title: "", subtitle: "" };
+    }
+  })();
 
   return (
     <section className="report-page">
-      <div className="panel report-toolbar">
-        <div>
-          <h2>分析报表</h2>
-          <span>{periodLabel} · 日常消费看趋势，专项支出单独统计</span>
-        </div>
-        <div className="report-controls">
-          <div className="segmented compact">
-            {(["month", "year"] as ReportPeriod[]).map((item) => (
-              <button key={item} type="button" className={period === item ? "active" : ""} onClick={() => setPeriod(item)}>
-                {item === "month" ? "按月" : "按年"}
-              </button>
-            ))}
+      {reportToolbar}
+      {reportSub ? (
+        <>
+          <div className="report-subpage-head">
+            <button type="button" className="back-button" onClick={popReportSub}>
+              <ChevronLeft size={15} /> 返回
+            </button>
+            <div className="report-subpage-title">
+              <h2>{reportSubHead.title}</h2>
+              <span>{reportSubHead.subtitle}</span>
+            </div>
           </div>
-          {period === "month" ? (
-            <MonthField value={month} onChange={setMonth} label="报表月份" className="report-period-field" />
-          ) : (
-            <input className="year-input" value={year} onChange={(event) => setYear(event.target.value)} type="number" min="1970" max="2100" />
-          )}
-        </div>
-      </div>
 
+          {reportSub.kind === "insights" && (
+            <div className="finance-insights">
+              {insightCards.map((card) => (
+                <button
+                  type="button"
+                  className={`insight-card ${card.tone}`.trim()}
+                  key={card.id}
+                  onClick={() => pushReportSub({ kind: "insightDetail", id: card.id })}
+                >
+                  <span>{card.title}</span>
+                  <strong>{card.value}</strong>
+                  <p>{card.summary}</p>
+                  <em>查看详情</em>
+                </button>
+              ))}
+            </div>
+          )}
+
+          {reportSub.kind === "insightDetail" && activeInsight && (
+            <article className={`insight-card ${activeInsight.tone} expanded`.trim()}>
+              <span>{activeInsight.title}</span>
+              <strong>{activeInsight.value}</strong>
+              <p>{activeInsight.summary}</p>
+              <div className="insight-detail">
+                <b>完整分析</b>
+                <p>{activeInsight.detail}</p>
+                <ul>
+                  {activeInsight.evidence.map((item) => <li key={item}>{item}</li>)}
+                </ul>
+              </div>
+            </article>
+          )}
+
+          {reportSub.kind === "anomalies" && (
+            <>
+              <div className="analysis-summary-grid">
+                <div className={monthlyAnalysis.budgetCents > 0 && monthlyAnalysis.budgetUsage > 100 ? "analysis-summary-card warn" : "analysis-summary-card"}>
+                  <span>日常预算</span>
+                  <strong>{monthlyAnalysis.budgetCents > 0 ? `${monthlyAnalysis.budgetUsage}%` : "未设置"}</strong>
+                  <em>{monthlyAnalysis.budgetCents > 0 ? `¥${centsToYuan(periodSummary.expenseCents)} / ¥${centsToYuan(monthlyAnalysis.budgetCents)}` : "可在设置中补充预算"}</em>
+                </div>
+                <div className="analysis-summary-card">
+                  <span>全部支出</span>
+                  <strong>¥{centsToYuan(monthlyAnalysis.totalExpenseCents)}</strong>
+                  <em>日常 + 专项</em>
+                </div>
+                <div className="analysis-summary-card">
+                  <span>预计日常</span>
+                  <strong>¥{centsToYuan(projectedExpense)}</strong>
+                  <em>按当前日均测算</em>
+                </div>
+              </div>
+              <div className="analysis-delta-grid">
+                <div>
+                  <strong>增加最多</strong>
+                  {monthlyAnalysis.topIncreases.length > 0 ? monthlyAnalysis.topIncreases.map((item) => (
+                    <span key={item.id}>{item.name} +¥{centsToYuan(item.delta)}</span>
+                  )) : <span>暂无明显增加</span>}
+                </div>
+                <div>
+                  <strong>下降最多</strong>
+                  {monthlyAnalysis.topDrops.length > 0 ? monthlyAnalysis.topDrops.map((item) => (
+                    <span key={item.id}>{item.name} -¥{centsToYuan(Math.abs(item.delta))}</span>
+                  )) : <span>暂无明显下降</span>}
+                </div>
+              </div>
+              <AnalysisNoteEditor
+                value={monthAnalysisNote?.content ?? ""}
+                placeholder="记录本月复盘：哪些是必要支出，哪些是可优化的消费习惯，哪些需要下月继续观察。"
+                onSave={(content) => saveAnalysisNote("month", "summary", content)}
+              />
+              {monthlyAnalysis.findings.length > 0 ? (
+                <div className="anomaly-list">
+                  {monthlyAnalysis.findings.map((finding) => (
+                    <button
+                      type="button"
+                      className={`anomaly-row ${finding.tone}`}
+                      key={finding.id}
+                      onClick={() => pushReportSub({ kind: "anomalyDetail", id: finding.id })}
+                    >
+                      <div>
+                        <span>{finding.title}</span>
+                        <strong>{finding.value}</strong>
+                        <p>{finding.summary}</p>
+                      </div>
+                      <em>详情</em>
+                    </button>
+                  ))}
+                </div>
+              ) : (
+                <p className="empty">本月没有触发显著异常，建议仍保留一条人工复盘笔记，记录是否有即将发生的大额支出。</p>
+              )}
+            </>
+          )}
+
+          {reportSub.kind === "anomalyDetail" && activeFinding && (
+            <div className="panel anomaly-detail-page">
+              <div className={`anomaly-detail-head ${activeFinding.tone}`}>
+                <span>{activeFinding.title}</span>
+                <strong>{activeFinding.value}</strong>
+                <p>{activeFinding.summary}</p>
+              </div>
+              <div className="insight-detail">
+                <b>完整分析</b>
+                <p>{activeFinding.detail}</p>
+                <ul>
+                  {activeFinding.evidence.map((item) => <li key={item}>{item}</li>)}
+                </ul>
+              </div>
+              <AnalysisNoteEditor
+                compact
+                value={analysisNoteFor(analysisNotes, month, "anomaly", activeFinding.id)?.content ?? ""}
+                placeholder="给这条提醒做备注，例如是否一次性、是否可控、下月怎么处理。"
+                onSave={(content) => saveAnalysisNote("anomaly", activeFinding.id, content)}
+              />
+              {activeFinding.transactions.length > 0 && (
+                <TransactionRows
+                  transactions={activeFinding.transactions.slice(0, 6)}
+                  accounts={accounts}
+                  categories={categories}
+                  onOpen={setDetailTransaction}
+                  compact
+                />
+              )}
+            </div>
+          )}
+
+          {reportSub.kind === "categoryDetail" && activeCategory && (
+            <>
+              <div className="panel report-category-summary">
+                <div className="report-category-summary-main">
+                  <span>{periodLabel} · 日常消费</span>
+                  <strong>{activeCategory.name}</strong>
+                  <em>
+                    {activeCategoryTransactions.length} 笔 · ¥{centsToYuan(activeCategory.value)}
+                    {periodSummary.expenseCents > 0 ? ` · 占 ${Math.round((activeCategory.value / periodSummary.expenseCents) * 100)}%` : ""}
+                  </em>
+                </div>
+              </div>
+              <div className="panel">
+                <TransactionRows
+                  transactions={activeCategoryTransactions}
+                  accounts={accounts}
+                  categories={categories}
+                  onOpen={setDetailTransaction}
+                  compact
+                />
+              </div>
+            </>
+          )}
+        </>
+      ) : (
+        <>
       <div className="report-context-anchor" aria-label="当前报表数据范围">
         <div>
           <span>当前查看</span>
@@ -3959,137 +4346,36 @@ function Reports({ transactions, accounts, categories, budgets, analysisNotes, o
         </>
       )}
 
-      <details className="panel insights-fold">
-        <summary className="insights-fold-summary">
-          <div>
-            <h2>核心洞察</h2>
-            <span>{periodLabel} · 6 项深度解读，点击展开</span>
-          </div>
-          <em>展开</em>
-        </summary>
-        <div className="finance-insights">
-        {insightCards.map((card) => {
-          const expanded = expandedInsightId === card.id;
-          return (
-            <article
-              aria-expanded={expanded}
-              className={`insight-card ${card.tone} ${expanded ? "expanded" : ""}`.trim()}
-              key={card.id}
-              onClick={() => setExpandedInsightId(expanded ? null : card.id)}
-              onKeyDown={(event) => {
-                if (event.key === "Enter" || event.key === " ") {
-                  event.preventDefault();
-                  setExpandedInsightId(expanded ? null : card.id);
-                }
-              }}
-              role="button"
-              tabIndex={0}
-            >
-              <span>{card.title}</span>
-              <strong>{card.value}</strong>
-              <p>{card.summary}</p>
-              {expanded && (
-                <div className="insight-detail">
-                  <b>完整分析</b>
-                  <p>{card.detail}</p>
-                  <ul>
-                    {card.evidence.map((item) => <li key={item}>{item}</li>)}
-                  </ul>
-                </div>
-              )}
-              <em>{expanded ? "收起详情" : "查看详情"}</em>
-            </article>
-          );
-        })}
-        </div>
-      </details>
+      <button type="button" className="report-entry-row" onClick={() => pushReportSub({ kind: "insights" })}>
+        <span className="settings-row-head">
+          <span className="settings-row-icon tone-purple sub-entry-icon"><Lightbulb size={19} /></span>
+          <span className="settings-row-text">
+            <strong>核心洞察</strong>
+            <small>{periodLabel} · {insightCards.length} 项深度解读</small>
+          </span>
+          <ChevronRight size={16} className="settings-row-chevron" />
+        </span>
+      </button>
 
       {period === "month" && (
         <>
-        <ReportFold
-          title="消费异常分析"
-          hint={`${monthLabel(month)} · 本月异常，历史数据只作参照`}
-          badge={monthlyAnalysis.findings.length > 0 ? `${monthlyAnalysis.findings.length} 项提醒` : "暂无异常"}
+        <button
+          type="button"
+          className={`report-entry-row has-badge ${monthlyAnalysis.findings.some((finding) => finding.tone === "warn") ? "warn" : ""}`.trim()}
+          onClick={() => pushReportSub({ kind: "anomalies" })}
         >
-          <div className="analysis-summary-grid">
-            <div className={monthlyAnalysis.budgetCents > 0 && monthlyAnalysis.budgetUsage > 100 ? "analysis-summary-card warn" : "analysis-summary-card"}>
-              <span>日常预算</span>
-              <strong>{monthlyAnalysis.budgetCents > 0 ? `${monthlyAnalysis.budgetUsage}%` : "未设置"}</strong>
-              <em>{monthlyAnalysis.budgetCents > 0 ? `¥${centsToYuan(periodSummary.expenseCents)} / ¥${centsToYuan(monthlyAnalysis.budgetCents)}` : "可在设置中补充预算"}</em>
-            </div>
-            <div className="analysis-summary-card">
-              <span>全部支出</span>
-              <strong>¥{centsToYuan(monthlyAnalysis.totalExpenseCents)}</strong>
-              <em>日常 + 专项</em>
-            </div>
-            <div className="analysis-summary-card">
-              <span>预计日常</span>
-              <strong>¥{centsToYuan(projectedExpense)}</strong>
-              <em>按当前日均测算</em>
-            </div>
-          </div>
-          <div className="analysis-delta-grid">
-            <div>
-              <strong>增加最多</strong>
-              {monthlyAnalysis.topIncreases.length > 0 ? monthlyAnalysis.topIncreases.map((item) => (
-                <span key={item.id}>{item.name} +¥{centsToYuan(item.delta)}</span>
-              )) : <span>暂无明显增加</span>}
-            </div>
-            <div>
-              <strong>下降最多</strong>
-              {monthlyAnalysis.topDrops.length > 0 ? monthlyAnalysis.topDrops.map((item) => (
-                <span key={item.id}>{item.name} -¥{centsToYuan(Math.abs(item.delta))}</span>
-              )) : <span>暂无明显下降</span>}
-            </div>
-          </div>
-          <AnalysisNoteEditor
-            value={monthAnalysisNote?.content ?? ""}
-            placeholder="记录本月复盘：哪些是必要支出，哪些是可优化的消费习惯，哪些需要下月继续观察。"
-            onSave={(content) => saveAnalysisNote("month", "summary", content)}
-          />
-          {monthlyAnalysis.findings.length > 0 ? (
-            <div className="anomaly-list">
-              {monthlyAnalysis.findings.map((finding) => {
-                const note = analysisNoteFor(analysisNotes, month, "anomaly", finding.id);
-                return (
-                  <details className={`anomaly-card ${finding.tone}`} key={finding.id}>
-                    <summary>
-                      <div>
-                        <span>{finding.title}</span>
-                        <strong>{finding.value}</strong>
-                        <p>{finding.summary}</p>
-                      </div>
-                      <em>详情</em>
-                    </summary>
-                    <div className="anomaly-detail">
-                      <p>{finding.detail}</p>
-                      <ul>
-                        {finding.evidence.map((item) => <li key={item}>{item}</li>)}
-                      </ul>
-                      <AnalysisNoteEditor
-                        compact
-                        value={note?.content ?? ""}
-                        placeholder="给这条提醒做备注，例如是否一次性、是否可控、下月怎么处理。"
-                        onSave={(content) => saveAnalysisNote("anomaly", finding.id, content)}
-                      />
-                      {finding.transactions.length > 0 && (
-                        <TransactionRows
-                          transactions={finding.transactions.slice(0, 6)}
-                          accounts={accounts}
-                          categories={categories}
-                          onOpen={setDetailTransaction}
-                          compact
-                        />
-                      )}
-                    </div>
-                  </details>
-                );
-              })}
-            </div>
-          ) : (
-            <p className="empty">本月没有触发显著异常，建议仍保留一条人工复盘笔记，记录是否有即将发生的大额支出。</p>
-          )}
-        </ReportFold>
+          <span className="settings-row-head">
+            <span className="settings-row-icon tone-gold sub-entry-icon"><ShieldAlert size={19} /></span>
+            <span className="settings-row-text">
+              <strong>消费异常分析</strong>
+              <small>{monthLabel(month)} · 本月异常，历史数据只作参照</small>
+            </span>
+            <span className={`report-entry-badge ${monthlyAnalysis.findings.some((finding) => finding.tone === "warn") ? "warn" : ""}`.trim()}>
+              {monthlyAnalysis.findings.length > 0 ? `${monthlyAnalysis.findings.length} 项提醒` : "暂无异常"}
+            </span>
+            <ChevronRight size={16} className="settings-row-chevron" />
+          </span>
+        </button>
 
         <ReportFold title="大额开销" hint={`${monthLabel(month)} · 清单 + 规律识别（纯统计规则，无 AI）`}>
           <BigExpensePanel month={month} transactions={transactions} categories={categories} accounts={accounts} />
@@ -4125,17 +4411,41 @@ function Reports({ transactions, accounts, categories, budgets, analysisNotes, o
             <span>{periodLabel} · 日常消费明细</span>
           </div>
           <div className="donut-wrap">
-            <InteractiveDonut data={categoryData} total={categoryTotal} selectedIndex={selectedCategoryIndex ?? -1} onSelect={setSelectedCategoryIndex} kind={categoryKind} />
+            <InteractiveDonut
+              data={categoryData}
+              total={categoryTotal}
+              selectedIndex={selectedCategoryIndex ?? -1}
+              onSelect={(index) => {
+                const entry = categoryData[index];
+                if (!entry) return;
+                setSelectedCategoryIndex(index);
+                pushReportSub({ kind: "categoryDetail", id: entry.id });
+              }}
+              onCycleSelect={(index) => setSelectedCategoryIndex(index)}
+              kind={categoryKind}
+            />
           </div>
           {categoryData.length === 0 && <p className="empty">本期暂无{categoryKind === "expense" ? "支出" : "收入"}分类数据</p>}
-          {selectedCategory && (
-            <div className="report-category-details">
-              <div className="chart-heading">
-                <h3>{selectedCategory.name}</h3>
-                <span>{selectedCategoryTransactions.length} 笔 · ¥{centsToYuan(selectedCategory.value)}</span>
-              </div>
-              <TransactionRows transactions={selectedCategoryTransactions.slice(0, 20)} accounts={accounts} categories={categories} onOpen={setDetailTransaction} compact />
-              {selectedCategoryTransactions.length > 20 && <p className="empty">已显示最近 20 笔，更多明细可到流水页筛选查看。</p>}
+          {categoryData.length > 0 && (
+            <div className="report-category-list">
+              {categoryData.map((entry, index) => (
+                <button
+                  type="button"
+                  className={`report-category-row ${selectedCategoryIndex === index ? "active" : ""}`.trim()}
+                  key={entry.id}
+                  onClick={() => {
+                    setSelectedCategoryIndex(index);
+                    pushReportSub({ kind: "categoryDetail", id: entry.id });
+                  }}
+                >
+                  <i className="report-category-dot" style={{ background: entry.color }} />
+                  <span className="report-category-name">{entry.name}</span>
+                  <strong>¥{centsToYuan(entry.value)}</strong>
+                  <em>{periodSummary.expenseCents > 0 ? Math.round((entry.value / periodSummary.expenseCents) * 100) : 0}%</em>
+                  <ChevronRight size={15} className="settings-row-chevron" />
+                </button>
+              ))}
+              <p className="report-category-hint">点击分类查看本期流水明细</p>
             </div>
           )}
         </div>
@@ -4164,6 +4474,8 @@ function Reports({ transactions, accounts, categories, budgets, analysisNotes, o
           />
         </div>
       </section>
+      </>
+      )}
       {detailTransaction && (
         <TransactionDetailDrawer
           transaction={detailTransaction}

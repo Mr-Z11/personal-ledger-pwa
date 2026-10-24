@@ -1936,7 +1936,7 @@ input[type="month"],
   gap: 0.6rem;
 }
 
-/* 设置页列表行：整行白卡，点击展开分区 */
+/* 设置页列表行：整行白卡，点击进入二级子模块 */
 .settings-section {
   border: 1px solid rgba(49, 71, 58, 0.1);
   border-radius: 0.9rem;
@@ -1944,6 +1944,15 @@ input[type="month"],
   background: #fffdf6;
   box-shadow: 0 0.5rem 1.2rem rgba(36, 49, 39, 0.05);
   scroll-margin-top: 4.5rem;
+}
+
+button.settings-section {
+  width: 100%;
+  padding: 0;
+  font: inherit;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
 }
 
 .settings-row-head {
@@ -1991,11 +2000,216 @@ input[type="month"],
 
 .settings-row-chevron {
   color: rgba(36, 49, 39, 0.32);
-  transition: transform 0.15s ease;
+  flex: 0 0 auto;
 }
 
-.settings-row.open .settings-row-chevron {
-  transform: rotate(90deg);
+/* 二级入口行（分类标签/提醒设置内）：大图标 + 数量 */
+.sub-entry-row .sub-entry-icon {
+  width: 2.4rem;
+  height: 2.4rem;
+}
+
+.sub-entry-count {
+  color: rgba(36, 49, 39, 0.42);
+  font-size: 0.78rem;
+  font-weight: 800;
+}
+
+/* 资产总览卡（账户管理/预算管理头部） */
+.asset-summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.8rem;
+  padding: 0.85rem 1rem;
+}
+
+.asset-summary-main {
+  display: grid;
+  gap: 0.15rem;
+  min-width: 0;
+}
+
+.asset-summary-main span {
+  color: rgba(36, 49, 39, 0.55);
+  font-size: 0.76rem;
+  font-weight: 800;
+}
+
+.asset-summary-main strong {
+  font-size: 1.5rem;
+  font-weight: 900;
+  letter-spacing: -0.01em;
+}
+
+.asset-summary-side {
+  display: grid;
+  gap: 0.15rem;
+  text-align: right;
+}
+
+.asset-summary-side span,
+.asset-summary-side em {
+  color: rgba(36, 49, 39, 0.55);
+  font-size: 0.74rem;
+  font-weight: 700;
+  font-style: normal;
+}
+
+/* 分组列表（账户/分类/预算二级页） */
+.account-group-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  padding: 0.7rem 0.85rem 0.3rem;
+}
+
+.account-group-head span {
+  color: rgba(36, 49, 39, 0.55);
+  font-size: 0.78rem;
+  font-weight: 900;
+  letter-spacing: 0.04em;
+}
+
+.account-group-head small {
+  color: rgba(36, 49, 39, 0.4);
+  font-size: 0.72rem;
+  font-weight: 700;
+}
+
+.account-group-rows {
+  display: grid;
+}
+
+.account-row {
+  width: 100%;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: 0.7rem;
+  padding: 0.55rem 0.85rem;
+  background: none;
+  border: 0;
+  font: inherit;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.account-row + .account-row {
+  border-top: 1px solid rgba(49, 71, 58, 0.07);
+}
+
+.account-row:active {
+  background: rgba(49, 71, 58, 0.04);
+}
+
+.account-row-icon {
+  width: 2.1rem;
+  height: 2.1rem;
+  display: grid;
+  place-items: center;
+  border-radius: 0.62rem;
+  font-size: 0.95rem;
+  font-weight: 900;
+}
+
+.account-row-text {
+  display: grid;
+  gap: 0.12rem;
+  min-width: 0;
+}
+
+.account-row-text strong {
+  font-size: 0.9rem;
+}
+
+.account-row-text small {
+  color: rgba(36, 49, 39, 0.55);
+  font-size: 0.74rem;
+  font-weight: 700;
+}
+
+.account-row-amount {
+  font-size: 0.88rem;
+  font-weight: 900;
+  white-space: nowrap;
+}
+
+.category-row.child {
+  padding-left: 2.05rem;
+}
+
+.category-row.child .account-row-icon {
+  width: 1.7rem;
+  height: 1.7rem;
+  font-size: 0.8rem;
+}
+
+.budget-row .bar {
+  display: block;
+  width: 3.2rem;
+  height: 0.3rem;
+  margin-top: 0.18rem;
+  border-radius: 999px;
+  background: rgba(49, 71, 58, 0.1);
+  overflow: hidden;
+}
+
+.budget-row .bar i {
+  display: block;
+  height: 100%;
+  border-radius: 999px;
+  background: #1f5f74;
+}
+
+.budget-row .bar.over i {
+  background: #c4512f;
+}
+
+/* 新增入口按钮（账户/分类/预算列表底部） */
+.add-entry-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.35rem;
+}
+
+/* 账户类型选择器 */
+.type-picker {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 0.4rem;
+}
+
+.type-option {
+  display: grid;
+  justify-items: center;
+  gap: 0.22rem;
+  padding: 0.5rem 0.2rem;
+  border: 1px solid rgba(49, 71, 58, 0.14);
+  border-radius: 0.6rem;
+  background: #fffdf6;
+  color: rgba(36, 49, 39, 0.7);
+  font-size: 0.72rem;
+  font-weight: 800;
+}
+
+.type-option.active {
+  font-weight: 900;
+}
+
+/* 编辑页表单 */
+.editor-page {
+  gap: 0.8rem;
+}
+
+.editor-page > label {
+  display: grid;
+  gap: 0.3rem;
+  font-size: 0.84rem;
+  font-weight: 800;
+  color: rgba(36, 49, 39, 0.72);
 }
 
 /* 数据管理子模块的分区头（图标 + 标题 + 副标题，常展开） */
@@ -3194,6 +3408,295 @@ input[type="month"],
   color: rgba(36, 49, 39, 0.68);
   font-size: 0.68rem;
   font-weight: 900;
+}
+
+/* ===== 报表板块子页：入口行 / 返回头 / 洞察列表 / 异常列表 / 分类流水 ===== */
+.report-entry-row {
+  width: 100%;
+  padding: 0;
+  border: 1px solid rgba(49, 71, 58, 0.1);
+  border-radius: 0.9rem;
+  background: #fffdf6;
+  box-shadow: 0 0.5rem 1.2rem rgba(36, 49, 39, 0.05);
+  overflow: hidden;
+  font: inherit;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: border-color 180ms ease, box-shadow 180ms ease, transform 180ms ease;
+}
+
+.report-entry-row:hover {
+  border-color: rgba(31, 95, 116, 0.22);
+}
+
+.report-entry-row:active {
+  transform: scale(0.99);
+}
+
+.report-entry-row.warn {
+  border-color: rgba(212, 91, 63, 0.26);
+  background: linear-gradient(135deg, rgba(255, 244, 240, 0.92), #fffdf6);
+}
+
+.report-entry-row.has-badge .settings-row-head {
+  grid-template-columns: auto minmax(0, 1fr) auto auto;
+}
+
+.report-entry-badge {
+  flex: 0 0 auto;
+  padding: 0.16rem 0.52rem;
+  border-radius: 999px;
+  background: rgba(31, 95, 116, 0.1);
+  color: #1f5f74;
+  font-size: 0.72rem;
+  font-style: normal;
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+.report-entry-badge.warn {
+  background: rgba(212, 91, 63, 0.13);
+  color: #c4512f;
+}
+
+button.insight-card {
+  font: inherit;
+  color: #243127;
+}
+
+/* 报表子页返回头（本地栈，顶栏无返回按钮） */
+.report-subpage-head {
+  display: flex;
+  align-items: center;
+  gap: 0.7rem;
+  padding: 0.05rem 0.05rem 0.25rem;
+}
+
+.report-subpage-title {
+  display: grid;
+  gap: 0.08rem;
+  min-width: 0;
+}
+
+.report-subpage-title h2 {
+  margin: 0;
+  font-size: 1.02rem;
+  font-weight: 800;
+  color: #243127;
+}
+
+.report-subpage-title span {
+  color: rgba(36, 49, 39, 0.55);
+  font-size: 0.74rem;
+  font-weight: 700;
+}
+
+/* 异常列表行（消费异常分析二级页） */
+.anomaly-row {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 0.7rem;
+  padding: 0.7rem 0.85rem;
+  border: 1px solid rgba(49, 71, 58, 0.1);
+  border-radius: 0.8rem;
+  background: rgba(255, 252, 245, 0.72);
+  font: inherit;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: border-color 180ms ease, box-shadow 180ms ease, transform 180ms ease;
+}
+
+.anomaly-row:hover {
+  border-color: rgba(31, 95, 116, 0.22);
+}
+
+.anomaly-row:active {
+  transform: scale(0.99);
+}
+
+.anomaly-row > div {
+  flex: 1;
+  display: grid;
+  gap: 0.14rem;
+  min-width: 0;
+}
+
+.anomaly-row span {
+  color: rgba(36, 49, 39, 0.56);
+  font-size: 0.74rem;
+  font-weight: 800;
+}
+
+.anomaly-row strong {
+  overflow-wrap: anywhere;
+  color: #243127;
+  font-size: 0.92rem;
+  font-weight: 700;
+}
+
+.anomaly-row p {
+  margin: 0;
+  color: rgba(36, 49, 39, 0.66);
+  font-size: 0.76rem;
+  line-height: 1.32;
+  display: -webkit-box;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+
+.anomaly-row em {
+  flex: 0 0 auto;
+  color: rgba(31, 95, 116, 0.72);
+  font-size: 0.74rem;
+  font-style: normal;
+  font-weight: 900;
+}
+
+.anomaly-row.warn {
+  border-color: rgba(212, 91, 63, 0.26);
+  background: rgba(255, 240, 235, 0.78);
+}
+
+/* 异常详情（三级页） */
+.anomaly-detail-page {
+  display: grid;
+  gap: 0.7rem;
+}
+
+.anomaly-detail-head {
+  display: grid;
+  gap: 0.16rem;
+  padding: 0.8rem 0.9rem;
+  border: 1px solid rgba(49, 71, 58, 0.1);
+  border-radius: 0.85rem;
+  background: rgba(255, 252, 245, 0.88);
+}
+
+.anomaly-detail-head span {
+  color: rgba(36, 49, 39, 0.56);
+  font-size: 0.76rem;
+  font-weight: 800;
+}
+
+.anomaly-detail-head strong {
+  color: #243127;
+  font-size: 1.05rem;
+  font-weight: 800;
+}
+
+.anomaly-detail-head p {
+  margin: 0;
+  color: rgba(36, 49, 39, 0.68);
+  font-size: 0.8rem;
+  line-height: 1.4;
+}
+
+.anomaly-detail-head.warn {
+  border-color: rgba(212, 91, 63, 0.28);
+  background: rgba(255, 240, 235, 0.9);
+}
+
+/* 分类流水子页 */
+.report-category-summary-main {
+  display: grid;
+  gap: 0.16rem;
+  min-width: 0;
+}
+
+.report-category-summary-main span {
+  color: rgba(36, 49, 39, 0.55);
+  font-size: 0.76rem;
+  font-weight: 800;
+}
+
+.report-category-summary-main strong {
+  color: #243127;
+  font-size: 1.1rem;
+  font-weight: 800;
+}
+
+.report-category-summary-main em {
+  color: rgba(36, 49, 39, 0.6);
+  font-size: 0.78rem;
+  font-style: normal;
+  font-weight: 700;
+}
+
+/* 分类统计可点行（主报表页） */
+.report-category-list {
+  display: grid;
+  gap: 0.4rem;
+  margin-top: 0.7rem;
+}
+
+.report-category-row {
+  width: 100%;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto auto auto;
+  align-items: center;
+  gap: 0.55rem;
+  padding: 0.52rem 0.68rem;
+  border: 1px solid rgba(49, 71, 58, 0.08);
+  border-radius: 0.7rem;
+  background: rgba(255, 252, 245, 0.6);
+  font: inherit;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: border-color 180ms ease, background 180ms ease;
+}
+
+.report-category-row:hover {
+  border-color: rgba(31, 95, 116, 0.22);
+}
+
+.report-category-row.active {
+  border-color: rgba(31, 95, 116, 0.3);
+  background: rgba(31, 95, 116, 0.06);
+}
+
+.report-category-dot {
+  width: 0.68rem;
+  height: 0.68rem;
+  border-radius: 999px;
+  flex: 0 0 auto;
+}
+
+.report-category-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: #243127;
+  font-size: 0.86rem;
+  font-weight: 700;
+}
+
+.report-category-row strong {
+  color: #243127;
+  font-size: 0.86rem;
+  font-weight: 800;
+}
+
+.report-category-row em {
+  min-width: 2.5rem;
+  text-align: right;
+  color: rgba(36, 49, 39, 0.5);
+  font-size: 0.74rem;
+  font-style: normal;
+  font-weight: 800;
+}
+
+.report-category-hint {
+  margin: 0.15rem 0 0;
+  color: rgba(36, 49, 39, 0.42);
+  font-size: 0.7rem;
+  font-weight: 700;
+  text-align: center;
 }
 
 .monthly-analysis-panel {
