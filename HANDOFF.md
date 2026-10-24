@@ -8,7 +8,7 @@
 - **云端 47.74.3.104 自 2026-08-29 失效**（80/443 全关、SSH host key 变更，归属待确认）→ `deploy/update-server.sh` 暂不可用。**本地 Mac 栈是当前唯一活跃环境**。
 - 本地栈 `docker-compose.local.yml` = `postgres-local` + `api-local` + `caddy-local`；入口 `https://localhost:8443/api`（Caddy 自签证书，需一次性装 `~/Desktop/Caddy-Local-CA.crt` 到钥匙串，否则浏览器 fetch 被 TLS 拦）。
 - 三容器当前均 Up；`api-local` 用**只读 bind-mount** 挂本机 `apps/api/dist`（见 §3）。
-- git：远端 `origin/main` 与本地一致（HEAD = `e12c02c`）。推送走 `python3 scripts/api-push-main.py`（见 §5）。
+- git：远端 `origin/main` 与本地一致（HEAD = `12c12b8`）。推送走 `python3 scripts/api-push-main.py`（见 §5）。
 
 ## 2. 近期变更（2026-10-20 ~ 24，均已推送 origin/main）
 
@@ -33,6 +33,7 @@
 | `fdb20dc` | **修复吸顶标题条切换抖动**（用户确认吸顶已生效后反馈「固定支出→计划购买切换过程画面抖动」）：根因是标题条切 `position:fixed` 脱离文档流→下方内容瞬移一个标题条高度（~81px）→ `panel.bottom` 跟着跳→而吸顶判断恰依赖 `panel.bottom`→边界处「吸上→内容跳→判定松开→内容跳回」振荡。修复：`useStickyHeading` 增加**占位元素**（`.chart-heading-spacer`，React 渲染在标题条前）——切换时先量标题条在流中时下方内容位置、加 fixed class 后再量，差值设为占位高度（同步完成无绘制中间态），切换前后布局零变化，振荡根除；另有吸顶中标题条自身高度变化（文字换行）自动重量、resize 回自然布局重量。playwright 390×844 验证：189 步慢滚**布局零位移**（marker 每步精确跟随滚动量）、class 翻转 2 次无振荡、fixed/top:0/占位 81px；**负面对照**（旧代码构建到 :8444）：9 处 ~81px 跳动 + 边界 6 连抖。已部署已推送 |
 | `af23740` | **吸顶方案从 JS `position:fixed` 彻底改为原生 CSS `position:sticky`**（用户反馈上一版「翻到最底部慢速上滑卡住、页面在底部跳动、快速滑无碍」）：根因是 `position:fixed` 标题条在底部进出时，iOS Safari 的滚动锚定/橡皮筋会对文档高度变化做重锚定 re-pin，慢速上滑被困在底部反复跳（Chromium 不复现，纯 iOS 行为）。修复：**整段删除 `useStickyHeading` hook + `.chart-heading-spacer` 占位 + fixed 方案**，标题条直接 `position:sticky;top:0`（在文档流内，零布局位移、零文档高度变化、零重锚定）。依赖 `html/body` 的 `overflow-x:clip`（`@supports` 启用，不建滚动容器，sticky 正常——这正是 `0a39f19` 修好的前提）。playwright 390×844 验证：`fe/pb` 两标题条 `position:sticky`、吸顶+释放区间正常、**全程文档高度变化 0**、**底部慢速上滑回跳 0**、零控制台错误。彻底同时根除「跨模块切换抖动」与「底部跳动」两类问题。已部署已推送 |
 | `e12c02c` | **设置页改版随手记风格 + 流水回收站**（用户给了两张随手记设置页截图，要求清爽 UI 且「流水回收站最好要有」）：① 设置页重构——顶部 2×2 工具卡网格（流水回收站/数据导出/数据导入/数据同步，彩色图标砖+副标题+待恢复数量角标）+「基础功能」列表行（账户/预算/分类/提醒设置/数据管理/数据同步/关于与更新），白卡圆角+chevron，受控手风琴同时只展开一个分区；工具卡点击展开对应分区并 smooth scroll；工资日+当日限额两分区合并为「提醒设置」一行。② 回收站从「不可达的孤儿视图」变完整功能：列表按删除时间倒序（显示删除时间/原日期/账户），每行**恢复**（软删除回转走既有 outbox 同步）/ **彻底删除**，头部**清空回收站**（批量），均 confirm。③ 彻底删除打通服务端：shared `Transaction.purge?: boolean`（仅存在于同步载荷）+ `/sync/push` 遇 purge 即 `deleteMany` 硬删除——软删除行留在快照里 pull 后会复活回回收站，必须硬删除；本地 Dexie 直接删行+outbox 打 purge 标记；`utils.ts markPurged/markAllPurged` + 冒烟 +2（共 33）。④ 修 viewTitle 对 trash 显示「回收站」（原来回退「总览」）。已部署（api force-recreate + caddy force-recreate），playwright 390×844 验证零 JS 报错 |
+| `12c12b8` | **二级子模块返回按钮 + 数据管理合并**（用户反馈：① 进回收站没有返回退出 ② 导出/导入/同步合并成数据管理 ③ 立规「二级子模块都要有返回退出功能」）：① 新增 `data` 视图=数据管理二级子模块页（数据导出/数据导入/数据同步三个分区，`.data-section` 卡+`.data-section-head` 分区头）；工具卡网格 4 张→2 张（回收站+数据管理），列表行去掉数据管理/数据同步。② 所有二级子模块（trash/data）顶栏标题左侧「‹ 返回」胶囊按钮（`.back-button`）回设置页。**坑**：返回按钮不能作为 `.topbar` 独立子元素——≤520px 时 topbar 是网格布局（`minmax(4.8rem,auto) minmax(0,1fr)`），会打乱 page-heading/app-heading 栅格占位；放进 `.page-heading`（改 flex 行+`.page-heading-text` 包标题）两种布局都稳。③ viewTitle/viewHeadingMap 补 data→「数据管理」；图标 tone 改独立类 `.settings-row-icon.tone-*`。已部署，playwright 验证返回链路正常、零 JS 报错 |
 
 ## 3. 发布流程（本地栈）
 
@@ -62,7 +63,7 @@
 
 ## 6. 当前待办 / 待确认
 
-- **手机实测（2026-10-24 新版，关键）**：① 设置页整体观感是否达到「清爽」预期（工具卡网格+列表行）；② 删一笔流水 → 设置页回收站卡出现角标数字 → 进回收站恢复/彻底删除/清空是否正常；③ 彻底删除后同步一遍（点右上角角标），确认不会从云端快照复活；④ 设置页「关于与更新」核对版本号 = `e12c02c`（划掉重开两次即更新）。
+- **手机实测（2026-10-24 新版，关键）**：① 设置页整体观感是否达到「清爽」预期（工具卡网格+列表行）；② 删一笔流水 → 设置页回收站卡出现角标数字 → 进回收站恢复/彻底删除/清空是否正常；③ 彻底删除后同步一遍（点右上角角标），确认不会从云端快照复活；④ 数据管理子模块：导出/导入/同步三个分区 + 左上角「返回」是否正常；⑤ 设置页「关于与更新」核对版本号 = `12c12b8`（划掉重开两次即更新）。
 - 历史待验证项（版本 `af23740` 起）：底部慢速上滑不再卡底部跳动；19:00 不打开 App 是否收到正反馈 web push；日常/总开支两卡剩余天数为实际日历口径。
 - 可选：VM 网络恢复后 `docker pull` 正确 GHCR 镜像并移除 bind-mount（回归镜像部署）。
 - findings.md 里的 P0「reliable-sync 工作包」（串行化 syncNow、逐行 ack outbox、启动先 flush 再 pull）尚未实施，是后续可靠性改进首选。
