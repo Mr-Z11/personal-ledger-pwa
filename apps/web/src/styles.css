@@ -2046,6 +2046,24 @@ button.settings-section {
   font-weight: 800;
 }
 
+/* 入口行右侧「数量角标 + > 箭头」整体一组：避免第 4 个网格子项换行到
+   第二行（.settings-row-head 只有 3 列，直接并列 4 个子元素会溢出换行） */
+.sub-entry-tail {
+  display: flex;
+  align-items: center;
+  justify-self: end;
+  gap: 0.5rem;
+  flex: 0 0 auto;
+}
+
+/* 两个入口行文案统一单行，卡片高度一致、排版对齐 */
+.sub-entry-row .settings-row-text strong,
+.sub-entry-row .settings-row-text small {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 /* 资产总览卡（账户管理/预算管理头部） */
 .asset-summary {
   display: flex;

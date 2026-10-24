@@ -1647,7 +1647,7 @@ function Overview({ summary, budgetCents, totalBudgetCents, categories, transact
           icon={Home}
           tone="gold"
           title="本月固定支出"
-          subtitle={`${monthLabel(monthKey())} · 预计 ¥${centsToYuan(fixedPredictedCents)} · 含最低固定支出测算`}
+          subtitle={`${monthLabel(monthKey())} · ${fixedItems.length} 项 · 预计 ¥${centsToYuan(fixedPredictedCents)}`}
           count={fixedItems.length}
           onClick={onOpenFixedExpenses}
         />
@@ -3159,8 +3159,10 @@ function SubEntryRow({ icon: Icon, tone, title, subtitle, count, onClick }: {
           <strong>{title}</strong>
           <small>{subtitle}</small>
         </span>
-        {count !== undefined && <span className="sub-entry-count">{count}</span>}
-        <ChevronRight size={16} className="settings-row-chevron" />
+        <span className="sub-entry-tail">
+          {count !== undefined && <span className="sub-entry-count">{count}</span>}
+          <ChevronRight size={16} className="settings-row-chevron" />
+        </span>
       </span>
     </button>
   );
