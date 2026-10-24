@@ -182,6 +182,37 @@ nav button.active {
 main {
   padding: 1.1rem;
   min-width: 0;
+  /* 返回手势的上一层预览层是 absolute，需要父容器建立定位上下文 */
+  position: relative;
+}
+
+/* 上一层页面预览层：返回手势拖动时从内容层下方露出（内容由 JS 快照注入）。
+   padding 用 inherit 继承父容器（main / .report-page）的内边距，
+   预览内容才能与内容层 .view-track 的左边缘对齐，否则会横向错位。 */
+.view-prev {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  padding: inherit;
+  overflow: hidden;
+  pointer-events: none;
+  visibility: hidden;
+  background: #f6f1e7;
+  will-change: transform;
+}
+
+.view-prev-scroll {
+  min-height: 100%;
+  will-change: transform;
+}
+
+/* 上一层露出时轻微压暗，随手势推进递减（iOS 交互式返回的层次感） */
+.view-prev-dim {
+  position: absolute;
+  inset: 0;
+  background: #1b241d;
+  opacity: 0.28;
+  pointer-events: none;
 }
 
 .topbar {
@@ -2329,6 +2360,9 @@ button.settings-section {
    包含块，会让里面的 position:sticky 标题条瞬间失效。 */
 .view-track {
   min-width: 0;
+  /* 叠在预览层之上（z-index 需要定位元素，relative 不创建包含块，不影响内部 sticky） */
+  position: relative;
+  z-index: 1;
 }
 
 /* 报表页本体是 flex column + gap，内容层要复刻同样的布局，否则间距全丢 */
@@ -3339,6 +3373,8 @@ button.settings-section {
 
 /* 报表页整体密度对齐设置页：模块间距 0.6rem、面板内距 0.7rem */
 .report-page {
+  /* 返回手势的上一层预览层是 absolute，需要父容器建立定位上下文 */
+  position: relative;
   /* flex 列而非 grid：模块签 position:sticky 需要能贯穿整个页面高度，
      grid 行高会把 sticky 约束在签自己那一行里导致吸不了顶 */
   display: flex;

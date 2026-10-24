@@ -1160,7 +1160,13 @@ export function App() {
     setView(next);
     setSubStack([]);
   }, []);
-  const pushSub = useCallback((item: SubView) => setSubStack((current) => [...current, item]), []);
+  /** 抓「上一层页面快照」的入口：真正的实现在下面的 subSwipe（hook 要在 sub 之后才能定义），
+   *  这里用 ref 懒绑定，pushSub 就能保持原位、每次进入子页前抓住切换前的页面。 */
+  const captureSnapshotRef = useRef<() => void>(() => undefined);
+  const pushSub = useCallback((item: SubView) => {
+    captureSnapshotRef.current(); // 必须在 setState 之前：抓的是当前（即将被盖住）的那一层
+    setSubStack((current) => [...current, item]);
+  }, []);
   const popSub = useCallback(() => setSubStack((current) => current.slice(0, -1)), []);
   const sub = subStack.length > 0 ? subStack[subStack.length - 1] : null;
 
@@ -1183,6 +1189,7 @@ export function App() {
 
   // 二级子模块：从左边缘右滑返回（iOS 风格）
   const subSwipe = useEdgeSwipeBack({ enabled: sub !== null, onBack: popSub });
+  captureSnapshotRef.current = subSwipe.captureSnapshot;
 
   /** 二级/三级子模块渲染：设置与报表点进来的页面都走这里 */
   function renderSubView(current: SubView) {
@@ -1421,6 +1428,11 @@ export function App() {
 
       <main ref={subSwipe.ref as React.RefObject<HTMLElement>}>
         <EdgeBackHint x={subSwipe.hintX} />
+        {/* 上一层页面预览层：返回手势拖动时从左边缘露出（内容由快照注入） */}
+        <div className="view-prev" ref={subSwipe.previewRef} aria-hidden>
+          <div className="view-prev-scroll" />
+          <div className="view-prev-dim" />
+        </div>
         {dailyLimitHit && (
           <DailyLimitRibbon spentCents={todaySpentCents} limitCents={todayLimitCents} />
         )}
@@ -1757,20 +1769,79 @@ function triggerHaptic(pattern: VibratePattern = 8) {
  * - 起滑点必须在屏幕左边缘 EDGE 内，否则不接管（不干扰页面其它区域）。
  * - 手势须以横向右滑为主（dx > |dy|*RATIO）才 engage；纵向滚动则立即放弃、不 preventDefault，滚动照常。
  * - engage 后 preventDefault 阻止页面滚动；松手超过 THRESHOLD 才真正返回。
- * 跟手：拖动期间 trackRef 指向的内容层整体 translateX(dx)，像 iOS 交互式返回那样跟着手指走；
- *       松手后播放完成（滑出屏幕再卸载）或回弹（弹回原位）动画，而不是瞬间切换。
- * 视觉提示：左侧滑入的箭头（EdgeBackHint），随手指位移淡入。
+ *
+ * 拖动过程中要能**看到上一层页面**（iOS 交互式返回的核心），做法是：
+ * 进入子页前抓一次内容层 HTML 快照（captureSnapshot），返回手势 engage 时把快照挂到
+ * 预览层（previewRef，z-index 低于内容层）显示，并按 PARALLAX 视差跟手左移、暗化递减——
+ * 于是手指慢慢往右拖时，上一层页面从左边缘一点点露出来；松手过阈值后上层归位、
+ * 当前层滑出，一气呵成（COMMIT 240ms，比回弹短，收尾更干脆）。
  */
-const EDGE_SWIPE = { EDGE: 32, START: 12, RATIO: 1.3, THRESHOLD: 72, MAX: 64, COMMIT: 260, CANCEL: 320 };
+const EDGE_SWIPE = { EDGE: 32, START: 12, RATIO: 1.3, THRESHOLD: 72, MAX: 64, COMMIT: 240, CANCEL: 300, PARALLAX: 0.32, DIM: 0.28 };
+/** 手势期间临时盖在内容层下的背景（遮住预览层，平时页面背景在 body 上，不能常驻） */
+const SWIPE_TRACK_BG = "#f6f1e7";
+
+type SwipePreview = { layer: HTMLElement; scroll: HTMLElement | null; dim: HTMLElement | null };
 
 function useEdgeSwipeBack({ enabled, onBack }: { enabled: boolean; onBack: () => void }) {
   const ref = useRef<HTMLElement | null>(null);
   /** 要被整体平移的内容层：调用方把它包住当前视图，动画才有「整页跟着走」的效果 */
   const trackRef = useRef<HTMLElement | null>(null);
+  /** 上一层页面预览层：拖动时从内容层下方露出（调用方渲染一个空 div 占位） */
+  const previewRef = useRef<HTMLDivElement | null>(null);
+  const snapshotRef = useRef<{ html: string; scrollY: number } | null>(null);
   const onBackRef = useRef(onBack);
   onBackRef.current = onBack;
   const [hintX, setHintX] = useState(0);
-  const stateRef = useRef({ startX: 0, startY: 0, engaged: false, dragX: 0, animating: false });
+  const stateRef = useRef({ startX: 0, startY: 0, engaged: false, dragX: 0, animating: false, preview: null as SwipePreview | null });
+
+  /** 进入下一级页面之前调用（**必须在 setState 之前**，否则抓到的已经是新页面）：
+   *  抓当前内容层的 HTML + 滚动位置，返回手势时当作「上一层」显示在下面。 */
+  const captureSnapshot = useCallback(() => {
+    const track = trackRef.current;
+    if (!track) return;
+    snapshotRef.current = { html: track.innerHTML, scrollY: window.scrollY };
+  }, []);
+
+  const previewParts = (): SwipePreview | null => {
+    const layer = previewRef.current;
+    if (!layer) return null;
+    return {
+      layer,
+      scroll: layer.querySelector<HTMLElement>(".view-prev-scroll"),
+      dim: layer.querySelector<HTMLElement>(".view-prev-dim")
+    };
+  };
+
+  /** 把上一层快照挂进预览层：滚动位置靠 translateY 补偿（快照内容是整页，从顶部开始） */
+  const mountPreview = (): SwipePreview | null => {
+    const parts = previewParts();
+    const snap = snapshotRef.current;
+    if (!parts || !snap) return null;
+    if (parts.scroll) {
+      parts.scroll.innerHTML = snap.html;
+      parts.scroll.style.transform = `translateY(${-snap.scrollY}px)`;
+    }
+    parts.layer.style.visibility = "visible";
+    parts.layer.style.transition = "none";
+    return parts;
+  };
+
+  const clearPreview = () => {
+    const parts = stateRef.current.preview ?? previewParts();
+    if (!parts) return;
+    parts.layer.style.visibility = "hidden";
+    parts.layer.style.transition = "";
+    parts.layer.style.transform = "";
+    if (parts.scroll) {
+      parts.scroll.innerHTML = "";
+      parts.scroll.style.transform = "";
+    }
+    if (parts.dim) {
+      parts.dim.style.transition = "";
+      parts.dim.style.opacity = "";
+    }
+    stateRef.current.preview = null;
+  };
 
   /** 清掉跟手留下的 inline 样式：必须在 onBack() 之前调用，否则新页面会带着 translateX 进场 */
   const clearTrack = () => {
@@ -1779,12 +1850,13 @@ function useEdgeSwipeBack({ enabled, onBack }: { enabled: boolean; onBack: () =>
     track.style.transition = "";
     track.style.transform = "";
     track.style.opacity = "";
+    track.style.background = "";
   };
 
   useEffect(() => {
     const el = ref.current;
     if (!el || !enabled) return;
-    const { EDGE, START, RATIO, THRESHOLD, MAX, COMMIT, CANCEL } = EDGE_SWIPE;
+    const { EDGE, START, RATIO, THRESHOLD, MAX, COMMIT, CANCEL, PARALLAX, DIM } = EDGE_SWIPE;
     const reset = () => {
       const s = stateRef.current;
       s.engaged = false;
@@ -1792,6 +1864,13 @@ function useEdgeSwipeBack({ enabled, onBack }: { enabled: boolean; onBack: () =>
       s.startX = 0;
       s.startY = 0;
       setHintX(0);
+    };
+    /** 上一层跟手：从 -PARALLAX*宽度 移到 0（视差），暗化同步递减 */
+    const syncPreview = (preview: SwipePreview | null, dragX: number, width: number) => {
+      if (!preview) return;
+      const progress = width > 0 ? Math.min(1, dragX / width) : 0;
+      preview.layer.style.transform = `translateX(${-PARALLAX * width * (1 - progress)}px)`;
+      if (preview.dim) preview.dim.style.opacity = String(DIM * (1 - progress));
     };
     const onStart = (event: TouchEvent) => {
       const s = stateRef.current;
@@ -1814,6 +1893,9 @@ function useEdgeSwipeBack({ enabled, onBack }: { enabled: boolean; onBack: () =>
       if (!s.engaged) {
         if (dx > START && dx > Math.abs(dy) * RATIO) {
           s.engaged = true;
+          s.preview = mountPreview();
+          const track = trackRef.current;
+          if (track) track.style.background = SWIPE_TRACK_BG; // 遮住下层，只在手势期间
         } else if (Math.abs(dy) > START && Math.abs(dy) > Math.abs(dx)) {
           // 纵向滚动，放弃接管，让页面正常滚动
           s.startX = 0;
@@ -1833,38 +1915,59 @@ function useEdgeSwipeBack({ enabled, onBack }: { enabled: boolean; onBack: () =>
         track.style.transform = `translateX(${s.dragX}px)`;
         track.style.opacity = "1";
       }
+      syncPreview(s.preview, s.dragX, track?.offsetWidth ?? 0);
     };
     const onEnd = () => {
       const s = stateRef.current;
       const track = trackRef.current;
+      const preview = s.preview;
       if (!s.engaged) {
         reset();
         return;
       }
+      const width = track?.offsetWidth ?? 0;
       if (s.dragX >= THRESHOLD) {
-        // 完成：继续滑出屏幕再卸载，避免「瞬间跳走」
+        // 完成：当前层继续滑出屏幕，上一层归位（比回弹短，收尾更干脆）
         s.animating = true;
-        const width = track ? track.offsetWidth : 0;
         if (track) {
           track.style.transition = `transform ${COMMIT}ms ${SWIPE_EASE}, opacity ${COMMIT}ms ease`;
           track.style.transform = `translateX(${width}px)`;
           track.style.opacity = "0.35";
         }
+        if (preview) {
+          preview.layer.style.transition = `transform ${COMMIT}ms ${SWIPE_EASE}`;
+          preview.layer.style.transform = "translateX(0)";
+          if (preview.dim) {
+            preview.dim.style.transition = `opacity ${COMMIT}ms ease`;
+            preview.dim.style.opacity = "0";
+          }
+        }
         window.setTimeout(() => {
           s.animating = false;
           clearTrack();
           onBackRef.current();
+          // 等上一层真实渲染出来再撤快照，否则中间会闪一帧空背景
+          window.setTimeout(clearPreview, 60);
         }, COMMIT);
       } else {
-        // 未过阈值：弹回原位
+        // 未过阈值：当前层弹回原位，上一层退回视差起点
         s.animating = true;
         if (track) {
           track.style.transition = `transform ${CANCEL}ms ${SWIPE_EASE}`;
           track.style.transform = "translateX(0)";
         }
+        if (preview) {
+          preview.layer.style.transition = `transform ${CANCEL}ms ${SWIPE_EASE}`;
+          preview.layer.style.transform = `translateX(${-PARALLAX * width}px)`;
+          if (preview.dim) {
+            preview.dim.style.transition = `opacity ${CANCEL}ms ease`;
+            preview.dim.style.opacity = String(DIM);
+          }
+        }
         window.setTimeout(() => {
           s.animating = false;
           clearTrack();
+          clearPreview();
         }, CANCEL);
       }
       reset();
@@ -1879,9 +1982,10 @@ function useEdgeSwipeBack({ enabled, onBack }: { enabled: boolean; onBack: () =>
       el.removeEventListener("touchend", onEnd);
       el.removeEventListener("touchcancel", onEnd);
       reset();
+      clearPreview();
     };
   }, [enabled]);
-  return { ref, hintX, trackRef };
+  return { ref, hintX, trackRef, previewRef, captureSnapshot };
 }
 
 /** 左边缘右滑返回的视觉提示：随手指位移从左侧滑入的箭头 */
@@ -4254,11 +4358,14 @@ function Reports({ transactions, accounts, categories, budgets, analysisNotes, o
   const [selectedTotalTrendIndex, setSelectedTotalTrendIndex] = useState<number | null>(null);
   const [reportSubStack, setReportSubStack] = useState<ReportSubPage[]>([]);
   const reportSub = reportSubStack.length > 0 ? reportSubStack[reportSubStack.length - 1] : null;
-  const pushReportSub = (page: ReportSubPage) => setReportSubStack((stack) => [...stack, page]);
   const popReportSub = () => setReportSubStack((stack) => stack.slice(0, -1));
   const [detailTransaction, setDetailTransaction] = useState<Transaction | null>(null);
   // 报表详情：从左边缘右滑返回（iOS 风格）
   const reportSwipe = useEdgeSwipeBack({ enabled: reportSub !== null && detailTransaction === null, onBack: popReportSub });
+  const pushReportSub = (page: ReportSubPage) => {
+    reportSwipe.captureSnapshot(); // 进子页前抓上一层快照，返回手势时从左边缘露出
+    setReportSubStack((stack) => [...stack, page]);
+  };
   const [reportTab, setReportTab] = useState<ReportTabId>("basic");
   const categoryKind: Category["kind"] = "expense";
   const selectedYear = year.trim() || currentYear;
@@ -4721,6 +4828,11 @@ function Reports({ transactions, accounts, categories, budgets, analysisNotes, o
   return (
     <section className="report-page" ref={reportSwipe.ref as React.RefObject<HTMLElement>}>
       <EdgeBackHint x={reportSwipe.hintX} />
+      {/* 上一层页面预览层（报表二/三级子页返回时同样能看到上层） */}
+      <div className="view-prev" ref={reportSwipe.previewRef} aria-hidden>
+        <div className="view-prev-scroll" />
+        <div className="view-prev-dim" />
+      </div>
       <div className="view-track report-view-track" ref={reportSwipe.trackRef as React.RefObject<HTMLDivElement>}>
       {reportToolbar}
       {reportSub ? (
