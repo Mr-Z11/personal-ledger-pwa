@@ -8,7 +8,7 @@
 - **云端 47.74.3.104 自 2026-08-29 失效**（80/443 全关、SSH host key 变更，归属待确认）→ `deploy/update-server.sh` 暂不可用。**本地 Mac 栈是当前唯一活跃环境**。
 - 本地栈 `docker-compose.local.yml` = `postgres-local` + `api-local` + `caddy-local`；入口 `https://localhost:8443/api`（Caddy 自签证书，需一次性装 `~/Desktop/Caddy-Local-CA.crt` 到钥匙串，否则浏览器 fetch 被 TLS 拦）。
 - 三容器当前均 Up；`api-local` 用**只读 bind-mount** 挂本机 `apps/api/dist`（见 §3）。
-- git：远端 `origin/main` 与本地一致（HEAD = `440f085`）。推送走 `python3 scripts/api-push-main.py`（见 §5）。
+- git：远端 `origin/main` 与本地一致（HEAD = `5856b4a`）。推送走 `python3 scripts/api-push-main.py`（见 §5）。
 
 ## 2. 近期变更（2026-10-20 ~ 24，均已推送 origin/main）
 
@@ -39,8 +39,8 @@
 | `53b931c` | **分类改图形图标 + 总览固定支出/计划购买子模块化**（用户两条要求）：① 每个消费分类都带图标（图形而非首汉字）——新增 `categoryIconMeta`（38 个 lucide 图标映射）+ `CategoryIcon` 组件，按 `category.icon` 取图形；分类列表/分类编辑（新增图标选择器网格）/报表分类行（彩色图标砖）/甜甜图中心（选中显示小图标）/专项支出网格/总览「最大分类」卡均渲染图标，未登记/缺省回退圆形默认图标；甜甜图本身是彩色扇形图形（非文字），已满足「图表用图形」。② 总览删「本月整体支出」「最近流水」两模块；「本月固定支出」「计划购买」改为入口行（`SubEntryRow`，带图标/副标题/数量角标），点击经 `pushSub` 进二级子模块 `fixedExpenses`/`planBuy`（顶栏「返回」出栈，复用既有 `SubView`/`subStack`）；计划购买四个操作函数上提到 App 作用域，子模块内增/改完成态/删/编辑均走本地+outbox。playwright 390×844 新功能 12/12 + 模块签回归 31/31，冒烟 33/33，已部署已推送 |
 | `25fc350` | **左边缘右滑返回（iOS 风格）**（用户要求「除左上角返回键外，从左往右滑也能返回」）：可复用 hook `useEdgeSwipeBack({enabled,onBack})`——仅在存在可返回的二级页时挂非 passive `touchmove`；起滑点须 `clientX<32`，横向右滑为主（`dx>|dy|*1.3`）才 engage（纵向滚动立即放弃、不 `preventDefault`），engage 后 `preventDefault` 阻止滚动，松手 `dx>=72` 才 `onBack`；视觉提示 `EdgeBackHint`（左侧滑入箭头，随手指位移淡入，`pointer-events:none`）。接入两处：App 级 `<main>`（设置等 `sub`→`popSub`）、Reports 内 `.report-page`（报表详情 `reportSub`→`popReportSub`）；顶部主视图不接管。验证用合成 TouchEvent（playwright `hasTouch:true`）确认左滑返回、中部/纵向不误触 |
 | `440f085` | **分类图标扩充为随手记风格全套（38→101）**（用户给截图「请换成我截图中的分类图标」→ 选「扩充成随手记风格全套」）：`categoryIconMeta` 从 38 扩到 101 个 lucide 图形图标，覆盖餐饮/食品酒水、居家物业、行车交通、通讯数码、娱乐旅行、母婴宠物、医疗教育、金融、服饰箱包、生活杂项；分类编辑器图标选择器 `.category-icon-picker`（`max-height:11.5rem; overflow-y:auto`）随 `Object.entries(categoryIconMeta)` 自动扩容。**已有分类的 `icon` 数据零改动**（不迁移、不重设），仅新增可选项。附带修复：`import { Map }`（lucide 地图图标）**遮蔽全局 `Map`**，导致全文件 `new Map<...>()` 报 TS7009/TS2558 等 39 个连锁类型错误（表现像「lib 没加载」，实为标识符遮蔽）→ 改 `Map as MapIcon`；移除 lucide 0.556.0 不存在的 `BabyCarriage`/`GasStation`（改 `Heart`，加气项删除） |
+| `5856b4a` | **总览入口行排版修复**：① 两张入口卡行尾的 ">" 不再单独占一行——根因是 `SubEntryRow` 把「图标/文字块/数量角标/箭头」四个子元素并列进 `.settings-row-head`，而该容器是**三列网格**（`auto minmax(0,1fr) auto`），第四个网格项溢出后自动换到第二行第一列，于是箭头落在文字下方左下角；改为把「数量角标 + 箭头」包进 `.sub-entry-tail`（flex，`justify-self:end`）一组，网格恒为 3 个子项，箭头与标题/副标题同一行且垂直居中。② 两模块字体/高度统一：`.sub-entry-row` 内标题与副标题强制单行（nowrap + 省略号），两卡高度一致；副标题文案统一为「{范围} · {N} 项 · ¥{金额}」结构。附带把 lucide 的 `Map`（地图图标）别名导入为 `MapIcon` |
 
-## 3. 发布流程（本地栈）
 
 - **前端**：`mv apps/web/dist /tmp/…`（规避沙箱 safe-delete shim）→ `npm run build` → `docker compose -f docker-compose.local.yml --env-file .env.local up -d --force-recreate caddy-local`。**dist 原地重建（不 mv 目录）时挂载不悬空，可免 force-recreate。**
 - **后端（现行，bind-mount）**：改 `apps/api` 源码 → `npm --workspace @ledger/api run build`（managed node；`prisma generate && tsc`）→ `docker compose -f docker-compose.local.yml --env-file .env.local up -d api-local`。容器直接跑本机 dist，**无需从 GHCR 拉镜像**。启动自动 `prisma db push`（改 schema 前先 `bash scripts/data-sync.sh backup-local`）。
