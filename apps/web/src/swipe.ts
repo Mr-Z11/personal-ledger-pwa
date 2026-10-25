@@ -3,16 +3,26 @@ import { useCallback, useEffect, useRef } from "react";
 /** iOS 默认的减速/弹性曲线（cubic-bezier(.32,.72,0,1)），松手后的滑入/回弹都用它 */
 export const SWIPE_EASE = "cubic-bezier(.32,.72,0,1)";
 
+/** 切页「停留」专用曲线（cubic-bezier(.37,.25,.63,1)）——用户要随手记那种「缓慢放置」。
+ *  为什么不能沿用 SWIPE_EASE：那条曲线前重后轻，20% 时间就走完 66%、40% 就走完 92%，
+ *  运动其实在 ~40% 处就结束了，剩下全是蠕变——400ms 体感只有 ~150ms，「迅速停留」。
+ *  这条是缓入缓出家族（起止速度都为 0，软着陆不硬戳），但起步推力比 easeInOutSine 大
+ *  （10% 时间走 8% 而非 2%），松手后不会先愣一下；中段接近匀速，位移摊满整个时长。 */
+export const SETTLE_EASE = "cubic-bezier(.37,.25,.63,1)";
+
 /** 模块签横向滑动切换参数：起点判定、纵向优先比、提交阈值、左边缘保护区
  * （clientX<32 的右滑归「边缘返回」，不抢手势）、贴边阻尼（已在首/末签时拉不动）、
- * 松手后位移到目标页/弹回的时长（400/340ms：240ms 收尾太急，用户反馈「切换停留」要慢一点才自然） */
-const TAB_SWIPE = { START: 12, RATIO: 1.2, THRESHOLD: 56, EDGE: 32, EDGE_DRAG: 0.2, COMMIT: 400, REBOUND: 340 };
+ * 松手后位移到目标页/弹回的时长（600/340ms：240ms 收尾太急，400ms 仍「迅速停留」，
+ * 用户要求随手记那种缓慢放置——配 SETTLE_EASE 把位移摊满全程；弹回是回家不是放置，
+ * 保持快弹） */
+const TAB_SWIPE = { START: 12, RATIO: 1.2, THRESHOLD: 56, EDGE: 32, EDGE_DRAG: 0.2, COMMIT: 600, REBOUND: 340 };
 
 /**
  * 模块签左右滑动切换（报表 / 规划），iOS 分页式：
  * 各模块内容横向排成一条轨道挨在一起，拖动时与手指 1:1 跟手：往左拖则右侧露出
  * 下一个模块的左半、往右拖则左侧露出上一个模块的右半（iOS 分页式），
- * 松手过阈值即滑到相邻页、未过阈值按 iOS 曲线弹回。
+ * 松手过阈值即**缓慢放置**到相邻页（600ms + SETTLE_EASE，位移摊满全程、零速软着陆）、
+ * 未过阈值按 iOS 曲线快弹回（放置与回弹是两种性格，曲线时长都不同）。
  * 与「左边缘右滑返回」的分工：起点 clientX < 32 的右滑归返回（useEdgeSwipeBack 挂在
  * 页面容器上，靠冒泡仍能收到）；其余水平滑动归本 hook。签条自身可横向滚动，不参与切换。
  *
@@ -41,7 +51,7 @@ export function useTabSwipe({ enabled, count, index, onChange, resetKey }: {
   indexRef.current = index;
   const onChangeRef = useRef(onChange);
   onChangeRef.current = onChange;
-  const stateRef = useRef({ startX: 0, startY: 0, engaged: false, dead: false, dx: 0, animating: false });
+  const stateRef = useRef({ startX: 0, startY: 0, engaged: false, dead: false, dx: 0, baseX: 0 });
 
   /** 第 i 页的轨道位移（百分比）。
    *  坑：百分比是相对**元素自身边框盒**算的，而轨道宽度就是一页宽（各页 flex:0 0 100%，
@@ -51,11 +61,12 @@ export function useTabSwipe({ enabled, count, index, onChange, resetKey }: {
   /** 最近一次写入的位移串：用来在外部改变当前签时判断是否需要归位（避免打断手势动画） */
   const shiftRef = useRef("");
 
-  const apply = (shift: string, duration: number | null) => {
+  const apply = (shift: string, duration: number | null, ease: string = SETTLE_EASE) => {
     const track = trackRef.current;
     if (!track) return;
-    // duration 为 null = 不过渡（跟手 / 归位）；切页与弹回时长不同，别写死成一个
-    track.style.transition = duration === null ? "none" : `transform ${duration}ms ${SWIPE_EASE}`;
+    // duration 为 null = 不过渡（跟手 / 归位）；切页用 SETTLE_EASE 缓慢放置，弹回用
+    // SWIPE_EASE 快弹——两条曲线不同，别写死成一个
+    track.style.transition = duration === null ? "none" : `transform ${duration}ms ${ease}`;
     track.style.transform = `translateX(${shift})`;
     shiftRef.current = shift;
   };
@@ -114,12 +125,22 @@ export function useTabSwipe({ enabled, count, index, onChange, resetKey }: {
       s.startX = 0;
       s.startY = 0;
     };
+    /** 轨道当前的实际位移（px）：切页动画途中被新手势接管时当基准用 */
+    const readTrackX = () => {
+      const track = trackRef.current;
+      if (!track) return 0;
+      const cs = getComputedStyle(track);
+      const m = new DOMMatrixReadOnly(cs.transform === "none" ? "matrix(1,0,0,1,0,0)" : cs.transform);
+      return m.m41;
+    };
     const applyDrag = () => {
       const current = indexRef.current;
       const atEdge = (s.dx > 0 && current <= 0) || (s.dx < 0 && current >= count - 1);
       const factor = atEdge ? TAB_SWIPE.EDGE_DRAG : 1; // 分页滑动是 1:1 跟手
-      // 与手指 1:1 位移（混合 % 与 px，CSS calc 支持），两侧相邻模块随之一同露出
-      apply(`calc(${pageShift(current)}% + ${s.dx * factor}px)`, null);
+      // 与手指 1:1 位移。基准用 engage 时读到的实际位移（可能是上一次动画途中的位置），
+      // 而不是 pageShift(current)%——后者会把页面瞬移到「目标页 + dx」，接管时看到跳变。
+      // 松手提交时再切回百分比（apply 的目标值），窗口缩放依旧安全。
+      apply(`${s.baseX + s.dx * factor}px`, null);
     };
     const onStart = (event: TouchEvent) => {
       const touch = event.touches[0];
@@ -134,9 +155,11 @@ export function useTabSwipe({ enabled, count, index, onChange, resetKey }: {
       s.engaged = false;
       s.dead = false;
       s.dx = 0;
+      // 注意：不拦「上一次切页/弹回动画途中」的新手势——600ms 的放置动画期间吞掉输入，
+      // 快速连滑会每隔一次就失灵（iOS 的行为是新手势直接接管进行中的动画）。
     };
     const onMove = (event: TouchEvent) => {
-      if (s.dead || s.animating) return;
+      if (s.dead) return;
       if (s.startX === 0 && s.startY === 0) return;
       const touch = event.touches[0];
       if (!touch) return;
@@ -145,6 +168,7 @@ export function useTabSwipe({ enabled, count, index, onChange, resetKey }: {
       if (!s.engaged) {
         if (Math.abs(dx) > TAB_SWIPE.START && Math.abs(dx) > Math.abs(dy) * TAB_SWIPE.RATIO) {
           s.engaged = true;
+          s.baseX = readTrackX();
         } else if (Math.abs(dy) > TAB_SWIPE.START && Math.abs(dy) > Math.abs(dx)) {
           // 纵向滚动：放弃接管，让页面正常滚动
           s.dead = true;
@@ -168,21 +192,14 @@ export function useTabSwipe({ enabled, count, index, onChange, resetKey }: {
         const next = current + (dx < 0 ? 1 : -1);
         reset();
         if (next >= 0 && next < count) {
-          s.animating = true;
           apply(`${pageShift(next)}%`, TAB_SWIPE.COMMIT);
           onChangeRef.current(next);
-          window.setTimeout(() => {
-            s.animating = false;
-          }, TAB_SWIPE.COMMIT);
           return;
         }
       }
-      // 未过阈值（或已在首/末签）：弹回当前页（时长用 REBOUND，比切页略短）
-      s.animating = true;
-      apply(`${pageShift(current)}%`, TAB_SWIPE.REBOUND);
-      window.setTimeout(() => {
-        s.animating = false;
-      }, TAB_SWIPE.REBOUND);
+      // 未过阈值（或已在首/末签）：弹回当前页（时长用 REBOUND，比切页略短；弹回是
+      // 「回家」不是「放置」，保持快弹用 SWIPE_EASE）
+      apply(`${pageShift(current)}%`, TAB_SWIPE.REBOUND, SWIPE_EASE);
       reset();
     };
     el.addEventListener("touchstart", onStart, { passive: true });

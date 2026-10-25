@@ -2381,12 +2381,12 @@ button.settings-section {
    注意 ②：.tab-swipe-body 的 overflow:hidden 使其成为滚动容器，因此**子页内不能再依赖
    position:sticky**（目前报表/规划的 6+9 个子模块里没有吸顶元素，改动前先确认）。
    注意 ③：高度由 useTabSwipe 的 ResizeObserver 跟随当前页写入，否则会被最高的页撑高。
-   注意 ④：height 过渡与 TAB_SWIPE.COMMIT 同长（400ms）——切到矮页时容器跟着柔和收敛，
-   不然轨道还在滑、底部先跳一格；改时长两边一起改。 */
+   注意 ④：height 过渡与 TAB_SWIPE.COMMIT 同长（600ms，SETTLE_EASE 同曲线）——切到矮页时
+   容器跟着柔和收敛，不然轨道还在滑、底部先跳一格；改时长两边一起改。 */
 .tab-swipe-body {
   min-width: 0;
   overflow: hidden;
-  transition: height 400ms cubic-bezier(.32, .72, 0, 1);
+  transition: height 600ms cubic-bezier(.37, .25, .63, 1);
 }
 
 .tab-swipe-track {
