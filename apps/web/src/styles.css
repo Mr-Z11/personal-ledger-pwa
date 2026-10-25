@@ -3454,18 +3454,33 @@ button.settings-section {
   color: rgba(36, 49, 39, 0.5);
   white-space: nowrap;
   cursor: pointer;
-  transition: color 150ms ease;
+  /* 激活/取消激活的颜色变化跟着模块签「缓慢放置」的节奏走：600ms + 同款
+     SETTLE_EASE（与 .tab-swipe-body 的高度过渡、轨道的切页位移同曲线同时长），
+     颜色与页面一起落位。原来是 150ms——页面还在滑，颜色早就变完，用户反馈
+     「切换时颜色变动显得太快」。桌面端 hover 在下面单独保持 150ms 灵敏 */
+  transition: color 600ms cubic-bezier(.37, .25, .63, 1);
 }
 
-.page-tab:hover {
-  color: rgba(36, 49, 39, 0.78);
+/* 桌面端（有真实指针）hover 保持 150ms 灵敏。触摸设备不进这个媒体查询：
+  手机点按后的「粘滞 hover」也不会把激活变色拖快——激活用的时长由下面
+  .page-tab.active 的声明胜出（同为 0,2,0 特异性但本文件更靠后） */
+@media (hover: hover) {
+  .page-tab:hover {
+    color: rgba(36, 49, 39, 0.78);
+    transition: color 150ms ease;
+  }
 }
 
 .page-tab.active {
   color: #243127;
+  transition: color 600ms cubic-bezier(.37, .25, .63, 1);
 }
 
-.page-tab.active::after {
+/* 签底下那条色条：旧写法只在 .active 上存在，切签时旧条瞬间消失、新条瞬间
+   出现——在 600ms 的页面放置期间这根条子是最突兀的「瞬间颜色变动」。现在
+   常驻在每一个签上（默认透明 + 收窄），激活时随同款曲线淡入展开：切签 =
+   两条交叉渐变，与页面落位同步完成 */
+.page-tab::after {
   content: "";
   position: absolute;
   left: 0.64rem;
@@ -3474,6 +3489,24 @@ button.settings-section {
   height: 2px;
   border-radius: 999px;
   background: #1f5f74;
+  opacity: 0;
+  transform: scaleX(0.4);
+  transition: opacity 600ms cubic-bezier(.37, .25, .63, 1), transform 600ms cubic-bezier(.37, .25, .63, 1);
+}
+
+.page-tab.active::after {
+  opacity: 1;
+  transform: scaleX(1);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .page-tab,
+  .page-tab:hover,
+  .page-tab.active,
+  .page-tab::after,
+  .page-tab.active::after {
+    transition: none;
+  }
 }
 
 .report-context-anchor {
