@@ -6427,6 +6427,52 @@ button.insight-card {
 .pace-swatch.projection { background: repeating-linear-gradient(90deg, #1f5f74 0 2px, transparent 2px 5px); }
 
 /* ------------------------------------------------------------------ */
+/* 基础统计 → 消费结构对比柱状图                                        */
+/* ------------------------------------------------------------------ */
+
+.basic-chart .empty {
+  margin: 0.4rem 0 0.2rem;
+  color: rgba(36, 49, 39, 0.5);
+  font-size: 0.84rem;
+}
+
+.basic-chart-svg {
+  width: 100%;
+  height: auto;
+  display: block;
+  margin-top: 0.35rem;
+}
+
+.basic-grid {
+  stroke: #ece4d2;
+  stroke-width: 1;
+}
+
+.basic-axis {
+  fill: #8a7154;
+  font-size: 11px;
+}
+
+.basic-value {
+  fill: #243127;
+  font-size: 15px;
+  font-weight: 700;
+}
+
+.basic-cat {
+  fill: #3c4a40;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.basic-caption {
+  margin: 0.55rem 0 0.1rem;
+  font-size: 0.78rem;
+  line-height: 1.55;
+  color: rgba(36, 49, 39, 0.64);
+}
+
+/* ------------------------------------------------------------------ */
 /* 趋势焦点卡                                                          */
 /* ------------------------------------------------------------------ */
 

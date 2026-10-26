@@ -1759,6 +1759,106 @@ function Metric({ title, value, icon: Icon, tone }: { title: string; value: numb
   );
 }
 
+/**
+ * 基础统计 → 消费结构对比柱状图：把「日常月消费 / 专项支出 / 预计日常消费」三项金额
+ * 用柱状图并排对比（沿用报表其它图表的 SVG 手绘风格，无第三方图表库）。
+ * - 颜色沿用项目调色板：日常=支出红 #d45b3f、预计=预期绿 #2f7d4f、专项=青 #1f5f74
+ * - 纵轴为「取整后的漂亮上限」(niceMax)，画 0 / 50% / 100% 三条网格线 + ¥ 刻度
+ * - 柱顶标精确金额、柱底标类目；下方一句话解读（当前周期给「预计比已花多多少」，历史周期给占比）
+ */
+function niceMax(v: number) {
+  if (v <= 0) return 100;
+  const pow = Math.pow(10, Math.floor(Math.log10(v)));
+  const n = v / pow;
+  const nice = n <= 1 ? 1 : n <= 2 ? 2 : n <= 2.5 ? 2.5 : n <= 5 ? 5 : 10;
+  return nice * pow;
+}
+
+function BasicStatsChart({
+  dailyLabel,
+  dailyExpenseCents,
+  specialExpenseCents,
+  projectedExpenseCents,
+  periodLabel,
+  isCurrentPeriod,
+}: {
+  dailyLabel: string;
+  dailyExpenseCents: number;
+  specialExpenseCents: number;
+  projectedExpenseCents: number;
+  periodLabel: string;
+  isCurrentPeriod: boolean;
+}) {
+  const items = [
+    { key: "daily", label: dailyLabel, value: dailyExpenseCents, color: "#d45b3f" },
+    { key: "projected", label: "预计日常消费", value: projectedExpenseCents, color: "#2f7d4f" },
+    { key: "special", label: "专项支出", value: specialExpenseCents, color: "#1f5f74" },
+  ];
+  const allZero = items.every((it) => it.value === 0);
+  const maxY = niceMax(Math.max(dailyExpenseCents, specialExpenseCents, projectedExpenseCents, 1));
+
+  const W = 680, H = 296, left = 60, right = 16, top = 38, bottom = 52;
+  const innerW = W - left - right;
+  const innerH = H - top - bottom;
+  const slotW = innerW / 3;
+  const barW = 92;
+  const yOf = (v: number) => top + innerH - (v / maxY) * innerH;
+  const xCenter = (i: number) => left + slotW * i + slotW / 2;
+
+  const compact = (cents: number) => {
+    const yuan = cents / 100;
+    if (Math.abs(yuan) >= 10000) return `¥${(yuan / 10000).toFixed(1)}万`;
+    if (Math.abs(yuan) >= 1000) return `¥${(yuan / 1000).toFixed(1)}k`;
+    return `¥${Math.round(yuan)}`;
+  };
+
+  const total = dailyExpenseCents + specialExpenseCents;
+  const specialShare = total > 0 ? Math.round((specialExpenseCents / total) * 100) : 0;
+  const gap = Math.max(0, projectedExpenseCents - dailyExpenseCents);
+  const caption = allZero
+    ? "本期暂无日常与专项支出数据。"
+    : isCurrentPeriod
+      ? `按当前节奏预计${periodLabel}日常消费 ¥${centsToYuan(projectedExpenseCents)}，比已花 ¥${centsToYuan(dailyExpenseCents)} 多 ¥${centsToYuan(gap)}；专项支出 ¥${centsToYuan(specialExpenseCents)} 占日常+专项合计 ${specialShare}%。`
+      : `本期日常消费与预计基本一致；专项支出 ¥${centsToYuan(specialExpenseCents)} 占日常+专项合计 ${specialShare}%。`;
+
+  return (
+    <section className="panel basic-chart">
+      <div className="chart-heading">
+        <h2>消费结构对比</h2>
+        <span>{periodLabel} · 日常 / 预计 / 专项按金额对比</span>
+      </div>
+      {allZero ? (
+        <p className="empty">本期暂无日常与专项支出数据</p>
+      ) : (
+        <>
+          <svg className="basic-chart-svg" viewBox={`0 0 ${W} ${H}`} role="img" aria-label="日常月消费、专项支出、预计日常消费金额对比柱状图">
+            {[0, 0.5, 1].map((r) => (
+              <g key={r}>
+                <line className="basic-grid" x1={left} x2={W - right} y1={yOf(maxY * r)} y2={yOf(maxY * r)} />
+                <text className="basic-axis" x={left - 8} y={yOf(maxY * r) + 4} textAnchor="end">{compact(maxY * r)}</text>
+              </g>
+            ))}
+            {items.map((it, i) => {
+              const cx = xCenter(i);
+              const bx = cx - barW / 2;
+              const by = yOf(it.value);
+              const bh = Math.max(0, top + innerH - by);
+              return (
+                <g key={it.key}>
+                  <rect x={bx} y={by} width={barW} height={bh} rx={8} fill={it.color} />
+                  <text className="basic-value" x={cx} y={by - 9} textAnchor="middle">¥{centsToYuan(it.value)}</text>
+                  <text className="basic-cat" x={cx} y={H - bottom + 24} textAnchor="middle">{it.label}</text>
+                </g>
+              );
+            })}
+          </svg>
+          <p className="basic-caption">{caption}</p>
+        </>
+      )}
+    </section>
+  );
+}
+
 function triggerHaptic(pattern: VibratePattern = 8) {
   if (typeof navigator === "undefined" || typeof navigator.vibrate !== "function") return;
   navigator.vibrate(pattern);
@@ -5069,6 +5169,15 @@ function Reports({ transactions, accounts, categories, budgets, analysisNotes, o
                 <Metric title="专项支出" value={specialSummary.expenseCents} icon={Banknote} tone="blue" />
                 <Metric title="预计日常消费" value={projectedExpense} icon={ArrowRightLeft} tone="neutral" />
               </div>
+
+              <BasicStatsChart
+                dailyLabel={period === "month" ? "日常月消费" : "日常年消费"}
+                dailyExpenseCents={periodSummary.expenseCents}
+                specialExpenseCents={specialSummary.expenseCents}
+                projectedExpenseCents={projectedExpense}
+                periodLabel={periodLabel}
+                isCurrentPeriod={isCurrentPeriod}
+              />
             </>
           )}
 
