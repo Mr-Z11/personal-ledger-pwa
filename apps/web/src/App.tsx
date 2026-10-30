@@ -5047,6 +5047,22 @@ function Reports({ transactions, accounts, categories, budgets, analysisNotes, o
   const activeReportTab = visibleReportTabs.some((tab) => tab.id === reportTab) ? reportTab : "basic";
   const activeReportTabIndex = Math.max(0, visibleReportTabs.findIndex((tab) => tab.id === activeReportTab));
 
+  /** 从子页返回后把当前签滚回可视区：签条与子页是三元互斥渲染，进子页时整条签被卸载，
+   *  返回时是新节点、`scrollLeft` 归零——当前签（核心洞察/异常分析在末尾）被滚到屏幕外，
+   *  屏幕上只剩「基础统计 分类 趋势…」，看起来像「返回到了别的模块」。
+   *  只在「从子页回来」这一下滚，点签切换保持原有手感（签条不动）。 */
+  const reportTabsRef = useRef<HTMLElement | null>(null);
+  const wasInReportSubRef = useRef(false);
+  useEffect(() => {
+    const backFromSub = wasInReportSubRef.current && reportSub === null;
+    wasInReportSubRef.current = reportSub !== null;
+    if (!backFromSub) return;
+    const nav = reportTabsRef.current;
+    const tab = nav?.querySelector<HTMLElement>(`.page-tab[data-tab="${activeReportTab}"]`);
+    if (!nav || !tab) return;
+    nav.scrollLeft = Math.max(0, tab.offsetLeft - (nav.clientWidth - tab.offsetWidth) / 2);
+  }, [reportSub, activeReportTab]);
+
   /** 模块签左右滑动切换（iOS 分页式：拖动时两侧相邻模块同时可见） */
   const switchReportTab = (id: ReportTabId) => {
     const to = visibleReportTabs.findIndex((tab) => tab.id === id);
@@ -5163,11 +5179,12 @@ function Reports({ transactions, accounts, categories, budgets, analysisNotes, o
         </>
       ) : (
         <>
-          <nav className="page-tabs" aria-label="报表模块">
+          <nav className="page-tabs" aria-label="报表模块" ref={reportTabsRef}>
             {visibleReportTabs.map((tab) => (
               <button
                 key={tab.id}
                 type="button"
+                data-tab={tab.id}
                 className={`page-tab ${activeReportTab === tab.id ? "active" : ""}`.trim()}
                 aria-current={activeReportTab === tab.id ? "page" : undefined}
                 onClick={() => switchReportTab(tab.id)}
