@@ -7017,6 +7017,43 @@ button.insight-card {
   align-items: stretch;
 }
 
+/* 可点击行（报表「常规项」点行看明细）：整行是 <button>，要抹掉按钮默认外观，
+   同时保留原网格排版；圆角/内边距用负边距抵掉，视觉上不改变表格列宽 */
+.regular-expense-row.clickable {
+  padding: 0.24rem 0.3rem;
+  margin: -0.24rem -0.3rem;
+  /* 负边距让高亮块略宽于表格列，但不改变列宽：宽度补回左右 padding */
+  width: calc(100% + 0.6rem);
+  border: 0;
+  border-radius: 0.5rem;
+  background: transparent;
+  font: inherit;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+  -webkit-appearance: none;
+  appearance: none;
+  transition: background 180ms ease;
+}
+
+@media (hover: hover) {
+  .regular-expense-row.clickable:hover {
+    background: rgba(31, 95, 116, 0.06);
+  }
+}
+
+.regular-expense-row.clickable:active {
+  background: rgba(31, 95, 116, 0.1);
+}
+
+.regular-expense-hint {
+  margin: 0.5rem 0 0;
+  font-size: 0.7rem;
+  font-weight: 700;
+  color: rgba(36, 49, 39, 0.42);
+  text-align: center;
+}
+
 .regular-expense-head {
   align-items: end;
 }

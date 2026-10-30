@@ -198,6 +198,7 @@ import {
   LocalSalaryReminderPanel,
   PlannedPurchasePanel,
   RegularExpensePanel,
+  REGULAR_WINDOW,
   SalaryBanner,
   SearchView,
   TrendFocusCards,
@@ -211,6 +212,7 @@ import {
   maybeNotifyDailyLimit,
   maybeNotifyPayday,
   maybePraiseNoSpend,
+  regularExpenseTransactions,
   setPushSubscribed,
   salaryBannerDismissedKey,
   salaryBannerState,
@@ -4497,7 +4499,9 @@ type ReportSubPage =
   | { kind: "anomalyDetail"; id: string }
   /** scope 区分口径：daily=日常消费（分类签），special=专项支出（专项签）。
    *  两者交易集合完全不同，占比分母也不同，别混用。缺省按日常处理（兼容旧调用）。 */
-  | { kind: "categoryDetail"; id: string; scope?: "daily" | "special" };
+  | { kind: "categoryDetail"; id: string; scope?: "daily" | "special" }
+  /** 常规项明细：id = 分类路径名（与 RegularExpensePanel 的分组键一致） */
+  | { kind: "regularDetail"; id: string };
 
 /** 报表模块签（顶部横向滑动选择，参考随手记） */
 type ReportTabId = "basic" | "category" | "trend" | "pace" | "regular" | "big" | "special" | "insights" | "anomalies";
@@ -5027,6 +5031,23 @@ function Reports({ transactions, accounts, categories, budgets, analysisNotes, o
       .filter((item) => activeCategory.id === "uncategorized" ? !item.categoryId : item.categoryId === activeCategory.id)
       .sort((left, right) => right.occurredAt.localeCompare(left.occurredAt))
     : [];
+
+  /* 常规项明细：窗口与 RegularExpensePanel 的 collectRegularExpenses 对齐（6 个月、含当月） */
+  const activeRegularName = reportSub?.kind === "regularDetail" ? reportSub.id : null;
+  /** 窗口起始月：previousMonthKeys 给的是「当月之前」的月份，取第 5 个即 month-5 */
+  const regularWindowStart = previousMonthKeys(month, 5)[4] ?? month;
+  const activeRegularTransactions = useMemo(
+    () => (activeRegularName ? regularExpenseTransactions(activeRegularName, transactions, categories, month) : []),
+    [activeRegularName, transactions, categories, month]
+  );
+  const activeRegularTotal = activeRegularTransactions.reduce((sum, item) => sum + item.amountCents, 0);
+  const activeRegularMonthCents = activeRegularTransactions
+    .filter((item) => dateKey(item.occurredAt).startsWith(month))
+    .reduce((sum, item) => sum + item.amountCents, 0);
+  const activeRegularPrevCents = activeRegularTransactions
+    .filter((item) => dateKey(item.occurredAt).startsWith(previousMonthKeys(month, 1)[0]))
+    .reduce((sum, item) => sum + item.amountCents, 0);
+  const activeRegularMomDelta = activeRegularPrevCents > 0 ? percentDelta(activeRegularMonthCents, activeRegularPrevCents) : null;
   const reportSubHead = (() => {
     switch (reportSub?.kind) {
       case "insightDetail":
@@ -5038,6 +5059,11 @@ function Reports({ transactions, accounts, categories, budgets, analysisNotes, o
           title: activeCategory?.name ?? (activeCategoryScope === "special" ? "专项流水" : "分类流水"),
           subtitle: `${periodLabel} · ${activeCategoryScope === "special" ? "专项支出 · " : ""}${activeCategoryTransactions.length} 笔明细`
         };
+      case "regularDetail":
+        return {
+          title: activeRegularName,
+          subtitle: `${shortMonthLabel(regularWindowStart)}–${monthLabel(month)} · ${activeRegularTransactions.length} 笔明细`
+        };
       default:
         return { title: "", subtitle: "" };
     }
@@ -5047,21 +5073,9 @@ function Reports({ transactions, accounts, categories, budgets, analysisNotes, o
   const activeReportTab = visibleReportTabs.some((tab) => tab.id === reportTab) ? reportTab : "basic";
   const activeReportTabIndex = Math.max(0, visibleReportTabs.findIndex((tab) => tab.id === activeReportTab));
 
-  /** 从子页返回后把当前签滚回可视区：签条与子页是三元互斥渲染，进子页时整条签被卸载，
-   *  返回时是新节点、`scrollLeft` 归零——当前签（核心洞察/异常分析在末尾）被滚到屏幕外，
-   *  屏幕上只剩「基础统计 分类 趋势…」，看起来像「返回到了别的模块」。
-   *  只在「从子页回来」这一下滚，点签切换保持原有手感（签条不动）。 */
+  /** 签条 ref：交给 useTabSwipe 做「签条跟随内容」（拖动时同步滑、落位时居中），
+   *  也顺带解决「进子页返回后签条 scrollLeft 归零、当前签跑到屏幕外」的问题。 */
   const reportTabsRef = useRef<HTMLElement | null>(null);
-  const wasInReportSubRef = useRef(false);
-  useEffect(() => {
-    const backFromSub = wasInReportSubRef.current && reportSub === null;
-    wasInReportSubRef.current = reportSub !== null;
-    if (!backFromSub) return;
-    const nav = reportTabsRef.current;
-    const tab = nav?.querySelector<HTMLElement>(`.page-tab[data-tab="${activeReportTab}"]`);
-    if (!nav || !tab) return;
-    nav.scrollLeft = Math.max(0, tab.offsetLeft - (nav.clientWidth - tab.offsetWidth) / 2);
-  }, [reportSub, activeReportTab]);
 
   /** 模块签左右滑动切换（iOS 分页式：拖动时两侧相邻模块同时可见） */
   const switchReportTab = (id: ReportTabId) => {
@@ -5078,7 +5092,8 @@ function Reports({ transactions, accounts, categories, budgets, analysisNotes, o
     // activeReportTabIndex 没变 → 归位/高度 effect 的依赖不变、不会重跑，新节点上既没有
     // transform 也没有高度：返回后停在第 0 页（末尾几签直接空白）。用子页开关当 resetKey
     // 逼它重跑一次。改这里前先看 useTabSwipe 里 resetKey 的注释。
-    resetKey: reportSub === null ? 1 : 0
+    resetKey: reportSub === null ? 1 : 0,
+    stripRef: reportTabsRef
   });
 
   return (
@@ -5173,6 +5188,37 @@ function Reports({ transactions, accounts, categories, budgets, analysisNotes, o
                   onOpen={setDetailTransaction}
                   compact
                 />
+              </div>
+            </>
+          )}
+
+          {reportSub.kind === "regularDetail" && (
+            <>
+              <div className="panel report-category-summary">
+                <div className="report-category-summary-main">
+                  <span>近 {REGULAR_WINDOW} 个月 · 常规项</span>
+                  <strong className="report-category-summary-title">{activeRegularName}</strong>
+                  <em>
+                    {activeRegularTransactions.length} 笔 · 合计 ¥{centsToYuan(activeRegularTotal)} · 月均 ¥{centsToYuan(Math.round(activeRegularTotal / REGULAR_WINDOW))}
+                  </em>
+                  <em>
+                    {monthLabel(month)} ¥{centsToYuan(activeRegularMonthCents)}
+                    {activeRegularMomDelta !== null ? ` · 环比 ${activeRegularMomDelta > 0 ? "+" : ""}${activeRegularMomDelta}%` : ""}
+                  </em>
+                </div>
+              </div>
+              <div className="panel">
+                {activeRegularTransactions.length > 0 ? (
+                  <TransactionRows
+                    transactions={activeRegularTransactions}
+                    accounts={accounts}
+                    categories={categories}
+                    onOpen={setDetailTransaction}
+                    compact
+                  />
+                ) : (
+                  <p className="empty">这 {REGULAR_WINDOW} 个月里没有找到该分类的支出流水</p>
+                )}
               </div>
             </>
           )}
@@ -5322,7 +5368,12 @@ function Reports({ transactions, accounts, categories, budgets, analysisNotes, o
                 <h2>常规项支出</h2>
                 <span>近6个月 · 每月固定开销逐月对比</span>
               </div>
-              <RegularExpensePanel month={month} transactions={transactions} categories={categories} />
+              <RegularExpensePanel
+                month={month}
+                transactions={transactions}
+                categories={categories}
+                onSelect={(name) => pushReportSub({ kind: "regularDetail", id: name })}
+              />
             </section>
           )}
 

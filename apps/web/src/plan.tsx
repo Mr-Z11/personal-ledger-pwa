@@ -1,5 +1,5 @@
 import { centsToYuan, monthKey, yuanToCents, type Budget, type Category, type Transaction } from "@ledger/shared";
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import {
   beijingDateTimeParts,
   categoryPath,
@@ -284,6 +284,7 @@ export function PlanView({ transactions, categories, budgets }: {
   const [planTab, setPlanTab] = useState<PlanTabId>("overview");
   const activePlanTabIndex = Math.max(0, PLAN_TABS.findIndex((tab) => tab.id === planTab));
   /** 模块签左右滑动切换（iOS 分页式：拖动时两侧相邻模块同时可见） */
+  const planTabsRef = useRef<HTMLElement | null>(null);
   const switchPlanTab = (id: PlanTabId) => {
     const to = PLAN_TABS.findIndex((tab) => tab.id === id);
     if (to >= 0) planTabSwipe.snapTo(to);
@@ -293,7 +294,9 @@ export function PlanView({ transactions, categories, budgets }: {
     enabled: true,
     count: PLAN_TABS.length,
     index: activePlanTabIndex,
-    onChange: (next) => switchPlanTab(PLAN_TABS[next].id)
+    onChange: (next) => switchPlanTab(PLAN_TABS[next].id),
+    // 签条跟随内容一起滑（拖动跟手、落位居中）；6 签在手机上一屏放不下
+    stripRef: planTabsRef
   });
   const scheduleConfigured = insuranceItems.length > 0;
   const histInsAvgCents = useMemo(
@@ -422,7 +425,7 @@ export function PlanView({ transactions, categories, budgets }: {
         </label>
       </div>
 
-      <nav className="page-tabs" aria-label="规划模块">
+      <nav className="page-tabs" aria-label="规划模块" ref={planTabsRef}>
         {PLAN_TABS.map((tab) => (
           <button
             key={tab.id}

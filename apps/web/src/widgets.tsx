@@ -854,7 +854,7 @@ export function BigExpensePanel({ month, transactions, categories, accounts }: {
 /* 常规项支出：每月固定开销的逐月对比                                    */
 /* ------------------------------------------------------------------ */
 
-const REGULAR_WINDOW = 6;
+export const REGULAR_WINDOW = 6;
 const REGULAR_MIN_HITS = 3;
 const REGULAR_MAX_ITEMS = 8;
 
@@ -911,10 +911,27 @@ function compactYuanText(cents: number) {
   return `${Math.round(yuan)}`;
 }
 
-export function RegularExpensePanel({ month, transactions, categories }: {
+/** 某个常规项（按「分类路径名」分组的行）在窗口期内的明细流水。
+ *  口径必须与 collectRegularExpenses 完全一致（同样按 categoryPath 分组、同样的窗口），
+ *  否则点进去的笔数/金额与表格里的月均对不上。 */
+export function regularExpenseTransactions(name: string, transactions: Transaction[], categories: Category[], endMonth: string, window = REGULAR_WINDOW) {
+  const keys = Array.from({ length: window }, (_, index) => offsetMonthKey(endMonth, -(window - 1 - index)));
+  return transactions
+    .filter((item) => item.type === "expense")
+    .filter((item) => keys.some((key) => dateKey(item.occurredAt).startsWith(key)))
+    .filter((item) => {
+      const category = categories.find((entry) => entry.id === item.categoryId);
+      return (categoryPath(category, categories) || "未分类") === name;
+    })
+    .sort((left, right) => right.occurredAt.localeCompare(left.occurredAt));
+}
+
+export function RegularExpensePanel({ month, transactions, categories, onSelect }: {
   month: string;
   transactions: Transaction[];
   categories: Category[];
+  /** 点某一行（分类）时回调：报表页据此进「常规项明细」子页 */
+  onSelect?: (name: string) => void;
 }) {
   const { monthKeys, rows } = useMemo(
     () => collectRegularExpenses(transactions, categories, month),
@@ -957,8 +974,8 @@ export function RegularExpensePanel({ month, transactions, categories }: {
           <strong>{monthTotalCents > 0 ? `${share}%` : "无支出"}</strong>
         </div>
       </div>
-      <div className="regular-expense-table" role="table" aria-label="常规支出项逐月对比">
-        <div className="regular-expense-row regular-expense-head" role="row">
+      <div className="regular-expense-table" aria-label="常规支出项逐月对比">
+        <div className="regular-expense-row regular-expense-head">
           <span className="regular-expense-name">常规项（近{REGULAR_WINDOW}个月出现≥{REGULAR_MIN_HITS}次）</span>
           {monthKeys.map((key) => (
             <span key={key} className={`regular-expense-cell head ${key === month ? "current" : ""}`}>{shortMonthLabel(key)}</span>
@@ -966,8 +983,8 @@ export function RegularExpensePanel({ month, transactions, categories }: {
         </div>
         {shown.map((row) => {
           const maxValue = Math.max(...row.monthly, 1);
-          return (
-            <div className="regular-expense-row" role="row" key={row.name}>
+          const cells = (
+            <>
               <span className="regular-expense-name">
                 <strong>{row.name}</strong>
                 <em>
@@ -985,10 +1002,25 @@ export function RegularExpensePanel({ month, transactions, categories }: {
                   <b>{compactYuanText(value)}</b>
                 </span>
               ))}
-            </div>
+            </>
+          );
+          // 有 onSelect 时整行是按钮（与报表分类行一致「点行看明细」）；否则保持只读表格行
+          return onSelect ? (
+            <button
+              type="button"
+              className="regular-expense-row clickable"
+              key={row.name}
+              onClick={() => onSelect(row.name)}
+              title={`查看 ${row.name} 近 ${REGULAR_WINDOW} 个月明细`}
+            >
+              {cells}
+            </button>
+          ) : (
+            <div className="regular-expense-row" key={row.name}>{cells}</div>
           );
         })}
       </div>
+      {onSelect && shown.length > 0 && <p className="regular-expense-hint">点击任一常规项查看近 {REGULAR_WINDOW} 个月流水明细</p>}
       {hiddenCount > 0 && <p className="regular-expense-more">另有 {hiddenCount} 个金额较小的常规项未列出，按 6 个月均值排序取前 {REGULAR_MAX_ITEMS} 项。</p>}
       <p className="big-expense-insight">
         口径：同一支出分类近 {REGULAR_WINDOW} 个月出现 {REGULAR_MIN_HITS} 次及以上即判定为常规项（含日常消费与贷款、保险等固定专项），月均按 {REGULAR_WINDOW} 个月平均；这些是可预期的刚性开销，做下月规划时可先锁定。

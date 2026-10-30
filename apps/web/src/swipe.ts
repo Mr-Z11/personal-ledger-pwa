@@ -36,12 +36,15 @@ const TAB_SWIPE = { START: 12, RATIO: 1.2, THRESHOLD: 56, EDGE: 32, EDGE_DRAG: 0
  *    分页式下各页按 tab.id 常驻、容器不重挂载，故不需要；但**如果哪天给容器加了
  *    key 让它换新节点，必须把那个序号传进来**——2026-10-24 踩过：内容层靠 key
  *    重挂载时监听不跟着重绑，旧节点卸载后新手势全部静默死亡（表象：第一次能滑、后续全失效）。 */
-export function useTabSwipe({ enabled, count, index, onChange, resetKey }: {
+export function useTabSwipe({ enabled, count, index, onChange, resetKey, stripRef }: {
   enabled: boolean;
   count: number;
   index: number;
   onChange: (next: number) => void;
   resetKey?: number;
+  /** 顶部签条（.page-tabs）的 ref：传入后签条会**跟随内容一起滑**——
+   *  拖动时按小数索引把对应签居中，切页/点签时平滑滚到位。不传则签条不动。 */
+  stripRef?: React.RefObject<HTMLElement | null>;
 }) {
   /** 手势监听层 + 视口（overflow:hidden 裁掉两侧，只留当前页宽度可看） */
   const bodyRef = useRef<HTMLDivElement | null>(null);
@@ -68,6 +71,39 @@ export function useTabSwipe({ enabled, count, index, onChange, resetKey }: {
     track.style.transform = `translateX(${shift})`;
   };
 
+  /** 签条跟随内容：把「第 t 个签」（t 可含小数，拖动时用）居中到签条可视区。
+   *  为什么按住 t 而不是 index：拖动过程中内容与手指 1:1 位移，签条若只在落位时跳一次，
+   *  就会出现「下面在滑、上面不动」的割裂感（用户 2026-10-30 反馈）。小数索引让签条
+   *  与内容同步滑，落位时再平滑滚到整数签。
+   *  用 getBoundingClientRect 求相对签条的居中位置，不依赖 offsetParent（签条是 sticky）。 */
+  const followStripRef = useRef<(t: number, smooth: boolean) => void>(() => undefined);
+  followStripRef.current = (t: number, smooth: boolean) => {
+    const strip = stripRef?.current;
+    if (!strip || count <= 1) return;
+    const tabs = Array.from(strip.children) as HTMLElement[];
+    if (tabs.length === 0) return;
+    const maxScroll = strip.scrollWidth - strip.clientWidth;
+    if (maxScroll <= 1) return; // 签条不需要滚动（签少于一屏）
+    const clamped = Math.max(0, Math.min(count - 1, t));
+    const lo = Math.floor(clamped);
+    const hi = Math.min(tabs.length - 1, lo + 1);
+    const frac = clamped - lo;
+    const centerOf = (el?: HTMLElement) => {
+      if (!el) return 0;
+      const navRect = strip.getBoundingClientRect();
+      const rect = el.getBoundingClientRect();
+      return rect.left - navRect.left + strip.scrollLeft + rect.width / 2;
+    };
+    const center = centerOf(tabs[lo]) + (centerOf(tabs[hi]) - centerOf(tabs[lo])) * frac;
+    const target = Math.max(0, Math.min(maxScroll, center - strip.clientWidth / 2));
+    if (!smooth) {
+      if (Math.abs(strip.scrollLeft - target) >= 0.5) strip.scrollLeft = target;
+      return;
+    }
+    if (Math.abs(strip.scrollLeft - target) < 1) return;
+    strip.scrollTo({ left: target, behavior: "smooth" });
+  };
+
   /** 外部（点模块签）切换时调用：相邻一页才做位移动画 */
   const snapTo = useCallback((next: number) => {
     const clamped = Math.max(0, Math.min(count - 1, next));
@@ -75,6 +111,7 @@ export function useTabSwipe({ enabled, count, index, onChange, resetKey }: {
     // iOS 的分页控件也是点击即切，只有手势才逐页跟手滑动。
     const animated = Math.abs(clamped - indexRef.current) === 1;
     apply(`${pageShift(clamped)}%`, animated ? TAB_SWIPE.COMMIT : null);
+    followStripRef.current(clamped, true);
   }, [count]);
 
   /** 视口高度跟随当前页 + 外部改签后轨道归位：
@@ -95,6 +132,8 @@ export function useTabSwipe({ enabled, count, index, onChange, resetKey }: {
     // 末尾几签（核心洞察/异常分析）因为第 0 页压根没渲染 → 整页一片空白。
     const track = trackRef.current;
     if (track && track.style.transform !== `translateX(${target})`) apply(target, null);
+    // 签条也归位到当前签（容器重建/月年切换 9↔5 签后签条是新节点、scrollLeft 从 0 起）
+    followStripRef.current(index, true);
     const page = body.querySelector<HTMLElement>(`.tab-swipe-page[data-page="${index}"]`);
     if (!page) return undefined;
     const sync = () => {
@@ -144,6 +183,9 @@ export function useTabSwipe({ enabled, count, index, onChange, resetKey }: {
       // 而不是 pageShift(current)%——后者会把页面瞬移到「目标页 + dx」，接管时看到跳变。
       // 松手提交时再切回百分比（apply 的目标值），窗口缩放依旧安全。
       apply(`${s.baseX + s.dx * factor}px`, null);
+      // 签条同步滑：dx<0 往下一页 → 小数索引向右走
+      const pageWidth = bodyRef.current?.clientWidth || 1;
+      followStripRef.current(indexRef.current - (s.dx / pageWidth) * factor, false);
     };
     const onStart = (event: TouchEvent) => {
       const touch = event.touches[0];
@@ -196,6 +238,7 @@ export function useTabSwipe({ enabled, count, index, onChange, resetKey }: {
         reset();
         if (next >= 0 && next < count) {
           apply(`${pageShift(next)}%`, TAB_SWIPE.COMMIT);
+          followStripRef.current(next, true);
           onChangeRef.current(next);
           return;
         }
@@ -203,6 +246,7 @@ export function useTabSwipe({ enabled, count, index, onChange, resetKey }: {
       // 未过阈值（或已在首/末签）：弹回当前页（时长用 REBOUND，比切页略短；弹回是
       // 「回家」不是「放置」，保持快弹用 SWIPE_EASE）
       apply(`${pageShift(current)}%`, TAB_SWIPE.REBOUND, SWIPE_EASE);
+      followStripRef.current(current, true);
       reset();
     };
     el.addEventListener("touchstart", onStart, { passive: true });
