@@ -2762,11 +2762,37 @@ button.settings-section {
 }
 
 .special-expense-line {
+  /* 整行可点（进「专项分类流水」子页）：<button> 要抹掉默认外观，保持原来的行观感；
+     三列 = 名称 / 金额 / 箭头，进度条自动落到第二行第一列（与原两列布局视觉一致） */
+  width: 100%;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  gap: 0.24rem 0.45rem;
   padding: 0.42rem 0.5rem;
   border-radius: 0.48rem;
-  grid-template-columns: minmax(0, 1fr) auto;
-  gap: 0.24rem 0.45rem;
   background: rgba(255, 255, 255, 0.46);
+  font: inherit;
+  color: inherit;
+  text-align: left;
+  -webkit-appearance: none;
+  appearance: none;
+  cursor: pointer;
+  transition: background 180ms ease, border-color 180ms ease;
+}
+
+@media (hover: hover) {
+  .special-expense-line:hover {
+    border-color: rgba(138, 113, 84, 0.28);
+    background: rgba(255, 255, 255, 0.72);
+  }
+}
+
+.special-expense-line .report-row-chevron {
+  color: rgba(36, 49, 39, 0.28);
+}
+
+/* 图例说明横跨整行（网格是 auto-fit 多列，不加会挤成一个格子） */
+.special-expense-grid .report-category-hint {
+  grid-column: 1 / -1;
 }
 
 .special-expense-line span {

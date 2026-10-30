@@ -1958,7 +1958,17 @@ const clearFixedCompensation = (els: HTMLElement[]) => {
 
 type SwipePreview = { layer: HTMLElement; scroll: HTMLElement | null; dim: HTMLElement | null };
 
-function useEdgeSwipeBack({ enabled, onBack }: { enabled: boolean; onBack: () => void }) {
+function useEdgeSwipeBack({ enabled, onBack, attach = "element" }: {
+  enabled: boolean;
+  onBack: () => void;
+  /** 手势监听挂在哪：
+   *  - "element"（默认）：只接管 ref 容器的触摸，容器必须铺满可视区（App 级 main 就是）；
+   *  - "document"：整屏接管。报表页的 .report-page 只有内容那么高（洞察详情仅 ~378px），
+   *    下方留白与左边缘 11px 内边距都属于 main 不属于它——触摸只会向上冒泡、不会向下钻进
+   *    子元素，所以挂在自己的容器上时，从屏幕左下角/最左边起手右滑永远收不到事件，
+   *    表现为「短子页右滑无法返回」。 */
+  attach?: "element" | "document";
+}) {
   const ref = useRef<HTMLElement | null>(null);
   /** 要被整体平移的内容层：调用方把它包住当前视图，动画才有「整页跟着走」的效果 */
   const trackRef = useRef<HTMLElement | null>(null);
@@ -2037,8 +2047,13 @@ function useEdgeSwipeBack({ enabled, onBack }: { enabled: boolean; onBack: () =>
   };
 
   useEffect(() => {
-    const el = ref.current;
-    if (!el || !enabled) return;
+    // attach=document 时整屏接管；否则只接管 ref 容器（容器需铺满可视区）
+    const host: EventTarget | null = attach === "document" ? document : ref.current;
+    if (!host || !enabled) return;
+    const on = (type: string, handler: (event: TouchEvent) => void, options?: AddEventListenerOptions) =>
+      host.addEventListener(type, handler as EventListener, options);
+    const off = (type: string, handler: (event: TouchEvent) => void) =>
+      host.removeEventListener(type, handler as EventListener);
     const { EDGE, START, RATIO, THRESHOLD, MAX, COMMIT, CANCEL, DIM } = EDGE_SWIPE;
     const reset = () => {
       const s = stateRef.current;
@@ -2183,19 +2198,19 @@ function useEdgeSwipeBack({ enabled, onBack }: { enabled: boolean; onBack: () =>
       }
       reset();
     };
-    el.addEventListener("touchstart", onStart, { passive: true });
-    el.addEventListener("touchmove", onMove, { passive: false });
-    el.addEventListener("touchend", onEnd);
-    el.addEventListener("touchcancel", onEnd);
+    on("touchstart", onStart, { passive: true });
+    on("touchmove", onMove, { passive: false });
+    on("touchend", onEnd);
+    on("touchcancel", onEnd);
     return () => {
-      el.removeEventListener("touchstart", onStart);
-      el.removeEventListener("touchmove", onMove);
-      el.removeEventListener("touchend", onEnd);
-      el.removeEventListener("touchcancel", onEnd);
+      off("touchstart", onStart);
+      off("touchmove", onMove);
+      off("touchend", onEnd);
+      off("touchcancel", onEnd);
       reset();
       clearPreview();
     };
-  }, [enabled]);
+  }, [enabled, attach]);
   return { ref, hintX, trackRef, previewRef, captureSnapshot };
 }
 
@@ -3056,7 +3071,9 @@ function TransactionDetailDrawer({ transaction, accounts, categories, onClose, o
     { label: "时间", value: transactionDateTimeLabel(transaction.occurredAt) },
     { label: "商户", value: transaction.merchant || "未填写" },
     { label: "备注", value: transaction.note || "未填写" },
-    { label: "标签", value: transaction.tags.length > 0 ? transaction.tags.join("、") : "无" },
+    // tags 是后加的字段：早期本地库/Excel 导入的行可能没有它，直接 .length 会让整个详情
+    // 抽屉抛 TypeError（React 渲染期异常 = 白屏），这里兜住
+    { label: "标签", value: (transaction.tags ?? []).length > 0 ? transaction.tags.join("、") : "无" },
     { label: "来源", value: "未记录来源" },
     { label: "更新时间", value: transactionDateTimeLabel(transaction.updatedAt) }
   ];
@@ -4478,7 +4495,9 @@ type AnalysisFinding = {
 type ReportSubPage =
   | { kind: "insightDetail"; id: string }
   | { kind: "anomalyDetail"; id: string }
-  | { kind: "categoryDetail"; id: string };
+  /** scope 区分口径：daily=日常消费（分类签），special=专项支出（专项签）。
+   *  两者交易集合完全不同，占比分母也不同，别混用。缺省按日常处理（兼容旧调用）。 */
+  | { kind: "categoryDetail"; id: string; scope?: "daily" | "special" };
 
 /** 报表模块签（顶部横向滑动选择，参考随手记） */
 type ReportTabId = "basic" | "category" | "trend" | "pace" | "regular" | "big" | "special" | "insights" | "anomalies";
@@ -4571,8 +4590,10 @@ function Reports({ transactions, accounts, categories, budgets, analysisNotes, o
   const reportSub = reportSubStack.length > 0 ? reportSubStack[reportSubStack.length - 1] : null;
   const popReportSub = () => setReportSubStack((stack) => stack.slice(0, -1));
   const [detailTransaction, setDetailTransaction] = useState<Transaction | null>(null);
-  // 报表详情：从左边缘右滑返回（iOS 风格）
-  const reportSwipe = useEdgeSwipeBack({ enabled: reportSub !== null && detailTransaction === null, onBack: popReportSub });
+  // 报表详情：从左边缘右滑返回（iOS 风格）。
+  // 监听挂 document 而不是 .report-page：容器只有内容那么高，短子页（核心洞察仅 ~378px）
+  // 下方留白与左侧 11px 内边距都在容器外，触摸收不到 → 那些位置右滑会「点了没反应」。
+  const reportSwipe = useEdgeSwipeBack({ enabled: reportSub !== null && detailTransaction === null, onBack: popReportSub, attach: "document" });
   const pushReportSub = (page: ReportSubPage) => {
     reportSwipe.captureSnapshot(); // 进子页前抓上一层快照，返回手势时从左边缘露出
     setReportSubStack((stack) => [...stack, page]);
@@ -4995,11 +5016,14 @@ function Reports({ transactions, accounts, categories, budgets, analysisNotes, o
   const activeFinding = reportSub?.kind === "anomalyDetail"
     ? monthlyAnalysis.findings.find((finding) => finding.id === reportSub.id)
     : undefined;
+  const activeCategoryScope: "daily" | "special" = reportSub?.kind === "categoryDetail" ? reportSub.scope ?? "daily" : "daily";
   const activeCategory = reportSub?.kind === "categoryDetail"
-    ? categoryData.find((entry) => entry.id === reportSub.id)
+    ? (activeCategoryScope === "special" ? specialCategoryData : categoryData).find((entry) => entry.id === reportSub.id)
     : undefined;
+  const activeCategorySource = activeCategoryScope === "special" ? specialReportTransactions : dailyReportTransactions;
+  const activeCategoryTotal = activeCategoryScope === "special" ? specialSummary.expenseCents : periodSummary.expenseCents;
   const activeCategoryTransactions = activeCategory
-    ? dailyReportTransactions
+    ? activeCategorySource
       .filter((item) => activeCategory.id === "uncategorized" ? !item.categoryId : item.categoryId === activeCategory.id)
       .sort((left, right) => right.occurredAt.localeCompare(left.occurredAt))
     : [];
@@ -5010,7 +5034,10 @@ function Reports({ transactions, accounts, categories, budgets, analysisNotes, o
       case "anomalyDetail":
         return { title: activeFinding?.title ?? "异常详情", subtitle: activeFinding?.value ?? periodLabel };
       case "categoryDetail":
-        return { title: activeCategory?.name ?? "分类流水", subtitle: `${periodLabel} · ${activeCategoryTransactions.length} 笔明细` };
+        return {
+          title: activeCategory?.name ?? (activeCategoryScope === "special" ? "专项流水" : "分类流水"),
+          subtitle: `${periodLabel} · ${activeCategoryScope === "special" ? "专项支出 · " : ""}${activeCategoryTransactions.length} 笔明细`
+        };
       default:
         return { title: "", subtitle: "" };
     }
@@ -5030,7 +5057,12 @@ function Reports({ transactions, accounts, categories, budgets, analysisNotes, o
     enabled: reportSub === null && detailTransaction === null,
     count: visibleReportTabs.length,
     index: activeReportTabIndex,
-    onChange: (next) => switchReportTab(visibleReportTabs[next].id)
+    onChange: (next) => switchReportTab(visibleReportTabs[next].id),
+    // 进/出子页时 .tab-swipe-body 与轨道整个卸载重建（reportSub 三元切换），而
+    // activeReportTabIndex 没变 → 归位/高度 effect 的依赖不变、不会重跑，新节点上既没有
+    // transform 也没有高度：返回后停在第 0 页（末尾几签直接空白）。用子页开关当 resetKey
+    // 逼它重跑一次。改这里前先看 useTabSwipe 里 resetKey 的注释。
+    resetKey: reportSub === null ? 1 : 0
   });
 
   return (
@@ -5106,14 +5138,14 @@ function Reports({ transactions, accounts, categories, budgets, analysisNotes, o
             <>
               <div className="panel report-category-summary">
                 <div className="report-category-summary-main">
-                  <span>{periodLabel} · 日常消费</span>
+                  <span>{periodLabel} · {activeCategoryScope === "special" ? "专项支出" : "日常消费"}</span>
                   <strong className="report-category-summary-title">
                     <CategoryIcon icon={activeCategory.icon} size={16} />
                     {activeCategory.name}
                   </strong>
                   <em>
                     {activeCategoryTransactions.length} 笔 · ¥{centsToYuan(activeCategory.value)}
-                    {periodSummary.expenseCents > 0 ? ` · 占 ${Math.round((activeCategory.value / periodSummary.expenseCents) * 100)}%` : ""}
+                    {activeCategoryTotal > 0 ? ` · 占 ${Math.round((activeCategory.value / activeCategoryTotal) * 100)}%` : ""}
                   </em>
                 </div>
               </div>
@@ -5296,15 +5328,22 @@ function Reports({ transactions, accounts, categories, budgets, analysisNotes, o
               {specialCategoryData.length > 0 ? (
                 <div className="special-expense-grid">
                   {specialCategoryData.map((entry) => (
-                    <div className="budget-line special-expense-line" key={entry.id}>
+                    <button
+                      type="button"
+                      className="budget-line special-expense-line"
+                      key={entry.id}
+                      onClick={() => pushReportSub({ kind: "categoryDetail", id: entry.id, scope: "special" })}
+                    >
                       <span className="special-expense-name">
                         <CategoryIcon icon={entry.icon} size={14} />
                         {entry.name}
                       </span>
                       <strong>¥{centsToYuan(entry.value)}</strong>
+                      <ChevronRight size={14} className="report-row-chevron" />
                       <div className="bar"><i style={{ width: `${Math.max(3, Math.round((entry.value / Math.max(1, specialSummary.expenseCents)) * 100))}%` }} /></div>
-                    </div>
+                    </button>
                   ))}
+                  <p className="report-category-hint">点击专项分类查看本期流水明细</p>
                 </div>
               ) : (
                 <p className="empty">本期暂无专项支出（贷款、保险、教育等会单独统计）</p>

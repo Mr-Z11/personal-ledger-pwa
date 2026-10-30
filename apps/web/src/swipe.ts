@@ -58,8 +58,6 @@ export function useTabSwipe({ enabled, count, index, onChange, resetKey }: {
    *  溢出的是轨道而不是被撑宽），所以一页 = 100% 而不是 100/count %——
    *  后者位移只有 1/count，表现出来就是「切过去了但停在半路」。 */
   const pageShift = (i: number) => -i * 100;
-  /** 最近一次写入的位移串：用来在外部改变当前签时判断是否需要归位（避免打断手势动画） */
-  const shiftRef = useRef("");
 
   const apply = (shift: string, duration: number | null, ease: string = SETTLE_EASE) => {
     const track = trackRef.current;
@@ -68,7 +66,6 @@ export function useTabSwipe({ enabled, count, index, onChange, resetKey }: {
     // SWIPE_EASE 快弹——两条曲线不同，别写死成一个
     track.style.transition = duration === null ? "none" : `transform ${duration}ms ${ease}`;
     track.style.transform = `translateX(${shift})`;
-    shiftRef.current = shift;
   };
 
   /** 外部（点模块签）切换时调用：相邻一页才做位移动画 */
@@ -90,8 +87,14 @@ export function useTabSwipe({ enabled, count, index, onChange, resetKey }: {
     const body = bodyRef.current;
     if (!body) return undefined;
     const target = `${pageShift(index)}%`;
-    // 手势提交 / 点击切签已经把轨道放到目标位置了，这里再写一遍会打断过渡动画
-    if (shiftRef.current !== target) apply(target, null);
+    // 手势提交 / 点击切签已经把轨道放到目标位置了，这里再写一遍会打断过渡动画。
+    // 判据必须比对 **DOM 上的实际 inline transform**，不能只记「上次写了什么」：
+    // 容器被卸载重建后（报表进子页时 .tab-swipe-body/.tab-swipe-track 整个换新节点）
+    // 新节点上没有任何 transform，记忆值还是旧的，会被误判成「已在目标位置」而跳过归位。
+    // 表现：从子页返回后轨道停在第 0 页——开头几签看起来「返回到了别的模块」，
+    // 末尾几签（核心洞察/异常分析）因为第 0 页压根没渲染 → 整页一片空白。
+    const track = trackRef.current;
+    if (track && track.style.transform !== `translateX(${target})`) apply(target, null);
     const page = body.querySelector<HTMLElement>(`.tab-swipe-page[data-page="${index}"]`);
     if (!page) return undefined;
     const sync = () => {
