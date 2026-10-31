@@ -4615,9 +4615,13 @@ function Reports({ transactions, accounts, categories, budgets, analysisNotes, o
    *  也没有回调**，我们只能在事后发现「它已经不在记忆值上了」。既然如此，就别猜引擎
    *  什么时候动手——子页期间低频补扫，读数一偏就写回记忆值；返回后再多守 900ms，
    *  盖住「变可见之后的那一两次布局」。100ms 一次比对（相等就什么都不做）成本可忽略。 */
-  const stripGuardRef = useRef<{ want: number; interval: number; timeout: number }>({ want: 0, interval: 0, timeout: 0 });
+  const stripGuardRef = useRef<{ want: number; raf: number; interval: number; timeout: number }>({ want: 0, raf: 0, interval: 0, timeout: 0 });
   const stopStripGuard = useCallback(() => {
     const guard = stripGuardRef.current;
+    if (guard.raf) {
+      cancelAnimationFrame(guard.raf);
+      guard.raf = 0;
+    }
     if (guard.interval) {
       window.clearInterval(guard.interval);
       guard.interval = 0;
@@ -4643,7 +4647,19 @@ function Reports({ transactions, accounts, categories, budgets, analysisNotes, o
       strip.style.scrollBehavior = "";
     };
     apply();
-    guard.interval = window.setInterval(apply, 100);
+    if (holdMs > 0) {
+      // 返回后窗口：rAF 高频（每帧 ≈16ms）而非 setInterval(100)。真实 iOS 会在层变可见时
+      // 重置签条滚动容器的 scrollLeft，setInterval 的 100ms 窗口足够让用户看见「从右边弹回中间」；
+      // rAF 把可见窗口压到单帧，且每帧检测——iOS 一旦重置，下一帧立刻写回记忆值。
+      const loop = () => {
+        apply();
+        guard.raf = requestAnimationFrame(loop);
+      };
+      guard.raf = requestAnimationFrame(loop);
+    } else {
+      // 子页期间（隐藏，慢点无所谓）：100ms 补扫维持记忆值，省去 rAF 常驻开销
+      guard.interval = window.setInterval(apply, 100);
+    }
     if (holdMs > 0) guard.timeout = window.setTimeout(stopStripGuard, holdMs);
   }, [stopStripGuard]);
 

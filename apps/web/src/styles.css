@@ -2402,6 +2402,13 @@ button.settings-section {
   opacity: 0;
   pointer-events: none;
 }
+/* 停靠期间不让签条成为「滚动容器」：iOS 会在祖先可见性变化时重置滚动容器的
+   scrollLeft（即用户看到的「标题从右边弹回中间」）。设 overflow-x:hidden 后 iOS
+   不再管理它的偏移，DOM 里保留进入子页时的居中值；返回时（parked 去掉、恢复
+   overflow-x:auto）记忆值不会被重置，因此无弹回。A 侧（rAF 高频看守）作兜底。 */
+.report-list-layer.parked .page-tabs {
+  overflow-x: hidden;
+}
 
 .tab-swipe-body {
   min-width: 0;
