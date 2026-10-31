@@ -6289,6 +6289,73 @@ button.insight-card {
   border-top: 1px dashed #e5dcc8;
 }
 
+/* 今日还可花：抬头数字 + 对账明细（限额 / 已花 / 还剩几天）。
+   用户 2026-10-31 反馈「今日还可花、剩几天、今日限额三个数似乎对不上」——真因是
+   剩余天数用了不含今天的口径，而今日限额的分母含今天。口径统一后，再把
+   「今日限额 − 今日已花 = 今日还可花」摆成一张小对账单，让用户能自己验算。
+   内部一律用 em，跟着 .reservoir-foot 的断点字号（0.74/0.66/0.6rem）自动缩放。 */
+.reservoir-today {
+  display: flex;
+  flex-direction: column;
+  gap: 0.34em;
+}
+
+.reservoir-today-main {
+  display: flex;
+  align-items: baseline;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: 0.3em;
+}
+
+.reservoir-today-main > span {
+  font-size: 1em;
+  color: #6b7568;
+}
+
+.reservoir-today-main > strong {
+  font-size: 1.5em;
+  font-weight: 700;
+  color: #1f5f74;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.01em;
+}
+
+.reservoir-card.over .reservoir-today-main > strong {
+  color: #c0392b;
+}
+
+/* 对账明细：左标签、右数值；tabular-nums 让 ¥ / 小数点上下对齐 */
+.reservoir-today-detail {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  column-gap: 0.5em;
+  row-gap: 0.08em;
+  margin: 0;
+  padding-top: 0.3em;
+  border-top: 1px dashed #ece3d0;
+}
+
+.reservoir-today-detail dt {
+  text-align: left;
+  color: #9a9a8c;
+  white-space: nowrap;
+}
+
+.reservoir-today-detail dd {
+  margin: 0;
+  text-align: right;
+  color: #5c6b60;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+/* 「?」说明气泡在窄卡里要压得住，但仍要留够点击面积——只调对齐，不缩尺寸 */
+.reservoir-today-main .info-tip {
+  align-self: center;
+  margin-left: 0.05em;
+}
+
 /* ------------------------------------------------------------------ */
 /* 工资日横幅                                                          */
 /* ------------------------------------------------------------------ */

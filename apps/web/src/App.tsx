@@ -203,6 +203,8 @@ import {
   SearchView,
   TrendFocusCards,
   dailyLimitAlertTriggered,
+  dailyLimitBreakdown,
+  type DailyLimitBreakdown,
   dailyLimitCents,
   dismissSalaryBannerForToday,
   InfoTip,
@@ -843,10 +845,12 @@ export function App() {
     [activeTransactions, activeCategories]
   );
   const monthBudgetCents = useMemo(() => monthBudgetTotal(activeBudgets, currentMonth), [activeBudgets, currentMonth]);
-  const todayLimitCents = useMemo(
-    () => dailyLimitCents(activeBudgets, activeTransactions, activeCategories, currentMonth),
+  /** 今日限额 + 它的算式成分（展示层要把「怎么算出来的」摆出来，见 Overview 卡片页脚） */
+  const todayLimitBreakdown = useMemo(
+    () => dailyLimitBreakdown(activeBudgets, activeTransactions, activeCategories, currentMonth),
     [activeBudgets, activeTransactions, activeCategories, currentMonth]
   );
+  const todayLimitCents = todayLimitBreakdown?.limitCents ?? 0;
   const todayRemainingCents = monthBudgetCents > 0 ? todayLimitCents - todaySpentCents : null;
   const dailyLimitHit = dailyLimitAlertTriggered(dailyLimitSettings, todaySpentCents, todayLimitCents);
   const dailyLimitOver = dailyLimitHit && todaySpentCents > todayLimitCents;
@@ -1498,6 +1502,7 @@ export function App() {
             onOpenPlanBuy={() => pushSub({ kind: "planBuy" })}
             todayLimitCents={todayLimitCents}
             todaySpentCents={todaySpentCents}
+            todayLimitBreakdown={todayLimitBreakdown}
           />
         )}
         {view === "entry" && (
@@ -1630,7 +1635,7 @@ function AuthScreen({ onAuth }: { onAuth: (result: Awaited<ReturnType<typeof api
   );
 }
 
-function Overview({ summary, budgetCents, totalBudgetCents, categories, transactions, plannedPurchases, todayLimitCents, todaySpentCents, onOpenFixedExpenses, onOpenPlanBuy }: {
+function Overview({ summary, budgetCents, totalBudgetCents, categories, transactions, plannedPurchases, todayLimitCents, todaySpentCents, todayLimitBreakdown, onOpenFixedExpenses, onOpenPlanBuy }: {
   summary: { incomeCents: number; expenseCents: number; netCents: number };
   budgetCents: number;
   totalBudgetCents: number;
@@ -1639,6 +1644,7 @@ function Overview({ summary, budgetCents, totalBudgetCents, categories, transact
   plannedPurchases: PlannedPurchase[];
   todayLimitCents: number;
   todaySpentCents: number;
+  todayLimitBreakdown: DailyLimitBreakdown | null;
   /** 进入「本月固定支出」二级子模块 */
   onOpenFixedExpenses: () => void;
   /** 进入「计划购买」二级子模块 */
@@ -1693,6 +1699,7 @@ function Overview({ summary, budgetCents, totalBudgetCents, categories, transact
           accent="#1f5f74"
           todayLimitCents={todayLimitCents}
           todaySpentCents={todaySpentCents}
+          todayLimitBreakdown={todayLimitBreakdown}
         />
         <BudgetReservoir
           title="总开支额度"

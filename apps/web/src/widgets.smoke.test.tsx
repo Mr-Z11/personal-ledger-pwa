@@ -13,6 +13,7 @@ import {
   TrendFocusCards,
   DEFAULT_SALARY_SETTINGS,
   buildFixedExpenseSuggestions,
+  dailyLimitBreakdown,
   dailyLimitCents,
   loadSalarySettings,
   aggregateByPeriod,
@@ -278,6 +279,53 @@ describe("常规项支出与规划页", () => {
       // 昨日消费计入剩余预算，限额变小
       expect(limitWithYesterdaySpend).toBeLessThan(limitNoSpend);
     }
+  });
+
+  it("dailyLimitBreakdown 的分辨率口径可自洽：限额 × 含今天天数 ≈ 预算 − 截至昨日", () => {
+    const month = monthKey();
+    const budgets: Budget[] = [{ ...stamp, id: "b-daily", month, categoryId: null, amountCents: yuanToCents(6000), scope: "daily" }];
+    const breakdown = dailyLimitBreakdown(budgets, sampleTransactions, categories, month);
+    expect(breakdown).not.toBeNull();
+    if (!breakdown) return;
+    // 分子的减法关系必须成立（用户在卡上就是按这个减）
+    expect(breakdown.baseCents).toBe(breakdown.budgetCents - breakdown.spentThroughYesterdayCents);
+    // 分母含今天：至少 1 天，且不超过当月天数
+    expect(breakdown.daysIncluded).toBeGreaterThanOrEqual(1);
+    expect(breakdown.daysIncluded).toBeLessThanOrEqual(31);
+    // 限额就是分子除分母（四舍五入），且与旧的单一返回值同源
+    expect(breakdown.limitCents).toBe(Math.round(breakdown.baseCents / breakdown.daysIncluded));
+    expect(dailyLimitCents(budgets, sampleTransactions, categories, month)).toBe(breakdown.limitCents);
+  });
+
+  it("BudgetReservoir 页脚把「限额 − 已花 = 还可花」摆成对账明细", () => {
+    const html = renderToString(
+      <BudgetReservoir
+        title="日常消费额度"
+        spentCents={yuanToCents(5417.5)}
+        budgetCents={yuanToCents(6000)}
+        accent="#1f5f74"
+        todayLimitCents={yuanToCents(660)}
+        todaySpentCents={yuanToCents(77.5)}
+        todayLimitBreakdown={{
+          budgetCents: yuanToCents(6000),
+          spentThroughYesterdayCents: yuanToCents(5340),
+          baseCents: yuanToCents(660),
+          daysIncluded: 1,
+          limitCents: yuanToCents(660)
+        }}
+      />
+    );
+    // 三个数字都在，且差额正好对得上（用户 2026-10-31 反馈「三个数对不上」）
+    // renderToString 会在相邻文本节点间插 <!-- --> 注释，先抹掉再比对金额
+    const flat = html.replace(/<!-- -->/g, "");
+    expect(flat).toContain("今日还可花");
+    expect(flat).toContain("¥582.50");
+    expect(flat).toContain("今日限额");
+    expect(flat).toContain("¥660.00");
+    expect(flat).toContain("今日已花");
+    expect(flat).toContain("¥77.50");
+    // 剩余天数的标签必须带「含今天」，与限额分母同口径
+    expect(flat).toContain("含今天还剩");
   });
 });
 

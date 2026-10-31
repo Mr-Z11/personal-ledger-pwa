@@ -336,15 +336,18 @@ export function LocalSalaryReminderPanel({ value, onChange }: {
 const WAVE_PATH_A = "M -200 8 Q -175 -2 -150 8 T -100 8 T -50 8 T 0 8 T 50 8 T 100 8 T 150 8 T 200 8 L 200 260 L -200 260 Z";
 const WAVE_PATH_B = "M -200 10 Q -180 0 -160 10 T -120 10 T -80 10 T -40 10 T 0 10 T 40 10 T 80 10 T 120 10 T 160 10 T 200 10 L 200 260 L -200 260 Z";
 
-export function BudgetReservoir({ title, note, spentCents, budgetCents, accent, todayLimitCents, todaySpentCents }: {
+export function BudgetReservoir({ title, note, spentCents, budgetCents, accent, todayLimitCents, todaySpentCents, todayLimitBreakdown }: {
   title: string;
   note?: string;
   spentCents: number;
   budgetCents: number;
   accent: string;
-  /** 今日动态限额（日常消费预算专用）：传入后在页脚显示「今日限额 / 今日还可花」 */
+  /** 今日动态限额（日常消费预算专用）：传入后在页脚显示「今日还可花 / 今日限额 / 还剩几天」 */
   todayLimitCents?: number;
   todaySpentCents?: number;
+  /** 今日限额的算式成分（可选）：传入后页脚会把「限额怎么来的」写成一句人话，
+   *  否则用户按「本月剩余 ÷ 剩余天数」怎么算都对不上（分子扣的是截至昨日，不是含今天）。 */
+  todayLimitBreakdown?: DailyLimitBreakdown | null;
 }) {
   const clipId = useId();
   const ratio = budgetCents > 0 ? spentCents / budgetCents : 0;
@@ -352,9 +355,13 @@ export function BudgetReservoir({ title, note, spentCents, budgetCents, accent, 
   const over = budgetCents > 0 && spentCents > budgetCents;
   const today = Number(beijingDateTimeParts().day);
   const totalDays = daysInMonth(monthKey());
-  // 按实际日历数剩余天数（不含今天——今天的额度由「今日限额」单独管理）；
-  // daysInMonth 取当月真实天数（2 月 28/29、小月 30、大月 31），非写死 30
-  const daysLeft = Math.max(1, totalDays - today);
+  // 剩余天数**含今天**：今天也要花钱，所以「还剩几天」和今日限额的分母必须是同一个口径。
+  // 之前这里用的是 `totalDays - today`（不含今天，即「以后每天」），而今日限额用的是
+  // `- today + 1`（含今天），两个口径摆在一行里，用户按「剩余 ÷ 天数」永远对不上
+  // （用户 2026-10-31 反馈）。
+  // 有 breakdown 时**直接用它算出来的分母**，保证「含今天还剩 N 天」与说明气泡里的
+  // 「÷ 含今天还剩 N 天」永远是同一个数——两处各算一遍迟早会漂。
+  const daysLeft = todayLimitBreakdown?.daysIncluded ?? Math.max(1, totalDays - today + 1);
   const remainingCents = Math.max(0, budgetCents - spentCents);
   const allowanceCents = budgetCents > 0 ? Math.round(remainingCents / daysLeft) : 0;
   const waterY = 224 - (fillPct / 100) * 210;
@@ -415,17 +422,42 @@ export function BudgetReservoir({ title, note, spentCents, budgetCents, accent, 
       </div>
       <footer className="reservoir-foot">
         {over ? (
-          <span>已超支，剩余 {daysLeft} 天需控制消费才能回到线内</span>
+          <span>已超支，含今天还剩 {daysLeft} 天需控制消费才能回到线内</span>
         ) : todayLimitCents != null && todaySpentCents != null && todayLimitCents > 0 ? (
-          <span>
-            今日限额 ¥{centsToYuan(todayLimitCents)} ·{" "}
-            {todaySpentCents > todayLimitCents
-              ? `今日已超限额 ¥${centsToYuan(todaySpentCents - todayLimitCents)}`
-              : `今日还可花 ¥${centsToYuan(todayLimitCents - todaySpentCents)}`}{" "}
-            · 剩 {daysLeft} 天
-          </span>
+          /* 三个数字按用户能验算的顺序摆：主数字 → 明细（限额 / 已花 / 剩余天数）。
+             之前是一行「今日限额 ¥A · 今日还可花 ¥B · 剩 N 天」，N 用的是不含今天的口径，
+             而 A 的分母含今天，用户怎么算都对不上（用户 2026-10-31 反馈）。
+             现在「限额 − 已花 = 还可花」上下对齐，一眼能对上账。 */
+          <div className="reservoir-today">
+            <div className="reservoir-today-main">
+              <span>{todaySpentCents > todayLimitCents ? "今日已超" : "今日还可花"}</span>
+              <strong>
+                ¥{centsToYuan(todaySpentCents > todayLimitCents ? todaySpentCents - todayLimitCents : todayLimitCents - todaySpentCents)}
+              </strong>
+              {todayLimitBreakdown && (
+                <InfoTip
+                  text={
+                    <>
+                      今日限额 =（本月日常预算 ¥{centsToYuan(todayLimitBreakdown.budgetCents)} − 截至昨日已花 ¥
+                      {centsToYuan(todayLimitBreakdown.spentThroughYesterdayCents)}）÷ 含今天还剩 {todayLimitBreakdown.daysIncluded} 天
+                      = ¥{centsToYuan(todayLimitBreakdown.limitCents)}。
+                      今天已经花掉的钱只从今天扣，不再摊到后面几天，所以今日限额会比「本月剩余 ÷ 剩余天数」略高——这不是算错。
+                    </>
+                  }
+                />
+              )}
+            </div>
+            <dl className="reservoir-today-detail">
+              <dt>今日限额</dt>
+              <dd>¥{centsToYuan(todayLimitCents)}</dd>
+              <dt>今日已花</dt>
+              <dd>¥{centsToYuan(todaySpentCents)}</dd>
+              <dt>含今天还剩</dt>
+              <dd>{daysLeft} 天</dd>
+            </dl>
+          </div>
         ) : (
-          <span>剩余 ¥{centsToYuan(remainingCents)} · {daysLeft} 天 · 每天还可花 ¥{centsToYuan(allowanceCents)}</span>
+          <span>本月日常剩余 ¥{centsToYuan(remainingCents)} · 含今天还剩 {daysLeft} 天 · 每天还可花 ¥{centsToYuan(allowanceCents)}</span>
         )}
       </footer>
     </article>
@@ -1663,23 +1695,51 @@ export function saveDailyLimitAlertSettings(settings: DailyLimitAlertSettings) {
   localStorage.setItem(DAILY_LIMIT_ALERT_KEY, JSON.stringify(settings));
 }
 
+/** 今日动态日限额的**完整算式成分**：展示层要用它把「这个数字怎么来的」直接摆给用户看，
+ *  否则「今日限额 / 今日还可花 / 还剩几天」三个数用户怎么算都对不上
+ *  （用户 2026-10-31 反馈：数字似乎对不上，希望用便于理解的方式呈现）。 */
+export type DailyLimitBreakdown = {
+  /** 本月日常预算 */
+  budgetCents: number;
+  /** 截至昨日已花（今天的支出不计入，只影响明天及以后） */
+  spentThroughYesterdayCents: number;
+  /** 今日限额的分子 = 预算 − 截至昨日已花 */
+  baseCents: number;
+  /** 分母：**含今天在内**的剩余天数 */
+  daysIncluded: number;
+  /** 今日限额 = baseCents ÷ daysIncluded */
+  limitCents: number;
+};
+
 /** 今日动态日限额：当月日常预算减去「截至昨日」的累计支出，再除以「含今日在内的剩余天数」。
- * 当日消费不影响当日限额（只影响次日及以后），多花/少花自动滚动到后面天数。未设预算返回 0。 */
-export function dailyLimitCents(budgets: Budget[], transactions: Transaction[], categories: Category[], month: string): number {
+ * 当日消费不影响当日限额（只影响次日及以后），多花/少花自动滚动到后面天数。未设预算返回 null。 */
+export function dailyLimitBreakdown(budgets: Budget[], transactions: Transaction[], categories: Category[], month: string): DailyLimitBreakdown | null {
   const monthBudget = monthBudgetTotal(budgets, month);
-  if (monthBudget <= 0) return 0;
+  if (monthBudget <= 0) return null;
   const today = Number(beijingDateTimeParts().day);
   const totalDays = daysInMonth(month);
-  const daysLeft = Math.max(1, totalDays - today + 1);
-  const spentThroughYesterday = dailyExpenseTransactions(transactions, categories)
+  // 分母**含今天**：今天这一天也要花钱。旧的不含今天口径（totalDays - today）是
+  // 「以后每天还能花多少」，和「今日限额」摆在同一行时，用户按「剩余 ÷ 天数」永远对不上。
+  const daysIncluded = Math.max(1, totalDays - today + 1);
+  const spentThroughYesterdayCents = dailyExpenseTransactions(transactions, categories)
     .filter((item) => {
       const key = dateKey(item.occurredAt);
       if (!key.startsWith(month)) return false;
       return Number(key.slice(8, 10)) < today;
     })
     .reduce((sum, item) => sum + item.amountCents, 0);
-  const remaining = Math.max(0, monthBudget - spentThroughYesterday);
-  return Math.round(remaining / daysLeft);
+  const baseCents = Math.max(0, monthBudget - spentThroughYesterdayCents);
+  return {
+    budgetCents: monthBudget,
+    spentThroughYesterdayCents,
+    baseCents,
+    daysIncluded,
+    limitCents: Math.round(baseCents / daysIncluded)
+  };
+}
+
+export function dailyLimitCents(budgets: Budget[], transactions: Transaction[], categories: Category[], month: string): number {
+  return dailyLimitBreakdown(budgets, transactions, categories, month)?.limitCents ?? 0;
 }
 
 /** 今日日常消费合计（不含贷款/保险/教育等专项） */
