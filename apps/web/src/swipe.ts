@@ -188,16 +188,19 @@ export function useTabSwipe({ enabled, count, index, onChange, resetKey, stripRe
     return () => observer.disconnect();
   }, [index, count, resetKey]);
 
-  /** .tab-swipe-body 只是裁剪容器（overflow:hidden），本不该被滚动。但点击页内按钮时
-   *  浏览器会把获得焦点的元素滚进可视区，连带把它横向滚开一段（实测 12px）→ 当前页
-   *  左偏、右邻页在右边露出一条边（就是早先「切换的页面只有一半」那种观感）。
-   *  以前容器每进一次子页就重建、偏移被顺手抹掉所以没暴露；列表层改成常驻（不卸载）
-   *  之后偏移会一直留着，必须显式钉住。 */
+  /** .tab-swipe-body 只是裁剪容器，本不该被滚动。但 `overflow:hidden` 的元素**仍是滚动容器**，
+   *  浏览器会把获得焦点的元素滚进可视区，于是它会被横向（实测 12px）或**纵向**滚开一段：
+   *  横向 → 当前页左偏、右邻页在右边缘露出一条边（早先「页面只有一半」那类观感）；
+   *  纵向 → 整块内容在容器里上下滑一下（用户 2026-10-31 第四轮「返回时有个回到该标题的
+   *  动作」的真凶：轨道比容器高 300+px，纵向余量足够滑）。
+   *  首选机制层的 `overflow: clip`（见 styles.css，clip 不创建滚动容器、根本没法被滚）；
+   *  这里给没有 `@supports` 的旧 Safari 兜底，**两轴都要钉**——只钉横向等于没修。 */
   useEffect(() => {
     const el = bodyRef.current;
     if (!el) return undefined;
     const pin = () => {
       if (el.scrollLeft !== 0) el.scrollLeft = 0;
+      if (el.scrollTop !== 0) el.scrollTop = 0;
     };
     pin();
     el.addEventListener("scroll", pin, { passive: true });

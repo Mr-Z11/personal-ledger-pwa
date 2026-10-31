@@ -2406,6 +2406,22 @@ button.settings-section {
   transition: height 600ms cubic-bezier(.37, .25, .63, 1);
 }
 
+/* **不要让 .tab-swipe-body 成为滚动容器**。
+   overflow:hidden 的元素**仍是真滚动容器**——实测 `scrollTop=40 / scrollLeft=24` 都写得进去，
+   而轨道比容器高（当前页 149px、右邻页 462px → 纵向余量 313px），于是「把获得焦点的元素
+   滚进可视区」这类浏览器自身行为（点行、返回后取消隐藏都算）会把它纵向滚开一段，
+   表现出来就是**整块内容在容器里上下滑一下**——用户 2026-10-31 第四轮反馈的
+   「返回时有个回到该标题的动作」就是它（Chromium 里点行时焦点滚动落在 window 上，
+   所以只在真机复现；一旦写进去，Chromium 也拦得住）。
+   overflow:clip **不创建滚动容器**（与 html/body 用 overflow-x:clip 修 iOS sticky 同一套路），
+   从机制上让任何来源的滚动都不可能发生；旧浏览器仍走 hidden，靠 useTabSwipe 的
+   scroll 监听把两轴钉回 0 兜底。这里没有 sticky 后代，可以放心 clip。 */
+@supports (overflow: clip) {
+  .tab-swipe-body {
+    overflow: clip;
+  }
+}
+
 .tab-swipe-track {
   display: flex;
   align-items: flex-start;
@@ -3434,6 +3450,12 @@ button.settings-section {
   display: flex;
   flex-direction: column;
   gap: 0.6rem;
+  /* 关掉滚动锚定：进出子页时文档高度会变（列表停靠 → 子页决定高度），
+     浏览器会「挑一个锚点元素、把它的位置钉住」而自行改动 scrollY，
+     正好和我们返回时写回的滚动位置打架（WebKit 尤其爱这么干）。
+     报表页的滚动位置由我们自己负责（pushReportSub 记忆 / 返回时写回），
+     所以整块区域不参与锚定。 */
+  overflow-anchor: none;
 }
 
 .report-page .panel {

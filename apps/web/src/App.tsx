@@ -4599,12 +4599,14 @@ function Reports({ transactions, accounts, categories, budgets, analysisNotes, o
   const [selectedTotalTrendIndex, setSelectedTotalTrendIndex] = useState<number | null>(null);
   const [reportSubStack, setReportSubStack] = useState<ReportSubPage[]>([]);
   const reportSub = reportSubStack.length > 0 ? reportSubStack[reportSubStack.length - 1] : null;
-  /** 每进一层子页记一次「进来时的滚动位置」，返回时原样还回去。
+  /** 每进一层子页记一次「进来时的滚动量」，返回时原样还回去。
    *  子页比列表短，浏览器在子页渲染时就把 scrollY 夹到顶了；不还回去的话，
    *  用户划到列表中部点开明细、返回后会停在列表顶部——就是「重新定位到点击前的过程」那一下。
+   *  签条的横向位置也一起记：iOS 会把**隐藏起来的滚动容器**的偏移量丢掉（停靠层是
+   *  visibility:hidden），光靠 useTabSwipe 在返回时写一次不够稳。
    *  和 reportSubStack 同步 push/pop，栈深一致才能一一对应。 */
-  const reportScrollMemo = useRef<number[]>([]);
-  const pendingReportScroll = useRef<number | null>(null);
+  const reportScrollMemo = useRef<{ y: number; strip: number }[]>([]);
+  const pendingReportScroll = useRef<{ y: number; strip: number } | null>(null);
   const popReportSub = useCallback(() => {
     const memo = reportScrollMemo.current;
     pendingReportScroll.current = memo.length > 0 ? (memo.pop() ?? null) : null;
@@ -4617,7 +4619,11 @@ function Reports({ transactions, accounts, categories, budgets, analysisNotes, o
   const reportSwipe = useEdgeSwipeBack({ enabled: reportSub !== null && detailTransaction === null, onBack: popReportSub, attach: "document" });
   const pushReportSub = (page: ReportSubPage) => {
     reportSwipe.captureSnapshot(); // 进子页前抓上一层快照，返回手势时从左边缘露出
-    reportScrollMemo.current.push(window.scrollY);
+    reportScrollMemo.current.push({ y: window.scrollY, strip: reportTabsRef.current?.scrollLeft ?? 0 });
+    // 主动收焦点：被点的行按钮如果一直带着焦点，等停靠层重新可见时 iOS 会把它
+    // 「滚进可视区」——那就是一次用户没要求的画面移动（返回时的「动作」来源之一）。
+    const active = document.activeElement as HTMLElement | null;
+    if (active && active !== document.body) active.blur();
     setReportSubStack((stack) => [...stack, page]);
   };
   const [reportTab, setReportTab] = useState<ReportTabId>("basic");
@@ -5118,20 +5124,44 @@ function Reports({ transactions, accounts, categories, budgets, analysisNotes, o
     stripRef: reportTabsRef
   });
 
-  /** 返回列表时把滚动位置原样还回去。
+  /** 返回列表时把滚动量与签条位置原样还回去。
    *  子页比列表短，子页一渲染浏览器就把 scrollY 夹到了 0；不还回去的话，划到列表中段
    *  点开明细、返回会停在列表顶部，用户看到的就是「重新定位到点击前状态」的过程。
    *  必须排在 useTabSwipe 之后：列表高度是它负责写回的，高度还没写就滚会被夹到 0。
-   *  用 layout effect 在**绘制前**完成，用户看不到滚动本身；behavior 显式写 instant，
-   *  避免任何浏览器把这次定位当成平滑滚动播出来（那就是用户说的「恢复的动作」）。 */
+   *  用 layout effect 在**绘制前**完成，用户看不到滚动本身。
+   *  两个细节都是给 iOS 的：① 用 `scrollTo(0, y)` 两参数形式，不碰 ScrollToOptions 的
+   *  behavior 枚举（各引擎对 "instant" 的支持不一致）；② 再连补两帧——iOS 的滚动位置
+   *  由 UI 进程持有，紧接文档高度变化的写入有概率被它自己的夹取覆盖掉（Chromium 从不丢，
+   *  桌面测不出来），补帧只在「真的偏了」时才写，且全程瞬时，不会产生任何平滑过程。 */
   useLayoutEffect(() => {
-    if (reportSub !== null) return;
+    if (reportSub !== null) return undefined;
     const target = pendingReportScroll.current;
-    if (target === null) return;
+    if (target === null) return undefined;
     pendingReportScroll.current = null;
-    if (Math.abs(window.scrollY - target) > 1) {
-      window.scrollTo({ top: target, left: 0, behavior: "instant" as ScrollBehavior });
-    }
+    const apply = () => {
+      if (Math.abs(window.scrollY - target.y) > 1) {
+        window.scrollTo(0, target.y);
+        const scroller = document.scrollingElement ?? document.documentElement;
+        if (Math.abs(scroller.scrollTop - target.y) > 1) scroller.scrollTop = target.y;
+      }
+      const strip = reportTabsRef.current;
+      if (strip && Math.abs(strip.scrollLeft - target.strip) > 1) {
+        // 内联 auto 兜底：万一某处给它设了 smooth，这里也不能让「归位」变成一次滚动动画
+        strip.style.scrollBehavior = "auto";
+        strip.scrollLeft = target.strip;
+        strip.style.scrollBehavior = "";
+      }
+    };
+    apply();
+    let second = 0;
+    const first = requestAnimationFrame(() => {
+      apply();
+      second = requestAnimationFrame(apply);
+    });
+    return () => {
+      cancelAnimationFrame(first);
+      cancelAnimationFrame(second);
+    };
   }, [reportSub]);
 
   return (

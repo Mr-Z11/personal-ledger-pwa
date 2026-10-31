@@ -1,4 +1,5 @@
 import { renderToString } from "react-dom/server";
+import { readFileSync } from "node:fs";
 import { beforeAll, describe, expect, it } from "vitest";
 import { yuanToCents, monthKey, type Account, type Budget, type Category, type Transaction } from "@ledger/shared";
 import {
@@ -574,6 +575,26 @@ describe("现有分类自动补图标（inferCategoryIcon）", () => {
     expect(isPlaceholderCategoryIcon("")).toBe(true);
     expect(isPlaceholderCategoryIcon(null)).toBe(true);
     expect(isPlaceholderCategoryIcon("utensils")).toBe(false);
+  });
+});
+
+describe("样式不变式：.tab-swipe-body 不能是滚动容器", () => {
+  // 背景（2026-10-31 第四轮）：overflow:hidden 的元素**仍是真滚动容器**，
+  // scrollTop/scrollLeft 都写得进去；而这里的轨道比容器高（当前页 149px、右邻页 462px，
+  // 纵向余量 300+px），于是「把获得焦点的元素滚进可视区」会让整块内容在容器里滑一下——
+  // 真机上就是「返回时有个回到该标题的动作」。改法是 @supports 下用 overflow:clip
+  // （clip 不创建滚动容器，从机制上滚不动）。这条断言防止有人把它删回 hidden。
+  const css = readFileSync(new URL("./styles.css", import.meta.url), "utf8");
+
+  it("存在 @supports (overflow: clip) 的 .tab-swipe-body 覆盖", () => {
+    // 注意正则要**贴着**匹配那一块：不能用 `[\s\S]*?` 跨文件懒匹配，否则会从写在前面的
+    // html/body 同名 @supports 一路吞到后面去的 overflow:clip（第一版就是这么写成假断言的，
+    // 删掉规则照样通过——负对照抓出来的）。
+    expect(css).toMatch(/@supports \(overflow: clip\)\s*\{\s*\.tab-swipe-body\s*\{\s*overflow:\s*clip;?\s*\}\s*\}/);
+  });
+
+  it(".tab-swipe-body 的基础规则仍然是 hidden（旧浏览器兜底，别被误删）", () => {
+    expect(css).toMatch(/\.tab-swipe-body\s*\{[^}]*overflow:\s*hidden/);
   });
 });
 
