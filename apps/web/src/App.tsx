@@ -5115,13 +5115,16 @@ function Reports({ transactions, accounts, categories, budgets, analysisNotes, o
    *  子页比列表短，子页一渲染浏览器就把 scrollY 夹到了 0；不还回去的话，划到列表中段
    *  点开明细、返回会停在列表顶部，用户看到的就是「重新定位到点击前状态」的过程。
    *  必须排在 useTabSwipe 之后：列表高度是它负责写回的，高度还没写就滚会被夹到 0。
-   *  用 layout effect 在**绘制前**完成，用户看不到滚动本身。 */
+   *  用 layout effect 在**绘制前**完成，用户看不到滚动本身；behavior 显式写 instant，
+   *  避免任何浏览器把这次定位当成平滑滚动播出来（那就是用户说的「恢复的动作」）。 */
   useLayoutEffect(() => {
     if (reportSub !== null) return;
     const target = pendingReportScroll.current;
     if (target === null) return;
     pendingReportScroll.current = null;
-    if (Math.abs(window.scrollY - target) > 1) window.scrollTo(0, target);
+    if (Math.abs(window.scrollY - target) > 1) {
+      window.scrollTo({ top: target, left: 0, behavior: "instant" as ScrollBehavior });
+    }
   }, [reportSub]);
 
   return (

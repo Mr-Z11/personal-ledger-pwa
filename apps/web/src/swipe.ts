@@ -120,18 +120,30 @@ export function useTabSwipe({ enabled, count, index, onChange, resetKey, stripRe
    *  首次写入不过渡：刚进页面容器是 auto 高（= 已渲染页里最高的那位），直接过渡会看到
    *  内容区莫名收缩一下；之后的写入（切签 / 内容增减）才走 CSS 的 400ms 柔和收敛。 */
   const heightInited = useRef(false);
-  /** 上一次用的视口节点：用**节点身份**识别「容器刚被重建」（报表从子页返回、月↔年切签数）。
-   *  比记 resetKey 值可靠——进子页时容器整个卸载、effect 在 `!body` 处提前返回，
-   *  记忆里还留着进子页前的值，返回后一比较「没变」就漏判（这正是「返回后从左滚回
-   *  当前签」那条恢复动画的成因，用户 2026-10-31 反馈）。重建后签条是全新节点、
-   *  scrollLeft 从 0 起，必须**瞬时**摆到当前签，不能 smooth。 */
+  /** 上一次用的视口节点：用**节点身份**识别「容器刚被重建」。
+   *  注意：报表页改成「列表层停靠不卸载」之后**不再重建**，这个判据恒为 false，
+   *  所以它不能是唯一判据——必须同时看 `resetKey` 是否变化（见下）。 */
   const lastBodyRef = useRef<HTMLDivElement | null>(null);
+  /** 上一次的 resetKey（调用方用「是否在子页」或「月/年」当它）：
+   *  它一变就说明页面**换了层级**（进/出子页、月↔年切签数），这种时候一切都要
+   *  **瞬时到位**，不能有任何过渡/平滑滚动——否则用户就会看到「恢复到点击前状态」
+   *  的过程（用户 2026-10-31 连三轮反馈的就是这个）。 */
+  const lastResetKeyRef = useRef<number | undefined>(undefined);
+  /** 瞬时抑制窗口的截止时间戳：resetKey 变化后的一小段时间内，连 ResizeObserver
+   *  引起的高度写入也一律瞬时。真机上字体加载/图表二次布局会让内容高度在首帧之后
+   *  再变一次，那一次如果走 600ms 过渡，看起来就是「内容在慢慢恢复」。 */
+  const instantUntilRef = useRef(0);
   // 用 layout effect：重建后要在**绘制前**就把位移/高度/签条摆好，否则会闪一帧「第 0 页 + 签条在最左」
   useLayoutEffect(() => {
     const body = bodyRef.current;
     if (!body) return undefined;
     const rebuilt = lastBodyRef.current !== body;
     lastBodyRef.current = body;
+    const resetChanged = lastResetKeyRef.current !== resetKey;
+    lastResetKeyRef.current = resetKey;
+    /** 本次 effect 里的所有写入是否必须瞬时（不留任何动画） */
+    const instant = rebuilt || resetChanged;
+    if (instant) instantUntilRef.current = performance.now() + 400;
     const target = `${pageShift(index)}%`;
     // 手势提交 / 点击切签已经把轨道放到目标位置了，这里再写一遍会打断过渡动画。
     // 判据必须比对 **DOM 上的实际 inline transform**，不能只记「上次写了什么」：
@@ -141,19 +153,22 @@ export function useTabSwipe({ enabled, count, index, onChange, resetKey, stripRe
     // 末尾几签（核心洞察/异常分析）因为第 0 页压根没渲染 → 整页一片空白。
     const track = trackRef.current;
     if (track && track.style.transform !== `translateX(${target})`) apply(target, null);
-    // 签条归位：重建时必须瞬时（否则看到滚动过程），正常切签才平滑
-    followStripRef.current(index, !rebuilt);
+    // 签条归位：**换层级（进出子页 / 月年切换）必须瞬时**——之前用 `!rebuilt` 当判据，
+    // 列表层改成常驻不卸载后 rebuilt 恒为 false → 返回时又变成 smooth，签条会自己滚一下
+    // （真机上签条居中点会因字体/宽度微差而不同，差 1px 就触发；headless 里恰好相等被
+    // 提前 return，所以测不出来）。正常切签仍走 smooth，别打断 snapTo 启动的滚动。
+    followStripRef.current(index, !instant);
     const page = body.querySelector<HTMLElement>(`.tab-swipe-page[data-page="${index}"]`);
     if (!page) return undefined;
-    /** 只让「重建后的第一次写入」瞬时，之后的 ResizeObserver 回调照旧过渡
-     *  （否则这一签里展开/收起内容也会失去柔和收敛） */
-    let forceInstant = rebuilt;
+    /** 高度写入是否必须瞬时：进/出子页、月年切换期间一律瞬时；正常切签才走 CSS 过渡
+     *  （切到矮页时容器柔和收敛）。切签时只让**第一次**写入过渡，之后同一签内
+     *  展开/收起内容引起的高度变化照旧过渡。 */
+    let allowTransition = !instant;
+    const mustBeInstant = () => instant || performance.now() < instantUntilRef.current;
     const sync = () => {
       const next = `${page.offsetHeight}px`;
       if (body.style.height === next) return;
-      // 重建后的首次写入同样不能过渡（body 是新节点、高度从 0/auto 起，过渡会看到高度伸缩）
-      if (!heightInited.current || forceInstant) {
-        forceInstant = false;
+      if (!heightInited.current || mustBeInstant() || !allowTransition) {
         heightInited.current = true;
         body.style.transition = "none";
         body.style.height = next;
@@ -161,6 +176,7 @@ export function useTabSwipe({ enabled, count, index, onChange, resetKey, stripRe
         body.style.transition = "";
         return;
       }
+      allowTransition = false;
       body.style.height = next;
     };
     sync();
