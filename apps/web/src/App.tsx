@@ -4609,7 +4609,16 @@ function Reports({ transactions, accounts, categories, budgets, analysisNotes, o
   const pendingReportScroll = useRef<{ y: number; strip: number } | null>(null);
   const popReportSub = useCallback(() => {
     const memo = reportScrollMemo.current;
-    pendingReportScroll.current = memo.length > 0 ? (memo.pop() ?? null) : null;
+    const target = memo.length > 0 ? (memo.pop() ?? null) : null;
+    pendingReportScroll.current = target;
+    // **趁停靠层还藏着，先把签条摆回原处**。iOS 会把「隐藏起来的滚动容器」的偏移量丢掉，
+    // 若等到 setState 之后（层已经可见）再写，用户会先看到错一帧的签条、下一帧才被摆正，
+    // 那就是「返回时标题位置动了一下」。这里写在 setState 之前：此刻还没重渲染，
+    // 层仍是 parked，写完再让它可见——第一次被看见时位置就已经是对的。
+    const strip = reportTabsRef.current;
+    if (target && strip && Math.abs(strip.scrollLeft - target.strip) > 0.5) {
+      strip.scrollLeft = target.strip;
+    }
     setReportSubStack((stack) => stack.slice(0, -1));
   }, []);
   const [detailTransaction, setDetailTransaction] = useState<Transaction | null>(null);
@@ -5124,15 +5133,17 @@ function Reports({ transactions, accounts, categories, budgets, analysisNotes, o
     stripRef: reportTabsRef
   });
 
-  /** 返回列表时把滚动量与签条位置原样还回去。
+  /** 返回列表时把滚动量与签条位置**原样**还回去（用户要求：标题原来在哪个位置，返回后还在哪）。
    *  子页比列表短，子页一渲染浏览器就把 scrollY 夹到了 0；不还回去的话，划到列表中段
    *  点开明细、返回会停在列表顶部，用户看到的就是「重新定位到点击前状态」的过程。
    *  必须排在 useTabSwipe 之后：列表高度是它负责写回的，高度还没写就滚会被夹到 0。
    *  用 layout effect 在**绘制前**完成，用户看不到滚动本身。
-   *  两个细节都是给 iOS 的：① 用 `scrollTo(0, y)` 两参数形式，不碰 ScrollToOptions 的
-   *  behavior 枚举（各引擎对 "instant" 的支持不一致）；② 再连补两帧——iOS 的滚动位置
-   *  由 UI 进程持有，紧接文档高度变化的写入有概率被它自己的夹取覆盖掉（Chromium 从不丢，
-   *  桌面测不出来），补帧只在「真的偏了」时才写，且全程瞬时，不会产生任何平滑过程。 */
+   *  三个细节都是给 iOS 的：① 用 `scrollTo(0, y)` 两参数形式，不碰 ScrollToOptions 的
+   *  behavior 枚举（各引擎对 "instant" 的支持不一致）；② 签条只写**记忆值**、绝不用
+   *  「当下几何重新算居中」——重算会有几像素偏差，那就是「标题位置动了一下」；
+   *  ③ 再连补三帧——iOS 的滚动位置由 UI 进程持有，写入有概率被它自己的夹取覆盖掉
+   *  （Chromium 从不丢，桌面测不出来）；补帧只在「真的偏了」时才写，且全程瞬时，
+   *  不会产生任何平滑过程。 */
   useLayoutEffect(() => {
     if (reportSub !== null) return undefined;
     const target = pendingReportScroll.current;
@@ -5145,7 +5156,8 @@ function Reports({ transactions, accounts, categories, budgets, analysisNotes, o
         if (Math.abs(scroller.scrollTop - target.y) > 1) scroller.scrollTop = target.y;
       }
       const strip = reportTabsRef.current;
-      if (strip && Math.abs(strip.scrollLeft - target.strip) > 1) {
+      // 阈值 0.5：与 followStripRef 内部一致。差几像素也算「动了」，必须写回记忆值
+      if (strip && Math.abs(strip.scrollLeft - target.strip) > 0.5) {
         // 内联 auto 兜底：万一某处给它设了 smooth，这里也不能让「归位」变成一次滚动动画
         strip.style.scrollBehavior = "auto";
         strip.scrollLeft = target.strip;
@@ -5153,15 +5165,15 @@ function Reports({ transactions, accounts, categories, budgets, analysisNotes, o
       }
     };
     apply();
-    let second = 0;
-    const first = requestAnimationFrame(() => {
+    let handle = 0;
+    let frames = 0;
+    const tick = () => {
       apply();
-      second = requestAnimationFrame(apply);
-    });
-    return () => {
-      cancelAnimationFrame(first);
-      cancelAnimationFrame(second);
+      frames += 1;
+      if (frames < 3) handle = requestAnimationFrame(tick);
     };
+    handle = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(handle);
   }, [reportSub]);
 
   return (
@@ -5294,7 +5306,11 @@ function Reports({ transactions, accounts, categories, budgets, analysisNotes, o
           )}
         </>
       )}
-      <div className={`report-list-layer${reportSub !== null ? " parked" : ""}`} aria-hidden={reportSub !== null}>
+      <div
+        className={`report-list-layer${reportSub !== null ? " parked" : ""}`}
+        aria-hidden={reportSub !== null}
+        inert={reportSub !== null}
+      >
           <nav className="page-tabs" aria-label="报表模块" ref={reportTabsRef}>
             {visibleReportTabs.map((tab) => (
               <button

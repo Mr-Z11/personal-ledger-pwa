@@ -129,6 +129,12 @@ export function useTabSwipe({ enabled, count, index, onChange, resetKey, stripRe
    *  **瞬时到位**，不能有任何过渡/平滑滚动——否则用户就会看到「恢复到点击前状态」
    *  的过程（用户 2026-10-31 连三轮反馈的就是这个）。 */
   const lastResetKeyRef = useRef<number | undefined>(undefined);
+  /** 上一次的签号 / 签数：用来区分「真的换签了」和「只是进出子页」。
+   *  进出子页时签条位置由停靠层原样保留（见 .report-list-layer.parked），**不该重新居中**：
+   *  重新居中 = 用当下的几何重新算一遍目标，真机上字体/宽度微差会让它跟原位置差几像素，
+   *  表现出来就是「返回时标题位置动了一下」（用户 2026-10-31 第五轮）。 */
+  const lastIndexRef = useRef<number | undefined>(undefined);
+  const lastCountRef = useRef<number | undefined>(undefined);
   /** 瞬时抑制窗口的截止时间戳：resetKey 变化后的一小段时间内，连 ResizeObserver
    *  引起的高度写入也一律瞬时。真机上字体加载/图表二次布局会让内容高度在首帧之后
    *  再变一次，那一次如果走 600ms 过渡，看起来就是「内容在慢慢恢复」。 */
@@ -153,11 +159,16 @@ export function useTabSwipe({ enabled, count, index, onChange, resetKey, stripRe
     // 末尾几签（核心洞察/异常分析）因为第 0 页压根没渲染 → 整页一片空白。
     const track = trackRef.current;
     if (track && track.style.transform !== `translateX(${target})`) apply(target, null);
-    // 签条归位：**换层级（进出子页 / 月年切换）必须瞬时**——之前用 `!rebuilt` 当判据，
-    // 列表层改成常驻不卸载后 rebuilt 恒为 false → 返回时又变成 smooth，签条会自己滚一下
-    // （真机上签条居中点会因字体/宽度微差而不同，差 1px 就触发；headless 里恰好相等被
-    // 提前 return，所以测不出来）。正常切签仍走 smooth，别打断 snapTo 启动的滚动。
-    followStripRef.current(index, !instant);
+    // 签条归位：**只有「真的换签了」才动签条**。
+    // ① 进出子页（index/count 都没变）→ 一根手指都不碰：停靠层把 scrollLeft 原样留着，
+    //    重新居中反而会用当下几何算出几像素的偏差，于是「返回时标题位置动了一下」；
+    // ② 换签 / 月年切换（index 或 count 变了）→ 照旧，换层级期间一律瞬时（别用 smooth：
+    //    以前用 `!rebuilt` 当判据，列表层改成常驻后恒为 false → 返回时又变 smooth，
+    //    签条会自己滚一下）；正常点签/滑动切签走 smooth，别打断 snapTo 启动的滚动。
+    const stripNeedsReflow = lastIndexRef.current !== index || lastCountRef.current !== count;
+    lastIndexRef.current = index;
+    lastCountRef.current = count;
+    if (stripNeedsReflow) followStripRef.current(index, !instant);
     const page = body.querySelector<HTMLElement>(`.tab-swipe-page[data-page="${index}"]`);
     if (!page) return undefined;
     /** 高度写入是否必须瞬时：进/出子页、月年切换期间一律瞬时；正常切签才走 CSS 过渡

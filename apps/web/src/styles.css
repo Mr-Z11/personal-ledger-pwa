@@ -2387,16 +2387,19 @@ button.settings-section {
    之前用三元切换把列表整块卸载重建，返回时签条 scrollLeft、轨道位移、内容高度全部
    从零开始，要靠 JS 一个个摆回去——真机上就会看到一段「重新定位到点击前状态」的过程
    （用户 2026-10-31 连续两轮反馈）。停靠方案：absolute 脱离文档流（文档高度改由子页
-   决定），visibility:hidden **保留布局**，所以内部几何量（签条 scrollLeft、轨道
-   transform、.tab-swipe-body 的 inline 高度）原封不动；返回时只需去掉 class，
-   页面就是点击前的那一页，不需要恢复任何东西。
-   注意：必须用 visibility 而不是 display——display:none 会让这些几何量归零，等于回到卸载。 */
+   决定），但内部几何量（签条 scrollLeft、轨道 transform、.tab-swipe-body 的 inline 高度）
+   原封不动；返回时只需去掉 class，页面就是点击前的那一页。
+   **为什么用 opacity 而不是 visibility 隐藏**（2026-10-31 第五轮）：visibility:hidden
+   会让 iOS 丢掉内部滚动容器的偏移量（签条 scrollLeft 归零），等层重新可见时才补写就
+   晚了一帧——用户看到的就是「返回时标题位置动了一下」。opacity:0 只是画成全透明，
+   元素在引擎眼里始终「可见」，没有理由动它的滚动位置。配套 inert（禁聚焦）+ pointer-events。
+   注意：不能退回 display:none——那会让几何量归零，等于回到「卸载重建」。 */
 .report-list-layer.parked {
   position: absolute;
   top: 0;
   left: 0;
   right: 0;
-  visibility: hidden;
+  opacity: 0;
   pointer-events: none;
 }
 
