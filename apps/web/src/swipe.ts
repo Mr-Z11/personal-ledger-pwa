@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef } from "react";
 
 /** iOS 默认的减速/弹性曲线（cubic-bezier(.32,.72,0,1)），松手后的滑入/回弹都用它 */
 export const SWIPE_EASE = "cubic-bezier(.32,.72,0,1)";
@@ -120,9 +120,18 @@ export function useTabSwipe({ enabled, count, index, onChange, resetKey, stripRe
    *  首次写入不过渡：刚进页面容器是 auto 高（= 已渲染页里最高的那位），直接过渡会看到
    *  内容区莫名收缩一下；之后的写入（切签 / 内容增减）才走 CSS 的 400ms 柔和收敛。 */
   const heightInited = useRef(false);
-  useEffect(() => {
+  /** 上一次用的视口节点：用**节点身份**识别「容器刚被重建」（报表从子页返回、月↔年切签数）。
+   *  比记 resetKey 值可靠——进子页时容器整个卸载、effect 在 `!body` 处提前返回，
+   *  记忆里还留着进子页前的值，返回后一比较「没变」就漏判（这正是「返回后从左滚回
+   *  当前签」那条恢复动画的成因，用户 2026-10-31 反馈）。重建后签条是全新节点、
+   *  scrollLeft 从 0 起，必须**瞬时**摆到当前签，不能 smooth。 */
+  const lastBodyRef = useRef<HTMLDivElement | null>(null);
+  // 用 layout effect：重建后要在**绘制前**就把位移/高度/签条摆好，否则会闪一帧「第 0 页 + 签条在最左」
+  useLayoutEffect(() => {
     const body = bodyRef.current;
     if (!body) return undefined;
+    const rebuilt = lastBodyRef.current !== body;
+    lastBodyRef.current = body;
     const target = `${pageShift(index)}%`;
     // 手势提交 / 点击切签已经把轨道放到目标位置了，这里再写一遍会打断过渡动画。
     // 判据必须比对 **DOM 上的实际 inline transform**，不能只记「上次写了什么」：
@@ -132,14 +141,19 @@ export function useTabSwipe({ enabled, count, index, onChange, resetKey, stripRe
     // 末尾几签（核心洞察/异常分析）因为第 0 页压根没渲染 → 整页一片空白。
     const track = trackRef.current;
     if (track && track.style.transform !== `translateX(${target})`) apply(target, null);
-    // 签条也归位到当前签（容器重建/月年切换 9↔5 签后签条是新节点、scrollLeft 从 0 起）
-    followStripRef.current(index, true);
+    // 签条归位：重建时必须瞬时（否则看到滚动过程），正常切签才平滑
+    followStripRef.current(index, !rebuilt);
     const page = body.querySelector<HTMLElement>(`.tab-swipe-page[data-page="${index}"]`);
     if (!page) return undefined;
+    /** 只让「重建后的第一次写入」瞬时，之后的 ResizeObserver 回调照旧过渡
+     *  （否则这一签里展开/收起内容也会失去柔和收敛） */
+    let forceInstant = rebuilt;
     const sync = () => {
       const next = `${page.offsetHeight}px`;
       if (body.style.height === next) return;
-      if (!heightInited.current) {
+      // 重建后的首次写入同样不能过渡（body 是新节点、高度从 0/auto 起，过渡会看到高度伸缩）
+      if (!heightInited.current || forceInstant) {
+        forceInstant = false;
         heightInited.current = true;
         body.style.transition = "none";
         body.style.height = next;

@@ -149,7 +149,7 @@ import {
   X,
   Zap
 } from "lucide-react";
-import { Fragment, useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
+import { Fragment, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import { api } from "./api";
 import { getApiBase, setApiBase, getDefaultApiBase } from "./api";
 import { clearOutbox, db, enqueue, readOutboxPayload, resetLocalData, saveSnapshot } from "./db";
@@ -4592,7 +4592,17 @@ function Reports({ transactions, accounts, categories, budgets, analysisNotes, o
   const [selectedTotalTrendIndex, setSelectedTotalTrendIndex] = useState<number | null>(null);
   const [reportSubStack, setReportSubStack] = useState<ReportSubPage[]>([]);
   const reportSub = reportSubStack.length > 0 ? reportSubStack[reportSubStack.length - 1] : null;
-  const popReportSub = () => setReportSubStack((stack) => stack.slice(0, -1));
+  /** 每进一层子页记一次「进来时的滚动位置」，返回时原样还回去。
+   *  子页比列表短，浏览器在子页渲染时就把 scrollY 夹到顶了；不还回去的话，
+   *  用户划到列表中部点开明细、返回后会停在列表顶部——就是「重新定位到点击前的过程」那一下。
+   *  和 reportSubStack 同步 push/pop，栈深一致才能一一对应。 */
+  const reportScrollMemo = useRef<number[]>([]);
+  const pendingReportScroll = useRef<number | null>(null);
+  const popReportSub = useCallback(() => {
+    const memo = reportScrollMemo.current;
+    pendingReportScroll.current = memo.length > 0 ? (memo.pop() ?? null) : null;
+    setReportSubStack((stack) => stack.slice(0, -1));
+  }, []);
   const [detailTransaction, setDetailTransaction] = useState<Transaction | null>(null);
   // 报表详情：从左边缘右滑返回（iOS 风格）。
   // 监听挂 document 而不是 .report-page：容器只有内容那么高，短子页（核心洞察仅 ~378px）
@@ -4600,6 +4610,7 @@ function Reports({ transactions, accounts, categories, budgets, analysisNotes, o
   const reportSwipe = useEdgeSwipeBack({ enabled: reportSub !== null && detailTransaction === null, onBack: popReportSub, attach: "document" });
   const pushReportSub = (page: ReportSubPage) => {
     reportSwipe.captureSnapshot(); // 进子页前抓上一层快照，返回手势时从左边缘露出
+    reportScrollMemo.current.push(window.scrollY);
     setReportSubStack((stack) => [...stack, page]);
   };
   const [reportTab, setReportTab] = useState<ReportTabId>("basic");
@@ -5095,6 +5106,19 @@ function Reports({ transactions, accounts, categories, budgets, analysisNotes, o
     resetKey: reportSub === null ? 1 : 0,
     stripRef: reportTabsRef
   });
+
+  /** 返回列表时把滚动位置原样还回去。
+   *  子页比列表短，子页一渲染浏览器就把 scrollY 夹到了 0；不还回去的话，划到列表中段
+   *  点开明细、返回会停在列表顶部，用户看到的就是「重新定位到点击前状态」的过程。
+   *  必须排在 useTabSwipe 之后：列表高度是它负责写回的，高度还没写就滚会被夹到 0。
+   *  用 layout effect 在**绘制前**完成，用户看不到滚动本身。 */
+  useLayoutEffect(() => {
+    if (reportSub !== null) return;
+    const target = pendingReportScroll.current;
+    if (target === null) return;
+    pendingReportScroll.current = null;
+    if (Math.abs(window.scrollY - target) > 1) window.scrollTo(0, target);
+  }, [reportSub]);
 
   return (
     <section className="report-page" ref={reportSwipe.ref as React.RefObject<HTMLElement>}>
