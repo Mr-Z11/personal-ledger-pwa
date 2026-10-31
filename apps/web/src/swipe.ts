@@ -324,5 +324,5 @@ export function useTabSwipe({ enabled, count, index, onChange, resetKey, stripRe
     };
   }, [enabled, count, resetKey]);
 
-  return { bodyRef, trackRef, snapTo };
+  return { bodyRef, trackRef, snapTo, followStrip: followStripRef };
 }

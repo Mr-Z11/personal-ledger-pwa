@@ -4688,6 +4688,18 @@ function Reports({ transactions, accounts, categories, budgets, analysisNotes, o
   const pushReportSub = (page: ReportSubPage) => {
     reportSwipe.captureSnapshot(); // 进子页前抓上一层快照，返回手势时从左边缘露出
     const strip = reportTabsRef.current;
+    // 进子页前先把签条「钉死」在当前签的居中位置，并打断任何进行中的平滑滚动。
+    // 否则 iOS 会把未播完的平滑滚动在停靠层（opacity:0 / overflow:hidden）隐藏期间挂起，
+    // 等返回变可见时续播——表现就是「返回时签条从右边滑到中间」（用户 2026-10-31 第七轮）。
+    // 这里趁层还可见、写一次居中值，记住的就是「正确居中值」而非动画中途的临时值；
+    // 之后返回原样瞬时还原，绝不会再被续播的动画推一把。
+    if (strip) {
+      strip.style.scrollBehavior = "auto";
+      strip.scrollLeft = strip.scrollLeft; // 强制打断进行中的平滑滚动
+      void strip.offsetWidth; // 强制回流，让打断先生效
+      reportTabSwipe.followStrip.current(activeReportTabIndex, false); // 瞬间摆到居中
+      strip.style.scrollBehavior = "";
+    }
     const stripLeft = strip?.scrollLeft ?? 0;
     reportScrollMemo.current.push({ y: window.scrollY, strip: stripLeft });
     // 从这一刻起签条整体不可见，iOS 可能随时把偏移量丢掉/夹掉——开始看守
