@@ -3512,11 +3512,14 @@ button.settings-section {
 }
 
 /* 内层轨道：flex 排签，用 transform: translateX 把当前签平移到可视区中央。
-   will-change 提示合成器，平移走 GPU 层、不参与滚动容器逻辑。 */
+   平移走 GPU 层、不参与滚动容器逻辑。 */
 .page-tabs-track {
   display: flex;
   gap: 0.05rem;
-  will-change: transform;
+  /* 不要 will-change:transform：它会把轨道常驻为独立合成层，而它在祖先
+     .report-list-layer 切换 opacity:0↔1（进出子页）时 iOS 会重组合成层、首帧偶尔
+     丢一次 transform → 返回时标题（签条）闪一下。平时平移由 useTabSwipe 的 rAF 每帧
+     改写 transform 驱动，不依赖 will-change 也足够顺。 */
 }
 
 .page-tab {
