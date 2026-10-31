@@ -75,8 +75,35 @@ export function useTabSwipe({ enabled, count, index, onChange, resetKey, stripRe
    *  为什么按住 t 而不是 index：拖动过程中内容与手指 1:1 位移，签条若只在落位时跳一次，
    *  就会出现「下面在滑、上面不动」的割裂感（用户 2026-10-30 反馈）。小数索引让签条
    *  与内容同步滑，落位时再平滑滚到整数签。
-   *  用 getBoundingClientRect 求相对签条的居中位置，不依赖 offsetParent（签条是 sticky）。 */
+   *  用 getBoundingClientRect 求相对签条的居中位置，不依赖 offsetParent（签条是 sticky）。
+   *
+   *  ⚠️ 平滑居中必须用**自驱动的 rAF 动画**，绝不能用 `scrollTo({behavior:"smooth"})`：
+   *  iOS Safari 不会因写入 `scrollLeft` 而取消进行中的原生平滑滚动，它会把动画在层被
+   *  隐藏（停靠 opacity:0 / overflow:hidden）期间**挂起**，等返回变可见时**续播**——
+   *  表现就是「返回时签条从右边滑到中间」（用户 2026-10-31 第七轮 iPhone 13 真机复现）。
+   *  rAF 动画由我们完全掌控，进子页前 cancelAnimationFrame 即可彻底掐断，iOS 没有可挂起的
+   *  原生滚动动画，自然无从续播。 */
   const followStripRef = useRef<(t: number, smooth: boolean) => void>(() => undefined);
+  /** 自驱动平滑滚动的动画句柄（唯一真相，cancel 它就能在任何时刻掐断） */
+  const stripAnimRef = useRef<number>(0);
+  const animateStripTo = (to: number, duration: number) => {
+    const strip = stripRef?.current;
+    if (!strip) return;
+    const from = strip.scrollLeft;
+    if (Math.abs(from - to) < 0.5) {
+      strip.scrollLeft = to;
+      return;
+    }
+    const startTs = performance.now();
+    const step = (now: number) => {
+      const p = Math.min(1, (now - startTs) / duration);
+      const e = 1 - (1 - p) * (1 - p); // easeOutQuad：起手快、落位缓，贴合「缓慢放置」手感
+      strip.scrollLeft = from + (to - from) * e;
+      if (p < 1) stripAnimRef.current = requestAnimationFrame(step);
+      else stripAnimRef.current = 0;
+    };
+    stripAnimRef.current = requestAnimationFrame(step);
+  };
   followStripRef.current = (t: number, smooth: boolean) => {
     const strip = stripRef?.current;
     if (!strip || count <= 1) return;
@@ -96,12 +123,17 @@ export function useTabSwipe({ enabled, count, index, onChange, resetKey, stripRe
     };
     const center = centerOf(tabs[lo]) + (centerOf(tabs[hi]) - centerOf(tabs[lo])) * frac;
     const target = Math.max(0, Math.min(maxScroll, center - strip.clientWidth / 2));
+    // 任何一次（无论 smooth 与否）都先掐断正在跑的 rAF 动画，确保「进子页前钉死」能真正停下
+    if (stripAnimRef.current) {
+      cancelAnimationFrame(stripAnimRef.current);
+      stripAnimRef.current = 0;
+    }
     if (!smooth) {
       if (Math.abs(strip.scrollLeft - target) >= 0.5) strip.scrollLeft = target;
       return;
     }
     if (Math.abs(strip.scrollLeft - target) < 1) return;
-    strip.scrollTo({ left: target, behavior: "smooth" });
+    animateStripTo(target, 360);
   };
 
   /** 外部（点模块签）切换时调用：相邻一页才做位移动画 */
