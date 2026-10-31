@@ -4999,6 +4999,10 @@ function Reports({ transactions, accounts, categories, budgets, analysisNotes, o
     }
     setDetailTransaction(null);
     setReportSubStack([]);
+    // 换周期会直接把子页栈清空（不是逐层 pop），滚动位置记忆也要一起清，
+    // 否则残留的旧条目会让下一次返回跳到上一个周期记下的位置
+    reportScrollMemo.current = [];
+    pendingReportScroll.current = null;
     switchReportTab("basic");
   }, [month, period, selectedYear]);
 
