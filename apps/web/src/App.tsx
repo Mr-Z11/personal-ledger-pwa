@@ -5134,7 +5134,9 @@ function Reports({ transactions, accounts, categories, budgets, analysisNotes, o
       </div>
       <div className="view-track report-view-track" ref={reportSwipe.trackRef as React.RefObject<HTMLDivElement>}>
       {reportToolbar}
-      {reportSub ? (
+      {/* 子页：列表层不卸载，只是「停靠」隐藏（见下方 .report-list-layer），
+          返回时签条/轨道/内容高度都还是原值，不需要任何重新定位 */}
+      {reportSub && (
         <>
           <div className="report-subpage-head">
             <button type="button" className="back-button" onClick={popReportSub}>
@@ -5251,8 +5253,8 @@ function Reports({ transactions, accounts, categories, budgets, analysisNotes, o
             </>
           )}
         </>
-      ) : (
-        <>
+      )}
+      <div className={`report-list-layer${reportSub !== null ? " parked" : ""}`} aria-hidden={reportSub !== null}>
           <nav className="page-tabs" aria-label="报表模块" ref={reportTabsRef}>
             {visibleReportTabs.map((tab) => (
               <button
@@ -5532,8 +5534,7 @@ function Reports({ transactions, accounts, categories, budgets, analysisNotes, o
               ))}
             </div>
           </div>
-        </>
-      )}
+      </div>
       {detailTransaction && (
         <TransactionDetailDrawer
           transaction={detailTransaction}

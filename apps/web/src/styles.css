@@ -2383,6 +2383,23 @@ button.settings-section {
    注意 ③：高度由 useTabSwipe 的 ResizeObserver 跟随当前页写入，否则会被最高的页撑高。
    注意 ④：height 过渡与 TAB_SWIPE.COMMIT 同长（600ms，SETTLE_EASE 同曲线）——切到矮页时
    容器跟着柔和收敛，不然轨道还在滑、底部先跳一格；改时长两边一起改。 */
+/* 进报表子页时列表层不卸载，只是「停靠」（parked）：
+   之前用三元切换把列表整块卸载重建，返回时签条 scrollLeft、轨道位移、内容高度全部
+   从零开始，要靠 JS 一个个摆回去——真机上就会看到一段「重新定位到点击前状态」的过程
+   （用户 2026-10-31 连续两轮反馈）。停靠方案：absolute 脱离文档流（文档高度改由子页
+   决定），visibility:hidden **保留布局**，所以内部几何量（签条 scrollLeft、轨道
+   transform、.tab-swipe-body 的 inline 高度）原封不动；返回时只需去掉 class，
+   页面就是点击前的那一页，不需要恢复任何东西。
+   注意：必须用 visibility 而不是 display——display:none 会让这些几何量归零，等于回到卸载。 */
+.report-list-layer.parked {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  visibility: hidden;
+  pointer-events: none;
+}
+
 .tab-swipe-body {
   min-width: 0;
   overflow: hidden;

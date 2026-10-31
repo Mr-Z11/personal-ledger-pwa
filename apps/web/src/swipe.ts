@@ -164,11 +164,29 @@ export function useTabSwipe({ enabled, count, index, onChange, resetKey, stripRe
       body.style.height = next;
     };
     sync();
+    // 顺手把横向滚动钉回 0（见下方 pinBodyScroll 的说明）
+    if (body.scrollLeft !== 0) body.scrollLeft = 0;
     if (typeof ResizeObserver === "undefined") return undefined;
     const observer = new ResizeObserver(sync);
     observer.observe(page);
     return () => observer.disconnect();
   }, [index, count, resetKey]);
+
+  /** .tab-swipe-body 只是裁剪容器（overflow:hidden），本不该被滚动。但点击页内按钮时
+   *  浏览器会把获得焦点的元素滚进可视区，连带把它横向滚开一段（实测 12px）→ 当前页
+   *  左偏、右邻页在右边露出一条边（就是早先「切换的页面只有一半」那种观感）。
+   *  以前容器每进一次子页就重建、偏移被顺手抹掉所以没暴露；列表层改成常驻（不卸载）
+   *  之后偏移会一直留着，必须显式钉住。 */
+  useEffect(() => {
+    const el = bodyRef.current;
+    if (!el) return undefined;
+    const pin = () => {
+      if (el.scrollLeft !== 0) el.scrollLeft = 0;
+    };
+    pin();
+    el.addEventListener("scroll", pin, { passive: true });
+    return () => el.removeEventListener("scroll", pin);
+  }, []);
 
   useEffect(() => {
     const el = bodyRef.current;
