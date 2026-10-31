@@ -4607,6 +4607,46 @@ function Reports({ transactions, accounts, categories, budgets, analysisNotes, o
    *  和 reportSubStack 同步 push/pop，栈深一致才能一一对应。 */
   const reportScrollMemo = useRef<{ y: number; strip: number }[]>([]);
   const pendingReportScroll = useRef<{ y: number; strip: number } | null>(null);
+
+  /** 停靠期间的**签条看守**（用户 2026-10-31 第六轮：常规项点明细后标题跑到右边，
+   *  返回时再滚回中间）。
+   *  为什么不能只在进出两个时刻各写一次：iOS 会在祖先不显示（停靠层 opacity:0 +
+   *  position:absolute）时把滚动容器的偏移量丢掉或夹掉，**而丢掉的那一刻既没有事件
+   *  也没有回调**，我们只能在事后发现「它已经不在记忆值上了」。既然如此，就别猜引擎
+   *  什么时候动手——子页期间低频补扫，读数一偏就写回记忆值；返回后再多守 900ms，
+   *  盖住「变可见之后的那一两次布局」。100ms 一次比对（相等就什么都不做）成本可忽略。 */
+  const stripGuardRef = useRef<{ want: number; interval: number; timeout: number }>({ want: 0, interval: 0, timeout: 0 });
+  const stopStripGuard = useCallback(() => {
+    const guard = stripGuardRef.current;
+    if (guard.interval) {
+      window.clearInterval(guard.interval);
+      guard.interval = 0;
+    }
+    if (guard.timeout) {
+      window.clearTimeout(guard.timeout);
+      guard.timeout = 0;
+    }
+  }, []);
+  /** @param holdMs 0 = 一直守到 popReportSub 重新发起为止（子页可能停很久） */
+  const startStripGuard = useCallback((want: number, holdMs: number) => {
+    stopStripGuard();
+    const guard = stripGuardRef.current;
+    guard.want = want;
+    const apply = () => {
+      const strip = reportTabsRef.current;
+      if (!strip) return;
+      // 阈值 0.5 与 followStripRef、还原 effect 保持一致
+      if (Math.abs(strip.scrollLeft - want) <= 0.5) return;
+      // 内联 auto 兜底：让「摆回去」绝不可能被某处的 scroll-behavior:smooth 变成一次滚动
+      strip.style.scrollBehavior = "auto";
+      strip.scrollLeft = want;
+      strip.style.scrollBehavior = "";
+    };
+    apply();
+    guard.interval = window.setInterval(apply, 100);
+    if (holdMs > 0) guard.timeout = window.setTimeout(stopStripGuard, holdMs);
+  }, [stopStripGuard]);
+
   const popReportSub = useCallback(() => {
     const memo = reportScrollMemo.current;
     const target = memo.length > 0 ? (memo.pop() ?? null) : null;
@@ -4619,8 +4659,11 @@ function Reports({ transactions, accounts, categories, budgets, analysisNotes, o
     if (target && strip && Math.abs(strip.scrollLeft - target.strip) > 0.5) {
       strip.scrollLeft = target.strip;
     }
+    // 摆回还不算完：引擎有可能在「变可见」之后的布局里再夹一次，继续守一小段时间
+    if (target) startStripGuard(target.strip, 900);
+    else stopStripGuard();
     setReportSubStack((stack) => stack.slice(0, -1));
-  }, []);
+  }, [startStripGuard, stopStripGuard]);
   const [detailTransaction, setDetailTransaction] = useState<Transaction | null>(null);
   // 报表详情：从左边缘右滑返回（iOS 风格）。
   // 监听挂 document 而不是 .report-page：容器只有内容那么高，短子页（核心洞察仅 ~378px）
@@ -4628,7 +4671,11 @@ function Reports({ transactions, accounts, categories, budgets, analysisNotes, o
   const reportSwipe = useEdgeSwipeBack({ enabled: reportSub !== null && detailTransaction === null, onBack: popReportSub, attach: "document" });
   const pushReportSub = (page: ReportSubPage) => {
     reportSwipe.captureSnapshot(); // 进子页前抓上一层快照，返回手势时从左边缘露出
-    reportScrollMemo.current.push({ y: window.scrollY, strip: reportTabsRef.current?.scrollLeft ?? 0 });
+    const strip = reportTabsRef.current;
+    const stripLeft = strip?.scrollLeft ?? 0;
+    reportScrollMemo.current.push({ y: window.scrollY, strip: stripLeft });
+    // 从这一刻起签条整体不可见，iOS 可能随时把偏移量丢掉/夹掉——开始看守
+    startStripGuard(stripLeft, 0);
     // 主动收焦点：被点的行按钮如果一直带着焦点，等停靠层重新可见时 iOS 会把它
     // 「滚进可视区」——那就是一次用户没要求的画面移动（返回时的「动作」来源之一）。
     const active = document.activeElement as HTMLElement | null;
@@ -5165,6 +5212,8 @@ function Reports({ transactions, accounts, categories, budgets, analysisNotes, o
       }
     };
     apply();
+    // 这里只补 3 帧（~50ms）：这段 apply 顺带写 window.scrollY，补得太久会跟用户的手指抢
+    // 页面纵向滚动。签条不需要靠它补——返回后另有看守（startStripGuard 900ms）在盯。
     let handle = 0;
     let frames = 0;
     const tick = () => {
@@ -5175,6 +5224,22 @@ function Reports({ transactions, accounts, categories, budgets, analysisNotes, o
     handle = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(handle);
   }, [reportSub]);
+
+  /** 用户一动手（点签、横滑内容切签、摸签条、滚轮）就立刻收掉看守：
+   *  看守只该跟引擎抢偏移量，绝不能跟手抢。返回后 900ms 的看守窗口里用户完全可能
+   *  马上横滑切下一签——那时 followStripRef 要平滑滚签条，被看守按住就成了「拉不动」。
+   *  所以监听挂在整页（capture，先于任何业务监听），而不是只挂签条。 */
+  useEffect(() => {
+    const host = reportSwipe.ref.current;
+    if (!host) return undefined;
+    host.addEventListener("pointerdown", stopStripGuard, { capture: true, passive: true });
+    host.addEventListener("wheel", stopStripGuard, { capture: true, passive: true });
+    return () => {
+      host.removeEventListener("pointerdown", stopStripGuard, { capture: true });
+      host.removeEventListener("wheel", stopStripGuard, { capture: true });
+      stopStripGuard();
+    };
+  }, [stopStripGuard, reportSwipe.ref]);
 
   return (
     <section className="report-page" ref={reportSwipe.ref as React.RefObject<HTMLElement>}>
