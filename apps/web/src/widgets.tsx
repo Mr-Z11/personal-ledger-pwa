@@ -1888,7 +1888,11 @@ export function DailyLimitOverlay({ spentCents, limitCents, toleranceCents, onDi
   const reachedOnly = overCents <= 0;
   useEffect(() => {
     document.body.classList.add("daily-limit-lock");
-    return () => document.body.classList.remove("daily-limit-lock");
+    document.documentElement.classList.add("daily-limit-lock");
+    return () => {
+      document.body.classList.remove("daily-limit-lock");
+      document.documentElement.classList.remove("daily-limit-lock");
+    };
   }, []);
   return (
     <div className="daily-limit-overlay" role="alert" aria-live="assertive">

@@ -8376,8 +8376,12 @@ button.insight-card {
 /* 当日限额全屏警告                                                      */
 /* ------------------------------------------------------------------ */
 
+/* 锁定滚动：iOS 上单给 body 设 overflow:hidden 拦不住橡皮筋滚动，固定层会跟着视觉视口
+   一起位移（地址栏收起/展开时整块警示画面跳动）。html 与 body 同时锁 + 禁掉 overscroll。 */
+html.daily-limit-lock,
 body.daily-limit-lock {
   overflow: hidden;
+  overscroll-behavior: none;
 }
 
 .daily-limit-overlay {
@@ -8391,11 +8395,20 @@ body.daily-limit-lock {
   background:
     radial-gradient(circle at 50% 20%, rgba(255, 112, 92, 0.35), transparent 32rem),
     linear-gradient(160deg, #8f1d12 0%, #b3271a 55%, #7a140d 100%);
-  animation: daily-limit-in 0.28s ease-out;
+  /* 只在 fixed 层做透明度淡入：不要把 transform 放到 fixed 元素上——iOS Safari 对
+     「position:fixed + transform」的含入块处理有已知抖动/错位 bug，会让整块警示画面
+     跟着视觉视口（地址栏收起 / 橡皮筋滚动）一起跳。弹性缩放只作用在内部 .daily-limit-card。 */
+  animation: daily-limit-fade 0.24s ease-out;
 }
 
-@keyframes daily-limit-in {
-  from { opacity: 0; transform: scale(1.04); }
+@keyframes daily-limit-fade {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+/* 弹性入场放在内部卡片（非 fixed，transform 安全），避免固定层被 transform 拖入抖动 */
+@keyframes daily-limit-pop {
+  from { opacity: 0; transform: scale(0.96); }
   to { opacity: 1; transform: scale(1); }
 }
 
@@ -8409,6 +8422,8 @@ body.daily-limit-lock {
   border: 1px solid rgba(255, 226, 214, 0.28);
   box-shadow: 0 2rem 5rem rgba(40, 4, 0, 0.5);
   backdrop-filter: blur(6px);
+  /* 弹性缩放只在内部卡片上做（非 fixed，transform 安全）；固定遮罩层只淡入，避免 iOS 抖动 */
+  animation: daily-limit-pop 0.3s cubic-bezier(0.18, 0.92, 0.24, 1.08);
 }
 
 .daily-limit-icon {
