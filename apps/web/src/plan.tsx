@@ -426,6 +426,7 @@ export function PlanView({ transactions, categories, budgets }: {
       </div>
 
       <nav className="page-tabs" aria-label="规划模块" ref={planTabsRef}>
+        <div className="page-tabs-track">
         {PLAN_TABS.map((tab) => (
           <button
             key={tab.id}
@@ -437,6 +438,7 @@ export function PlanView({ transactions, categories, budgets }: {
             {tab.label}
           </button>
         ))}
+        </div>
       </nav>
 
       <div className="tab-swipe-body" ref={planTabSwipe.bodyRef}>
