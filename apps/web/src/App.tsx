@@ -226,7 +226,7 @@ import {
   type SalarySettings
 } from "./widgets";
 import { PlanView } from "./plan";
-import { SWIPE_EASE, useTabSwipe } from "./swipe";
+import { SWIPE_EASE, useTabSwipe, getStripOffset, setStripOffset } from "./swipe";
 
 type View = "overview" | "entry" | "transactions" | "reports" | "plan" | "search" | "settings";
 type LedgerGroupMode = "day" | "month" | "year";
@@ -4602,19 +4602,17 @@ function Reports({ transactions, accounts, categories, budgets, analysisNotes, o
   /** 每进一层子页记一次「进来时的滚动量」，返回时原样还回去。
    *  子页比列表短，浏览器在子页渲染时就把 scrollY 夹到顶了；不还回去的话，
    *  用户划到列表中部点开明细、返回后会停在列表顶部——就是「重新定位到点击前的过程」那一下。
-   *  签条的横向位置也一起记：iOS 会把**隐藏起来的滚动容器**的偏移量丢掉（停靠层是
-   *  visibility:hidden），光靠 useTabSwipe 在返回时写一次不够稳。
-   *  和 reportSubStack 同步 push/pop，栈深一致才能一一对应。 */
+   *  签条的横向位置（内层轨道 transform 的居中偏移量，见 swipe.ts getStripOffset）也一起记：
+   *  返回时原样写回，确保「标题原来在哪、返回后还在哪」。和 reportSubStack 同步 push/pop，
+   *  栈深一致才能一一对应。 */
   const reportScrollMemo = useRef<{ y: number; strip: number }[]>([]);
   const pendingReportScroll = useRef<{ y: number; strip: number } | null>(null);
 
-  /** 停靠期间的**签条看守**（用户 2026-10-31 第六轮：常规项点明细后标题跑到右边，
+  /** 停靠期间的**签条看守**（历史根因：用户 2026-10-31 第六轮常规项点明细后标题跑到右边、
    *  返回时再滚回中间）。
-   *  为什么不能只在进出两个时刻各写一次：iOS 会在祖先不显示（停靠层 opacity:0 +
-   *  position:absolute）时把滚动容器的偏移量丢掉或夹掉，**而丢掉的那一刻既没有事件
-   *  也没有回调**，我们只能在事后发现「它已经不在记忆值上了」。既然如此，就别猜引擎
-   *  什么时候动手——子页期间低频补扫，读数一偏就写回记忆值；返回后再多守 900ms，
-   *  盖住「变可见之后的那一两次布局」。100ms 一次比对（相等就什么都不做）成本可忽略。 */
+   *  现在签条已改为内层轨道 transform 平移（非滚动容器，iOS 无从重置偏移），根因已被机制消灭，
+   *  看守退化为一层无害的安全网：子页期间低频补扫把记忆值原样写回，返回后再多守 900ms
+   *  盖住「变可见之后的那一两次布局」。一旦用户动手（pointerdown/wheel）即撤掉，绝不与手抢。 */
   const stripGuardRef = useRef<{ want: number; raf: number; interval: number; timeout: number }>({ want: 0, raf: 0, interval: 0, timeout: 0 });
   const stopStripGuard = useCallback(() => {
     const guard = stripGuardRef.current;
@@ -4640,17 +4638,15 @@ function Reports({ transactions, accounts, categories, budgets, analysisNotes, o
       const strip = reportTabsRef.current;
       if (!strip) return;
       // 阈值 0.5 与 followStripRef、还原 effect 保持一致
-      if (Math.abs(strip.scrollLeft - want) <= 0.5) return;
-      // 内联 auto 兜底：让「摆回去」绝不可能被某处的 scroll-behavior:smooth 变成一次滚动
-      strip.style.scrollBehavior = "auto";
-      strip.scrollLeft = want;
-      strip.style.scrollBehavior = "";
+      if (Math.abs(getStripOffset(strip) - want) <= 0.5) return;
+      // 内层轨道用 transform 平移（见 swipe.ts getStripOffset/setStripOffset），不是滚动容器，
+      // iOS 无从重置偏移，这里只是把记忆值原样写回
+      setStripOffset(strip, want);
     };
     apply();
     if (holdMs > 0) {
-      // 返回后窗口：rAF 高频（每帧 ≈16ms）而非 setInterval(100)。真实 iOS 会在层变可见时
-      // 重置签条滚动容器的 scrollLeft，setInterval 的 100ms 窗口足够让用户看见「从右边弹回中间」；
-      // rAF 把可见窗口压到单帧，且每帧检测——iOS 一旦重置，下一帧立刻写回记忆值。
+      // 返回后窗口：rAF 高频（每帧 ≈16ms）兜底。签条已非滚动容器、iOS 不会重置偏移，
+      // 这里只是保险——任何意外的布局写回都立刻被覆盖，用户看不到「从右边弹回中间」。
       const loop = () => {
         apply();
         guard.raf = requestAnimationFrame(loop);
@@ -4667,13 +4663,12 @@ function Reports({ transactions, accounts, categories, budgets, analysisNotes, o
     const memo = reportScrollMemo.current;
     const target = memo.length > 0 ? (memo.pop() ?? null) : null;
     pendingReportScroll.current = target;
-    // **趁停靠层还藏着，先把签条摆回原处**。iOS 会把「隐藏起来的滚动容器」的偏移量丢掉，
-    // 若等到 setState 之后（层已经可见）再写，用户会先看到错一帧的签条、下一帧才被摆正，
-    // 那就是「返回时标题位置动了一下」。这里写在 setState 之前：此刻还没重渲染，
-    // 层仍是 parked，写完再让它可见——第一次被看见时位置就已经是对的。
+    // **趁停靠层还藏着，先把签条摆回原处**（transform 平移到记忆偏移量）。写在 setState 之前：
+    // 此刻还没重渲染、层仍是 parked，写完再让它可见——第一次被看见时位置就已经是对的，
+    // 不会闪一帧错位的签条。
     const strip = reportTabsRef.current;
-    if (target && strip && Math.abs(strip.scrollLeft - target.strip) > 0.5) {
-      strip.scrollLeft = target.strip;
+    if (target && strip && Math.abs(getStripOffset(strip) - target.strip) > 0.5) {
+      setStripOffset(strip, target.strip);
     }
     // 摆回还不算完：引擎有可能在「变可见」之后的布局里再夹一次，继续守一小段时间
     if (target) startStripGuard(target.strip, 900);
@@ -4688,19 +4683,14 @@ function Reports({ transactions, accounts, categories, budgets, analysisNotes, o
   const pushReportSub = (page: ReportSubPage) => {
     reportSwipe.captureSnapshot(); // 进子页前抓上一层快照，返回手势时从左边缘露出
     const strip = reportTabsRef.current;
-    // 进子页前先把签条「钉死」在当前签的居中位置，并打断任何进行中的平滑滚动。
-    // 否则 iOS 会把未播完的平滑滚动在停靠层（opacity:0 / overflow:hidden）隐藏期间挂起，
-    // 等返回变可见时续播——表现就是「返回时签条从右边滑到中间」（用户 2026-10-31 第七轮）。
-    // 这里趁层还可见、写一次居中值，记住的就是「正确居中值」而非动画中途的临时值；
-    // 之后返回原样瞬时还原，绝不会再被续播的动画推一把。
-    if (strip) {
-      strip.style.scrollBehavior = "auto";
-      strip.scrollLeft = strip.scrollLeft; // 强制打断进行中的平滑滚动
-      void strip.offsetWidth; // 强制回流，让打断先生效
-      reportTabSwipe.followStrip.current(activeReportTabIndex, false); // 瞬间摆到居中
-      strip.style.scrollBehavior = "";
-    }
-    const stripLeft = strip?.scrollLeft ?? 0;
+    // 进子页前把签条「钉死」在当前签的居中位置。
+    // 用 followStrip(false) 既能瞬间摆到居中，又会在内部 cancel 正在跑的 rAF 平移动画——
+    // 彻底掐断任何进行中的居中过程，这样返回时原样还原的就是「正确居中值」，
+    // iOS 没有任何可挂起/续播的滚动动画（这是用户 2026-10-31 第七~九轮在 iPhone 13 上
+    // 反复复现「返回时从右滑到中间」的根因；签条已改为内层轨道 transform 平移，
+    // 见 styles.css .page-tabs 与 swipe.ts，iOS 无从重置滚动偏移）。
+    if (strip) reportTabSwipe.followStrip.current(activeReportTabIndex, false);
+    const stripLeft = strip ? getStripOffset(strip) : 0;
     reportScrollMemo.current.push({ y: window.scrollY, strip: stripLeft });
     // 从这一刻起签条整体不可见，iOS 可能随时把偏移量丢掉/夹掉——开始看守
     startStripGuard(stripLeft, 0);
@@ -5185,8 +5175,9 @@ function Reports({ transactions, accounts, categories, budgets, analysisNotes, o
   const activeReportTab = visibleReportTabs.some((tab) => tab.id === reportTab) ? reportTab : "basic";
   const activeReportTabIndex = Math.max(0, visibleReportTabs.findIndex((tab) => tab.id === activeReportTab));
 
-  /** 签条 ref：交给 useTabSwipe 做「签条跟随内容」（拖动时同步滑、落位时居中），
-   *  也顺带解决「进子页返回后签条 scrollLeft 归零、当前签跑到屏幕外」的问题。 */
+  /** 签条 ref（指向 .page-tabs nav）：交给 useTabSwipe 做「签条跟随内容」（拖动时同步滑、落位时居中）。
+   *  居中靠内层 .page-tabs-track 的 transform 平移（见 swipe.ts），不是滚动容器，
+   *  因此不存在「进子页返回后偏移归零、当前签跑到屏幕外」的问题——iOS 无从重置 transform。 */
   const reportTabsRef = useRef<HTMLElement | null>(null);
 
   /** 模块签左右滑动切换（iOS 分页式：拖动时两侧相邻模块同时可见） */
@@ -5232,11 +5223,9 @@ function Reports({ transactions, accounts, categories, budgets, analysisNotes, o
       }
       const strip = reportTabsRef.current;
       // 阈值 0.5：与 followStripRef 内部一致。差几像素也算「动了」，必须写回记忆值
-      if (strip && Math.abs(strip.scrollLeft - target.strip) > 0.5) {
-        // 内联 auto 兜底：万一某处给它设了 smooth，这里也不能让「归位」变成一次滚动动画
-        strip.style.scrollBehavior = "auto";
-        strip.scrollLeft = target.strip;
-        strip.style.scrollBehavior = "";
+      // 用 transform 而非 scrollLeft：transform 不是滚动容器，iOS 不会在可见性变化时重置它
+      if (strip && Math.abs(getStripOffset(strip) - target.strip) > 0.5) {
+        setStripOffset(strip, target.strip);
       }
     };
     apply();
@@ -5405,6 +5394,7 @@ function Reports({ transactions, accounts, categories, budgets, analysisNotes, o
         inert={reportSub !== null}
       >
           <nav className="page-tabs" aria-label="报表模块" ref={reportTabsRef}>
+            <div className="page-tabs-track">
             {visibleReportTabs.map((tab) => (
               <button
                 key={tab.id}
@@ -5417,6 +5407,7 @@ function Reports({ transactions, accounts, categories, budgets, analysisNotes, o
                 {tab.label}
               </button>
             ))}
+            </div>
           </nav>
 
           <div className="tab-swipe-body" ref={reportTabSwipe.bodyRef}>

@@ -2402,10 +2402,9 @@ button.settings-section {
   opacity: 0;
   pointer-events: none;
 }
-/* 停靠期间不让签条成为「滚动容器」：iOS 会在祖先可见性变化时重置滚动容器的
-   scrollLeft（即用户看到的「标题从右边弹回中间」）。设 overflow-x:hidden 后 iOS
-   不再管理它的偏移，DOM 里保留进入子页时的居中值；返回时（parked 去掉、恢复
-   overflow-x:auto）记忆值不会被重置，因此无弹回。A 侧（rAF 高频看守）作兜底。 */
+/* 签条永远不是滚动容器（base .page-tabs 已是 overflow-x:hidden），居中靠内层
+   .page-tabs-track 的 transform 平移——iOS 无从重置 transform 偏移，根因被机制消灭。
+   这条 parked 规则已无实际作用（base 已是 hidden），保留仅为语义显式标注。 */
 .report-list-layer.parked .page-tabs {
   overflow-x: hidden;
 }
@@ -3500,15 +3499,11 @@ button.settings-section {
   /* 吸在吸顶标题条下方（--topbar-h 由 JS 实测写入），否则两条会叠在一起 */
   top: var(--topbar-h);
   z-index: 6;
-  display: flex;
-  gap: 0.05rem;
-  overflow-x: auto;
-  overscroll-behavior-x: contain;
-  scrollbar-width: none;
-  /* 不要加 -webkit-overflow-scrolling: touch：它会给签条建一个「加速滚动层」，
-     而这层在祖先被隐藏（停靠）时会被 iOS 拆掉，重新显示时签条的 scrollLeft 就归零了
-     —— 表现是「进明细后标题跑到右边（= 签条回到了最左端），返回时才弹回中间」
-     （用户 2026-10-31 第六轮）。iOS 13+ 本来就有惯性滚动，去掉它是纯收益。 */
+  /* 签条本身绝不做成滚动容器：居中是靠内层 .page-tabs-track 的 transform 平移实现的，
+     而非 scrollLeft。原因：iOS 会在祖先可见性变化（停靠层 opacity:0↔可见）时重置/平滑动画
+     滚动容器的 scrollLeft，表现就是「返回时签条从右滑到中间」——怎么打断原生滚动都治不了本
+     （用户 2026-10-31 第七轮 iPhone 13 反复复现）。transform 不是滚动容器，iOS 无从重置/补间。 */
+  overflow-x: hidden;
   padding: 0.28rem 0.12rem 0;
   border-bottom: 1px solid rgba(49, 71, 58, 0.1);
   background: rgba(246, 241, 231, 0.94);
@@ -3516,8 +3511,12 @@ button.settings-section {
   box-shadow: 0 0.3rem 0.6rem rgba(36, 49, 39, 0.06);
 }
 
-.page-tabs::-webkit-scrollbar {
-  display: none;
+/* 内层轨道：flex 排签，用 transform: translateX 把当前签平移到可视区中央。
+   will-change 提示合成器，平移走 GPU 层、不参与滚动容器逻辑。 */
+.page-tabs-track {
+  display: flex;
+  gap: 0.05rem;
+  will-change: transform;
 }
 
 .page-tab {

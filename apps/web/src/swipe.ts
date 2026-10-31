@@ -17,6 +17,27 @@ export const SETTLE_EASE = "cubic-bezier(.37,.25,.63,1)";
  * 保持快弹） */
 const TAB_SWIPE = { START: 12, RATIO: 1.2, THRESHOLD: 56, EDGE: 32, EDGE_DRAG: 0.2, COMMIT: 600, REBOUND: 340 };
 
+/** 签条居中偏移量的统一读写（基于内层 .page-tabs-track 的 transform，而非 scrollLeft）。
+ *  为什么是 transform 而不是 scrollLeft（用户 2026-10-31 第七~九轮 iPhone 13 反复复现）：
+ *  iOS Safari 会在祖先可见性变化（停靠层 opacity:0/position:absolute ↔ 可见）时**重置/平滑动画
+ *  滚动容器的 scrollLeft**——无论我们用原生 smooth 还是自驱动 rAF 改 scrollLeft，只要它是滚动容器，
+ *  iOS 就能在返回变可见的那一刻把它推一把，表现即「返回时签条从右边滑到中间」。
+ *  transform 不是滚动容器，iOS 没有可重置的滚动偏移，无从补间——动画从机制上被消灭。
+ *  offset 语义：把当前签平移到可视区中央所需的像素量（≥0，≤maxScroll）；轨道实际 transform = translateX(-offset)。 */
+export function getStripOffset(strip: HTMLElement | null): number {
+  const track = strip?.querySelector<HTMLElement>(".page-tabs-track");
+  if (!track) return 0;
+  const cs = getComputedStyle(track);
+  const m = new DOMMatrixReadOnly(cs.transform === "none" ? "matrix(1,0,0,1,0,0)" : cs.transform);
+  return -m.m41;
+}
+export function setStripOffset(strip: HTMLElement | null, offset: number): void {
+  const track = strip?.querySelector<HTMLElement>(".page-tabs-track");
+  if (!track) return;
+  track.style.transition = "none";
+  track.style.transform = `translateX(${-offset}px)`;
+}
+
 /**
  * 模块签左右滑动切换（报表 / 规划），iOS 分页式：
  * 各模块内容横向排成一条轨道挨在一起，拖动时与手指 1:1 跟手：往左拖则右侧露出
@@ -24,7 +45,8 @@ const TAB_SWIPE = { START: 12, RATIO: 1.2, THRESHOLD: 56, EDGE: 32, EDGE_DRAG: 0
  * 松手过阈值即**缓慢放置**到相邻页（600ms + SETTLE_EASE，位移摊满全程、零速软着陆）、
  * 未过阈值按 iOS 曲线快弹回（放置与回弹是两种性格，曲线时长都不同）。
  * 与「左边缘右滑返回」的分工：起点 clientX < 32 的右滑归返回（useEdgeSwipeBack 挂在
- * 页面容器上，靠冒泡仍能收到）；其余水平滑动归本 hook。签条自身可横向滚动，不参与切换。
+ * 页面容器上，靠冒泡仍能收到）；其余水平滑动归本 hook。签条本身用内层轨道 transform 平移居中
+ * （见 followStripRef / 下方 getStripOffset），不构成滚动容器，不参与切换。
  *
  * 位移用**百分比**（相对轨道自身宽度）而非像素：这样屏幕旋转 / 容器宽度变化都不用
  * 重新测量，也不会在拖动时因为测宽度而抖动。注意百分比相对的是**轨道自己的边框盒**
@@ -75,30 +97,30 @@ export function useTabSwipe({ enabled, count, index, onChange, resetKey, stripRe
    *  为什么按住 t 而不是 index：拖动过程中内容与手指 1:1 位移，签条若只在落位时跳一次，
    *  就会出现「下面在滑、上面不动」的割裂感（用户 2026-10-30 反馈）。小数索引让签条
    *  与内容同步滑，落位时再平滑滚到整数签。
-   *  用 getBoundingClientRect 求相对签条的居中位置，不依赖 offsetParent（签条是 sticky）。
+   *  居中机制：内层 .page-tabs-track 用 transform:translateX 平移（不是 scrollLeft，见下方说明）。
    *
-   *  ⚠️ 平滑居中必须用**自驱动的 rAF 动画**，绝不能用 `scrollTo({behavior:"smooth"})`：
-   *  iOS Safari 不会因写入 `scrollLeft` 而取消进行中的原生平滑滚动，它会把动画在层被
-   *  隐藏（停靠 opacity:0 / overflow:hidden）期间**挂起**，等返回变可见时**续播**——
-   *  表现就是「返回时签条从右边滑到中间」（用户 2026-10-31 第七轮 iPhone 13 真机复现）。
-   *  rAF 动画由我们完全掌控，进子页前 cancelAnimationFrame 即可彻底掐断，iOS 没有可挂起的
-   *  原生滚动动画，自然无从续播。 */
+   *  ⚠️ 为什么非得是 transform 而不是 scrollLeft（用户 2026-10-31 第七~九轮 iPhone 13 反复复现）：
+   *  iOS Safari 在祖先可见性变化（停靠层 opacity:0/position:absolute ↔ 可见）时会**重置/平滑动画
+   *  滚动容器的 scrollLeft**——无论 `scrollTo({behavior:"smooth"})` 还是自驱动 rAF 改 scrollLeft，
+   *  只要它是滚动容器，iOS 就能在返回变可见的那一刻把它推一把，表现即「返回时签条从右边滑到中间」。
+   *  transform 不是滚动容器，iOS 无从重置/补间——动画从机制上被消灭。所有读写都走
+   *  getStripOffset / setStripOffset（操作的是内层轨道的 transform）。 */
   const followStripRef = useRef<(t: number, smooth: boolean) => void>(() => undefined);
-  /** 自驱动平滑滚动的动画句柄（唯一真相，cancel 它就能在任何时刻掐断） */
+  /** 自驱动平移动画的动画句柄（唯一真相，cancel 它就能在任何时刻掐断） */
   const stripAnimRef = useRef<number>(0);
   const animateStripTo = (to: number, duration: number) => {
     const strip = stripRef?.current;
     if (!strip) return;
-    const from = strip.scrollLeft;
+    const from = getStripOffset(strip);
     if (Math.abs(from - to) < 0.5) {
-      strip.scrollLeft = to;
+      setStripOffset(strip, to);
       return;
     }
     const startTs = performance.now();
     const step = (now: number) => {
       const p = Math.min(1, (now - startTs) / duration);
       const e = 1 - (1 - p) * (1 - p); // easeOutQuad：起手快、落位缓，贴合「缓慢放置」手感
-      strip.scrollLeft = from + (to - from) * e;
+      setStripOffset(strip, from + (to - from) * e);
       if (p < 1) stripAnimRef.current = requestAnimationFrame(step);
       else stripAnimRef.current = 0;
     };
@@ -107,19 +129,25 @@ export function useTabSwipe({ enabled, count, index, onChange, resetKey, stripRe
   followStripRef.current = (t: number, smooth: boolean) => {
     const strip = stripRef?.current;
     if (!strip || count <= 1) return;
-    const tabs = Array.from(strip.children) as HTMLElement[];
+    const track = strip.querySelector<HTMLElement>(".page-tabs-track");
+    if (!track) return;
+    const tabs = Array.from(track.children) as HTMLElement[];
     if (tabs.length === 0) return;
-    const maxScroll = strip.scrollWidth - strip.clientWidth;
+    // 内层轨道是 flex 容器、子签溢出、自身 overflow:visible，scrollWidth 即全部签的总宽
+    // （已实测：overflow:visible 的 flex 容器 scrollWidth 仍包含溢出子节点），减可视宽得最大平移量
+    const maxScroll = track.scrollWidth - strip.clientWidth;
     if (maxScroll <= 1) return; // 签条不需要滚动（签少于一屏）
     const clamped = Math.max(0, Math.min(count - 1, t));
     const lo = Math.floor(clamped);
     const hi = Math.min(tabs.length - 1, lo + 1);
     const frac = clamped - lo;
+    // 当前居中偏移：getBoundingClientRect 已含当前 transform，加上 curOffset 抵消平移、回到未平移坐标
+    const curOffset = getStripOffset(strip);
     const centerOf = (el?: HTMLElement) => {
       if (!el) return 0;
       const navRect = strip.getBoundingClientRect();
       const rect = el.getBoundingClientRect();
-      return rect.left - navRect.left + strip.scrollLeft + rect.width / 2;
+      return rect.left - navRect.left + curOffset + rect.width / 2;
     };
     const center = centerOf(tabs[lo]) + (centerOf(tabs[hi]) - centerOf(tabs[lo])) * frac;
     const target = Math.max(0, Math.min(maxScroll, center - strip.clientWidth / 2));
@@ -129,10 +157,10 @@ export function useTabSwipe({ enabled, count, index, onChange, resetKey, stripRe
       stripAnimRef.current = 0;
     }
     if (!smooth) {
-      if (Math.abs(strip.scrollLeft - target) >= 0.5) strip.scrollLeft = target;
+      if (Math.abs(getStripOffset(strip) - target) >= 0.5) setStripOffset(strip, target);
       return;
     }
-    if (Math.abs(strip.scrollLeft - target) < 1) return;
+    if (Math.abs(getStripOffset(strip) - target) < 1) return;
     animateStripTo(target, 360);
   };
 
