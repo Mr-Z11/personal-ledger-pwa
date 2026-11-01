@@ -4789,6 +4789,31 @@ button.insight-card {
   color: rgba(36, 49, 39, 0.56);
 }
 
+.trend-contrib-monthly {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.28rem;
+  font-size: 0.66rem;
+  color: rgba(36, 49, 39, 0.56);
+}
+
+.trend-contrib-monthly > span {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.06rem;
+  padding: 0.22rem 0.3rem;
+  border-radius: 0.42rem;
+  background: rgba(49, 71, 58, 0.05);
+  overflow: hidden;
+}
+
+.trend-contrib-monthly > span strong {
+  font-size: 0.74rem;
+  font-weight: 800;
+  color: rgba(36, 49, 39, 0.82);
+}
+
 .trend-contrib-note {
   margin: 0;
   font-size: 0.66rem;

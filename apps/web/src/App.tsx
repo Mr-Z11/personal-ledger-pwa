@@ -4820,12 +4820,14 @@ function Reports({ transactions, accounts, categories, budgets, analysisNotes, o
   const totalTrendEnd = totalExpenseTrendData[totalExpenseTrendData.length - 1]?.period ?? expenseTrendAnchorMonth;
   const totalExpenseTrendRangeLabel = `${monthLabel(totalTrendStart)} - ${monthLabel(totalTrendEnd)}`;
   const trendContribution = useMemo(() => {
-    if (dailyTrendData.length < 2) return null;
-    const firstKey = dailyTrendData[0].period;
-    const lastKey = dailyTrendData[dailyTrendData.length - 1].period;
-    const firstTotal = dailyTrendData[0].expense;
-    const lastTotal = dailyTrendData[dailyTrendData.length - 1].expense;
-    const totalDelta = lastTotal - firstTotal;
+    const windowSize = 3;
+    if (dailyTrendData.length < windowSize) return null;
+    const window = dailyTrendData.slice(-windowSize);
+    const keys = window.map((item) => item.period);
+    const firstKey = keys[0];
+    const lastKey = keys[keys.length - 1];
+    const firstTotal = window[0].expense;
+    const lastTotal = window[window.length - 1].expense;
     const buildMap = (key: string) => {
       const map = new Map<string, { id: string; name: string; value: number }>();
       dailyExpenseTransactions(
@@ -4844,16 +4846,18 @@ function Reports({ transactions, accounts, categories, budgets, analysisNotes, o
       });
       return map;
     };
-    const firstMap = buildMap(firstKey);
-    const lastMap = buildMap(lastKey);
-    const ids = new Set<string>([...firstMap.keys(), ...lastMap.keys()]);
+    const maps = keys.map(buildMap);
+    const ids = new Set<string>();
+    maps.forEach((map) => map.forEach((_value, id) => ids.add(id)));
     const contributors = Array.from(ids)
       .map((id) => {
-        const first = firstMap.get(id)?.value ?? 0;
-        const last = lastMap.get(id)?.value ?? 0;
+        const values = maps.map((map) => map.get(id)?.value ?? 0);
+        const first = values[0];
+        const last = values[values.length - 1];
         return {
           id,
-          name: (firstMap.get(id) ?? lastMap.get(id))!.name,
+          name: (maps[maps.length - 1].get(id) ?? maps[0].get(id))!.name,
+          values,
           first,
           last,
           delta: last - first
@@ -4862,7 +4866,8 @@ function Reports({ transactions, accounts, categories, budgets, analysisNotes, o
       .filter((row) => row.delta > 0)
       .sort((left, right) => right.delta - left.delta)
       .slice(0, 4);
-    return { firstKey, lastKey, firstTotal, lastTotal, totalDelta, contributors };
+    const grossRise = contributors.reduce((sum, row) => sum + row.delta, 0);
+    return { keys, firstKey, lastKey, firstTotal, lastTotal, grossRise, contributors };
   }, [dailyTrendData, transactions, categories]);
   const insightCards = [
     {
@@ -5548,19 +5553,19 @@ function Reports({ transactions, accounts, categories, budgets, analysisNotes, o
                       {period === "month"
                         ? `${monthLabel(trendContribution.firstKey)} → ${monthLabel(trendContribution.lastKey)}`
                         : `${yearLabel(trendContribution.firstKey)} → ${yearLabel(trendContribution.lastKey)}`}
-                      · 日常消费
+                      · 近3个月
                     </span>
                   </div>
-                  {trendContribution.totalDelta <= 0 ? (
+                  {trendContribution.grossRise <= 0 ? (
                     <p className="trend-contrib-flat">
-                      {trendContribution.totalDelta < 0 ? "该区间日常消费较期初下降" : "该区间日常消费与期初持平"}
+                      {trendContribution.lastTotal < trendContribution.firstTotal ? "近3个月日常消费逐月下降" : "近3个月日常消费基本持平"}
                       （{period === "month" ? monthLabel(trendContribution.firstKey) : yearLabel(trendContribution.firstKey)} ¥{centsToYuan(trendContribution.firstTotal)} →{" "}
                       {period === "month" ? monthLabel(trendContribution.lastKey) : yearLabel(trendContribution.lastKey)} ¥{centsToYuan(trendContribution.lastTotal)}），暂无涨幅贡献项。
                     </p>
                   ) : (
                     <ul className="trend-contrib-list">
                       {trendContribution.contributors.map((row) => {
-                        const share = Math.round((row.delta / trendContribution.totalDelta) * 100);
+                        const share = Math.round((row.delta / trendContribution.grossRise) * 100);
                         return (
                           <li key={row.id}>
                             <div className="trend-contrib-row">
@@ -5570,11 +5575,17 @@ function Reports({ transactions, accounts, categories, budgets, analysisNotes, o
                             <div className="trend-contrib-bar">
                               <i style={{ width: `${share}%` }} />
                             </div>
+                            <div className="trend-contrib-monthly">
+                              {row.values.map((value, index) => (
+                                <span key={index}>
+                                  {period === "month" ? shortMonthLabel(trendContribution.keys[index]) : yearLabel(trendContribution.keys[index])}
+                                  {" "}
+                                  <strong>{centsToYuan(value)}</strong>
+                                </span>
+                              ))}
+                            </div>
                             <div className="trend-contrib-meta">
                               <span>占涨幅 {share}%</span>
-                              <span>
-                                {centsToYuan(row.first)} → {centsToYuan(row.last)}
-                              </span>
                             </div>
                           </li>
                         );
@@ -5582,7 +5593,7 @@ function Reports({ transactions, accounts, categories, budgets, analysisNotes, o
                     </ul>
                   )}
                   <p className="trend-contrib-note">
-                    对比区间首月与末月的日常消费分类构成（不含专项 / 贷款 / 保险 / 教育等），涨幅贡献即末月相对首月的净增额。
+                    对比最近3个月逐月的日常消费分类构成（不含专项 / 贷款 / 保险 / 教育等），涨幅贡献即第3个月相对第1个月的净增额，下列为各月金额。
                   </p>
                 </section>
               )}
