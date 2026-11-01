@@ -4699,6 +4699,103 @@ button.insight-card {
   gap: 0.72rem;
 }
 
+.trend-contrib-card {
+  padding: 0.78rem 0.82rem;
+  border: 1px solid rgba(49, 71, 58, 0.1);
+  border-radius: 0.78rem;
+  background: rgba(255, 250, 240, 0.66);
+  display: grid;
+  gap: 0.55rem;
+}
+
+.trend-contrib-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.trend-contrib-head h2 {
+  margin: 0;
+  font-size: 1rem;
+  font-weight: 900;
+  color: rgba(36, 49, 39, 0.92);
+}
+
+.trend-contrib-head span {
+  font-size: 0.7rem;
+  color: rgba(36, 49, 39, 0.6);
+}
+
+.trend-contrib-flat {
+  margin: 0;
+  font-size: 0.82rem;
+  line-height: 1.55;
+  color: rgba(36, 49, 39, 0.7);
+}
+
+.trend-contrib-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 0.62rem;
+}
+
+.trend-contrib-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+
+.trend-contrib-name {
+  min-width: 0;
+  font-size: 0.86rem;
+  font-weight: 700;
+  color: rgba(36, 49, 39, 0.86);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.trend-contrib-delta {
+  flex: none;
+  font-size: 0.92rem;
+  font-weight: 900;
+  color: #c0532b;
+}
+
+.trend-contrib-bar {
+  height: 0.32rem;
+  border-radius: 999px;
+  background: rgba(49, 71, 58, 0.1);
+  overflow: hidden;
+}
+
+.trend-contrib-bar > i {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, #d9743f, #c0532b);
+}
+
+.trend-contrib-meta {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.5rem;
+  font-size: 0.68rem;
+  color: rgba(36, 49, 39, 0.56);
+}
+
+.trend-contrib-note {
+  margin: 0;
+  font-size: 0.66rem;
+  line-height: 1.5;
+  color: rgba(36, 49, 39, 0.5);
+}
+
 .report-page .trend-fold-panel {
   padding: 0;
 }

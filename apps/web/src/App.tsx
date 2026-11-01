@@ -4819,6 +4819,51 @@ function Reports({ transactions, accounts, categories, budgets, analysisNotes, o
   const totalTrendStart = totalExpenseTrendData[0]?.period ?? expenseTrendAnchorMonth;
   const totalTrendEnd = totalExpenseTrendData[totalExpenseTrendData.length - 1]?.period ?? expenseTrendAnchorMonth;
   const totalExpenseTrendRangeLabel = `${monthLabel(totalTrendStart)} - ${monthLabel(totalTrendEnd)}`;
+  const trendContribution = useMemo(() => {
+    if (dailyTrendData.length < 2) return null;
+    const firstKey = dailyTrendData[0].period;
+    const lastKey = dailyTrendData[dailyTrendData.length - 1].period;
+    const firstTotal = dailyTrendData[0].expense;
+    const lastTotal = dailyTrendData[dailyTrendData.length - 1].expense;
+    const totalDelta = lastTotal - firstTotal;
+    const buildMap = (key: string) => {
+      const map = new Map<string, { id: string; name: string; value: number }>();
+      dailyExpenseTransactions(
+        transactions.filter((item) => item.occurredAt.startsWith(key)),
+        categories
+      ).forEach((item) => {
+        const category = categories.find((entry) => entry.id === item.categoryId);
+        const id = category?.id ?? "uncategorized";
+        const current = map.get(id) ?? {
+          id,
+          name: category ? categoryPath(category, categories) : "未分类",
+          value: 0
+        };
+        current.value += item.amountCents;
+        map.set(id, current);
+      });
+      return map;
+    };
+    const firstMap = buildMap(firstKey);
+    const lastMap = buildMap(lastKey);
+    const ids = new Set<string>([...firstMap.keys(), ...lastMap.keys()]);
+    const contributors = Array.from(ids)
+      .map((id) => {
+        const first = firstMap.get(id)?.value ?? 0;
+        const last = lastMap.get(id)?.value ?? 0;
+        return {
+          id,
+          name: (firstMap.get(id) ?? lastMap.get(id))!.name,
+          first,
+          last,
+          delta: last - first
+        };
+      })
+      .filter((row) => row.delta > 0)
+      .sort((left, right) => right.delta - left.delta)
+      .slice(0, 4);
+    return { firstKey, lastKey, firstTotal, lastTotal, totalDelta, contributors };
+  }, [dailyTrendData, transactions, categories]);
   const insightCards = [
     {
       id: "top-expense",
@@ -5495,6 +5540,52 @@ function Reports({ transactions, accounts, categories, budgets, analysisNotes, o
 
           {tab.id === "trend" && (
             <div className="trend-stack">
+              {trendContribution && (
+                <section className="trend-contrib-card">
+                  <div className="trend-contrib-head">
+                    <h2>涨幅贡献</h2>
+                    <span>
+                      {period === "month"
+                        ? `${monthLabel(trendContribution.firstKey)} → ${monthLabel(trendContribution.lastKey)}`
+                        : `${yearLabel(trendContribution.firstKey)} → ${yearLabel(trendContribution.lastKey)}`}
+                      · 日常消费
+                    </span>
+                  </div>
+                  {trendContribution.totalDelta <= 0 ? (
+                    <p className="trend-contrib-flat">
+                      {trendContribution.totalDelta < 0 ? "该区间日常消费较期初下降" : "该区间日常消费与期初持平"}
+                      （{period === "month" ? monthLabel(trendContribution.firstKey) : yearLabel(trendContribution.firstKey)} ¥{centsToYuan(trendContribution.firstTotal)} →{" "}
+                      {period === "month" ? monthLabel(trendContribution.lastKey) : yearLabel(trendContribution.lastKey)} ¥{centsToYuan(trendContribution.lastTotal)}），暂无涨幅贡献项。
+                    </p>
+                  ) : (
+                    <ul className="trend-contrib-list">
+                      {trendContribution.contributors.map((row) => {
+                        const share = Math.round((row.delta / trendContribution.totalDelta) * 100);
+                        return (
+                          <li key={row.id}>
+                            <div className="trend-contrib-row">
+                              <span className="trend-contrib-name">{row.name}</span>
+                              <strong className="trend-contrib-delta">+¥{centsToYuan(row.delta)}</strong>
+                            </div>
+                            <div className="trend-contrib-bar">
+                              <i style={{ width: `${share}%` }} />
+                            </div>
+                            <div className="trend-contrib-meta">
+                              <span>占涨幅 {share}%</span>
+                              <span>
+                                {centsToYuan(row.first)} → {centsToYuan(row.last)}
+                              </span>
+                            </div>
+                          </li>
+                        );
+                      })}
+                    </ul>
+                  )}
+                  <p className="trend-contrib-note">
+                    对比区间首月与末月的日常消费分类构成（不含专项 / 贷款 / 保险 / 教育等），涨幅贡献即末月相对首月的净增额。
+                  </p>
+                </section>
+              )}
               <TrendFoldPanel
                 title={period === "month" ? "近12个月消费趋势" : "近6年消费趋势"}
                 rangeLabel={dailyTrendRangeLabel}
