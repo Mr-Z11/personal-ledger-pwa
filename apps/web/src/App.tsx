@@ -4820,8 +4820,9 @@ function Reports({ transactions, accounts, categories, budgets, analysisNotes, o
   const totalTrendEnd = totalExpenseTrendData[totalExpenseTrendData.length - 1]?.period ?? expenseTrendAnchorMonth;
   const totalExpenseTrendRangeLabel = `${monthLabel(totalTrendStart)} - ${monthLabel(totalTrendEnd)}`;
   const trendContribution = useMemo(() => {
-    const windowSize = 3;
-    if (dailyTrendData.length < windowSize) return null;
+    try {
+      const windowSize = 3;
+      if (dailyTrendData.length < windowSize) return null;
     const window = dailyTrendData.slice(-windowSize);
     const keys = window.map((item) => item.period);
     const firstKey = keys[0];
@@ -4867,7 +4868,11 @@ function Reports({ transactions, accounts, categories, budgets, analysisNotes, o
       .sort((left, right) => right.delta - left.delta)
       .slice(0, 4);
     const grossRise = contributors.reduce((sum, row) => sum + row.delta, 0);
-    return { keys, firstKey, lastKey, firstTotal, lastTotal, grossRise, contributors };
+      return { keys, firstKey, lastKey, firstTotal, lastTotal, grossRise, contributors };
+    } catch (err) {
+      console.error("[trendContribution] 计算失败，已安全跳过诊断卡：", err);
+      return null;
+    }
   }, [dailyTrendData, transactions, categories]);
   const insightCards = [
     {
