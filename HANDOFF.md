@@ -8,7 +8,7 @@
 - **云端 47.74.3.104 自 2026-08-29 失效**（80/443 全关、SSH host key 变更，归属待确认）→ `deploy/update-server.sh` 暂不可用。**本地 Mac 栈是当前唯一活跃环境**。
 - 本地栈 `docker-compose.local.yml` = `postgres-local` + `api-local` + `caddy-local`；入口 `https://localhost:8443/api`（Caddy 自签证书，需一次性装 `~/Desktop/Caddy-Local-CA.crt` 到钥匙串，否则浏览器 fetch 被 TLS 拦）。
 - 三容器当前均 Up；`api-local` 用**只读 bind-mount** 挂本机 `apps/api/dist`（见 §3）。
-- git：远端 `origin/main` 与本地一致（最新代码 `cb7f245`，其后仅文档提交，含模块签分页式横滑 + 左滑返回 iOS 交互式 + 整页整体切换修复 + 手势收尾「缓慢放置」600ms + 切签变色同步放慢 + 基础统计消费结构对比柱状图 + **报表子页返回空白/短页右滑失效/专项支出可点看流水三处修复** + **签条跟随内容滑动 + 常规项可点看 6 个月明细** + **子页返回零恢复过程（列表停靠不卸载 + 零重新定位）** + **今日限额与剩余天数口径统一、页脚改对账明细** + **内容容器改 overflow:clip，根除「返回时画面动一下」** + **返回时签条位置原样（停靠层改 opacity 隐藏）** + **返回时签条位置原样 + 停靠期签条去滚动容器化 + rAF 高频看守（根治「返回时标题从右边弹回中间」）** + **今日超限额警示画面在 iOS 上跳动修复（固定遮罩层只做 opacity 淡入、弹性缩放下沉到内部卡片、html+body 同时锁滚动，根除 iOS fixed+transform 抖动与橡皮筋位移）** + **报表子页返回后签条从右边滑到中间动画修复（签条平滑居中弃用原生 scrollTo smooth、改自驱动 rAF 动画，进子页前可彻底掐断，iOS 无原生滚动可挂起续播）** + **趋势图「涨幅贡献」诊断卡（取最近3个月、逐月对比日常消费分类构成，列出涨幅最大 4 个分类及各自净增额、占涨幅比与逐月金额；计算包 try/catch 防御）** + **工资日提醒横幅下计划购买面板右侧裁切修复（单列 grid 改 `minmax(0,1fr)`）**），已部署 caddy-local、已推送）。推送走 `python3 scripts/api-push-main.py`（见 §5）。
+- git：远端 `origin/main` 与本地一致（最新代码 `cb7f245`，其后为交接文档与推送脚本提交，含模块签分页式横滑 + 左滑返回 iOS 交互式 + 整页整体切换修复 + 手势收尾「缓慢放置」600ms + 切签变色同步放慢 + 基础统计消费结构对比柱状图 + **报表子页返回空白/短页右滑失效/专项支出可点看流水三处修复** + **签条跟随内容滑动 + 常规项可点看 6 个月明细** + **子页返回零恢复过程（列表停靠不卸载 + 零重新定位）** + **今日限额与剩余天数口径统一、页脚改对账明细** + **内容容器改 overflow:clip，根除「返回时画面动一下」** + **返回时签条位置原样（停靠层改 opacity 隐藏）** + **返回时签条位置原样 + 停靠期签条去滚动容器化 + rAF 高频看守（根治「返回时标题从右边弹回中间」）** + **今日超限额警示画面在 iOS 上跳动修复（固定遮罩层只做 opacity 淡入、弹性缩放下沉到内部卡片、html+body 同时锁滚动，根除 iOS fixed+transform 抖动与橡皮筋位移）** + **报表子页返回后签条从右边滑到中间动画修复（签条平滑居中弃用原生 scrollTo smooth、改自驱动 rAF 动画，进子页前可彻底掐断，iOS 无原生滚动可挂起续播）** + **趋势图「涨幅贡献」诊断卡（取最近3个月、逐月对比日常消费分类构成，列出涨幅最大 4 个分类及各自净增额、占涨幅比与逐月金额；计算包 try/catch 防御）** + **工资日提醒横幅下计划购买面板右侧裁切修复（单列 grid 改 `minmax(0,1fr)`）**），已部署 caddy-local、已推送）。推送走 `python3 scripts/api-push-main.py`（见 §5）。
 
 ## 2. 近期变更（2026-10-20 ~ 24，均已推送 origin/main）
 
@@ -117,6 +117,7 @@
 - 本机 shell 默认带 `HTTP(S)_PROXY=127.0.0.1:<port>`，`git push` 直连报 `HTTP2 framing layer` / `Empty reply`；SSH(22/443) 也被拦。
 - 统一用 `python3 scripts/api-push-main.py`：经 GitHub Git Database API 按本地 commit 逐字段复刻，**远端 SHA 与本地完全一致（内容寻址，无分叉）**，树/commit 双重核对、非快进即中止、绝不 force。作者硬编码 `frori / mofrori@gmail.com`。
 - 推送会触发 CI 构建 GHCR 镜像；CI 跑 `typecheck → test → build → docker-images`，**冒烟测试不过则 docker-images 被 skip**（曾因此没重建镜像）。
+- **一次推送多个 commit 时，blob 校验必须用 `git rev-parse <commit>:<path>`**（2026-11-05）：脚本原用 `git hash-object <path>` 读工作区文件，若同一文件（本例 `HANDOFF.md`）在待推送的多个 commit 里连续修改，工作区已是最终版 → 较早 commit 校验假报「blob 哈希不一致」并中止。已改为按 commit 取 blob SHA，多 commit 推送正常。
 
 ## 6. 当前待办 / 待确认
 

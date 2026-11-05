@@ -69,7 +69,10 @@ def build_commit(remote_head: str, local_commit: str) -> str:
             continue
         raw = subprocess.run(["git", "show", f"{local_commit}:{path}"], capture_output=True).stdout.decode("utf-8")
         created = api("POST", f"repos/{REPO}/git/blobs", {"content": raw, "encoding": "utf-8"})
-        local_blob = git("hash-object", path)
+        # 必须取「本 commit 里的」blob SHA，不能用工作区文件 hash-object path：
+        # 一次推送多个 commit 且同一文件被连续修改时，工作区已是最终版，
+        # 会让较早 commit 的 blob 校验假失败（如 HANDOFF.md 连改两个 commit）。
+        local_blob = git("rev-parse", f"{local_commit}:{path}")
         if created["sha"] != local_blob:
             sys.exit(f"{path} blob 哈希不一致（远端 {created['sha']} / 本地 {local_blob}），已中止。")
         blobs[path] = created["sha"]
