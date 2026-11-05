@@ -1934,8 +1934,13 @@ input[type="month"],
   margin-top: 0.5rem;
 }
 
+/* 单列 grid 必须写 minmax(0, 1fr)：默认的 auto 轨道取子树 min-content，
+   计划购买清单里「名称 + 状态 + 金额 + 买到手 + 删除」是 nowrap 一行，
+   会把轨道撑到 386px（与视口宽度无关），窄屏下整块面板右侧被根层
+   overflow-x:clip 裁掉（表现为「买到手」按钮只剩半个、画面不完全）。 */
 .settings-stack {
   display: grid;
+  grid-template-columns: minmax(0, 1fr);
   gap: 0.7rem;
 }
 
@@ -6555,6 +6560,8 @@ button.insight-card {
 .salary-banner-body span {
   font-size: 0.76rem;
   white-space: pre-line;
+  /* 提醒内容由用户自由输入，出现长串数字/英文时也不能把横幅撑出屏幕 */
+  overflow-wrap: anywhere;
 }
 
 .salary-banner .icon-button {
@@ -8715,6 +8722,8 @@ body.daily-limit-lock {
   display: flex;
   flex-direction: column;
   gap: 0.26rem;
+  /* nowrap 行名很长时，别让整份清单的 min-content 反过来撑宽面板 */
+  min-width: 0;
 }
 
 .planbuy-row {
@@ -8722,6 +8731,7 @@ body.daily-limit-lock {
   align-items: center;
   justify-content: space-between;
   gap: 0.5rem;
+  min-width: 0;
   padding: 0.3rem 0.7rem;
   border-radius: 0.6rem;
   background: rgba(49, 71, 58, 0.05);
