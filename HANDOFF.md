@@ -9,7 +9,7 @@
 > - **已完成并闭环（2026-11-05）**：用户反馈「提醒状态下计划购买页面画面不完全」→ 定位为 `.settings-stack` 单列 grid 的 `auto` 轨道被 nowrap 清单 min-content 撑成恒定 386px、窄屏右侧被 `overflow-x:clip` 裁掉；`cb7f245` 改 `minmax(0,1fr)` 修复，5 种视口 headless 探针 + 负对照全通过；`312fcaf` 文档、`a12316e` 推送脚本修复。详见 §2 末三行与 §4 第一条。
 > - **发布状态**：工作区干净，`HEAD` 与 `origin/main` 一致（本次交接提交是纯文档，hash 以 `git log -1` 为准）；**当前部署 bundle / 设置页版本号 = `a12316e`**（纯文档提交不改前端产物，故未重建 dist）。三容器均 Up，`https://localhost:8443/api/health` 返回 `{"ok":true}`，caddy-local 返回的 index.html 与 `apps/web/dist/index.html` md5 一致（dist 原地重建、挂载不悬空，免 `--force-recreate`）。
 > - **唯一未闭环（等用户真机反馈）**：iPhone 上点一次「检查更新」后核对版本号，再进总览→计划购买看右侧「买到手」/删除图标是否完整（§6 首条）；另 `f700f99` 的「点击报表白屏」仍待真机排除 SW 缓存后确认（headless 零 pageerror，见 §2）。
-> - **上下文指针**：变更明细 §2；机制坑 §4 + `.workbuddy/memory/MEMORY.md`；待办 §6；逐日细节 `.workbuddy/memory/2026-11-05.md` / `2026-11-06.md`。**本项目只维护本文件，不要再建 task_plan/findings/progress 三件套**（用户 2026-10-23 明确，见 AGENTS.md）。
+> - **上下文指针**：变更明细 §2；机制坑 §4 + `.workbuddy/memory/MEMORY.md`；待办 §6；逐日细节 `.workbuddy/memory/2026-11-05.md`。**交接只 in-place 更新既有文件，不要新建任何文本文件**（用户 2026-11-06 明确）；也不得重建 task_plan/findings/progress 三件套（用户 2026-10-23，见 AGENTS.md）。
 
 - **云端 47.74.3.104 自 2026-08-29 失效**（80/443 全关、SSH host key 变更，归属待确认）→ `deploy/update-server.sh` 暂不可用。**本地 Mac 栈是当前唯一活跃环境**。
 - 本地栈 `docker-compose.local.yml` = `postgres-local` + `api-local` + `caddy-local`；入口 `https://localhost:8443/api`（Caddy 自签证书，需一次性装 `~/Desktop/Caddy-Local-CA.crt` 到钥匙串，否则浏览器 fetch 被 TLS 拦）。
