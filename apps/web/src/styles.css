@@ -2552,6 +2552,14 @@ button.settings-section {
   font-size: 0.82rem;
 }
 
+/* label 是 grid：标签文字与「?」气泡不包成一行时，气泡会被排到第二行白白占一行 */
+.reminder-label-head {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  min-width: 0;
+}
+
 .reminder-panel input,
 .reminder-panel select {
   min-height: 2.35rem;
@@ -2606,7 +2614,7 @@ button.settings-section {
 
 .reminder-hint.warn {
   color: #b3541e;
-  font-weight: 700;
+  font-weight: 600;
 }
 
 /* 说明/备注「?」气泡：默认只显示一个小问号，点击展开解释，保持界面清爽 */

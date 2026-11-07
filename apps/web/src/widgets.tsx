@@ -326,7 +326,7 @@ export function LocalSalaryReminderPanel({ value, onChange }: {
           {saved ? "已保存" : "保存设置"}
         </button>
       </div>
-      {permission === "denied" && <p className="reminder-hint warn">系统通知权限已被拒绝：可在系统设置中允许通知；即使不开通知，应用内横幅提醒依然有效。</p>}
+      {permission === "denied" && <p className="reminder-hint warn">系统通知未授权：应用内横幅仍有效，可在系统设置里开启系统通知。</p>}
     </div>
   );
 }
@@ -1972,7 +1972,8 @@ export function LocalDailyLimitAlertPanel({ value, onChange }: {
         <BellRing size={16} />
         <span>{value.enabled ? `已开启：达日限额 − ¥${centsToYuan(value.toleranceCents)} 时警告并推送` : "未开启"}</span>
       </div>
-      <label>误差金额（元）<InfoTip text="今日动态限额 =（月日常预算 − 截至昨日累计支出）÷ 含今日的剩余天数。今日消费 ≥ 今日动态限额 − 误差金额 时：打开应用立即全屏红色警告，同时推送手机提醒（每天一条）。当日花多少只影响明天及以后的限额，不改变今天自己的限额。" />
+      <label>
+        <span className="reminder-label-head">误差金额（元）<InfoTip text="今日动态限额 =（月日常预算 − 截至昨日累计支出）÷ 含今日的剩余天数。今日消费 ≥ 今日动态限额 − 误差金额 时：打开应用立即全屏红色警告，同时推送手机提醒（每天一条）。当日花多少只影响明天及以后的限额，不改变今天自己的限额。" /></span>
         <input
           value={toleranceInput}
           inputMode="decimal"
@@ -2001,7 +2002,7 @@ export function LocalDailyLimitAlertPanel({ value, onChange }: {
         )}
         <button type="button" disabled={!changed} onClick={save}>{saved ? "已保存" : "保存设置"}</button>
       </div>
-      {permission === "denied" && <p className="reminder-hint warn">系统通知权限已被拒绝：可在系统设置中允许通知；即使不开通知，应用内全屏警告依然有效。</p>}
+      {permission === "denied" && <p className="reminder-hint warn">系统通知未授权：应用内全屏警告仍有效，可在系统设置里开启系统通知。</p>}
     </div>
   );
 }
