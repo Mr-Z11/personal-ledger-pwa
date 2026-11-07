@@ -1452,10 +1452,16 @@ export function App() {
                 <span>返回</span>
               </button>
             )}
-            <div className="page-heading-text">
-              <span className="eyebrow">{currentMonth}</span>
-              <h1>{sub ? subHeading(sub).strong : viewTitle(view)}</h1>
-            </div>
+            {/* 二级子页不渲染左侧大标题：右上 .app-heading 的 strong 取的是同一个
+                subHeading(sub).strong，两处一字不差，手机顶栏会被两行重复文字挤满。
+                这里只留「‹ 返回」，标题由右上角徽章承担；一级页仍保留月份 + h1
+                （viewTitle 与徽章的 viewHeadingMap 是不同文案，不算重复）。 */}
+            {!sub && (
+              <div className="page-heading-text">
+                <span className="eyebrow">{currentMonth}</span>
+                <h1>{viewTitle(view)}</h1>
+              </div>
+            )}
           </div>
           <div className="app-heading">
             {!isLocalPreview && (
