@@ -280,7 +280,7 @@ export function LocalSalaryReminderPanel({ value, onChange }: {
     <div className="reminder-panel form-stack">
       <div className={`reminder-status ${value.enabled ? "on" : ""}`}>
         <BellRing size={16} />
-        <span>{value.enabled ? `已开启：每月 ${value.day} 日提醒，提前 ${value.leadDays} 天倒计时` : "未开启"}</span>
+        <span>{value.enabled ? `已开启：每月 ${value.day} 日提醒${value.leadDays > 0 ? ` · 提前 ${value.leadDays} 天` : ""}` : "未开启"}</span>
         <InfoTip text="提醒完全保存在本机（离线、无服务器也能用）。打开应用时若到了工资日或倒计时范围内，首页顶部会显示横幅。当月没有 31 日时自动在当月最后一天提醒。" />
       </div>
       <div className="reminder-row">
@@ -310,7 +310,9 @@ export function LocalSalaryReminderPanel({ value, onChange }: {
       </label>
       <label className="reminder-toggle">
         <input type="checkbox" checked={draft.notify} onChange={(event) => void toggleNotify(event.target.checked)} />
-        同时发送系统通知（打开应用时触发，纯本地不经过服务器）
+        <span className="reminder-toggle-text">
+          同时发送系统通知<InfoTip text="打开应用时触发，纯本地不经过服务器；需先允许系统通知权限。" />
+        </span>
       </label>
       <div className="data-actions">
         {draft.enabled ? (
@@ -1968,7 +1970,7 @@ export function LocalDailyLimitAlertPanel({ value, onChange }: {
     <div className="reminder-panel form-stack">
       <div className={`reminder-status ${value.enabled ? "on" : ""}`}>
         <BellRing size={16} />
-        <span>{value.enabled ? `已开启：今日消费达日限额 − ¥${centsToYuan(value.toleranceCents)} 即全屏警告并推送手机提醒` : "未开启"}</span>
+        <span>{value.enabled ? `已开启：达日限额 − ¥${centsToYuan(value.toleranceCents)} 时警告并推送` : "未开启"}</span>
       </div>
       <label>误差金额（元）<InfoTip text="今日动态限额 =（月日常预算 − 截至昨日累计支出）÷ 含今日的剩余天数。今日消费 ≥ 今日动态限额 − 误差金额 时：打开应用立即全屏红色警告，同时推送手机提醒（每天一条）。当日花多少只影响明天及以后的限额，不改变今天自己的限额。" />
         <input
@@ -1979,11 +1981,15 @@ export function LocalDailyLimitAlertPanel({ value, onChange }: {
       </label>
       <label className="reminder-toggle">
         <input type="checkbox" checked={draft.notify} onChange={(event) => void toggleNotify(event.target.checked)} />
-        同时发送系统通知（每天一条；服务端推送开启后，关闭应用也能收到）<InfoTip text="达到限额后打开应用会全屏红色警告，点「知道了」后当天不再弹出；手机推送由服务器每 20 分钟检查一次，达线即推（每天最多一条）。" />
+        <span className="reminder-toggle-text">
+          同时发送系统通知<InfoTip text="每天最多一条。达到限额后打开应用会全屏红色警告，点「知道了」后当天不再弹出；手机推送由服务器每 20 分钟检查一次，达线即推（需先开启手机推送，关闭应用也能收到）。" />
+        </span>
       </label>
       <label className="reminder-toggle">
         <input type="checkbox" checked={draft.praiseEnabled} onChange={(event) => setDraft((current) => ({ ...current, praiseEnabled: event.target.checked }))} />
-        低消费表扬：晚上 19 点后没超支，就由服务端主动推送一条鼓励（不依赖打开 App，应急资金越来越多、压力更小）
+        <span className="reminder-toggle-text">
+          低消费表扬<InfoTip text="晚上 19 点后若没超支，服务端主动推送一条鼓励；不依赖打开 App，每天最多一条。" />
+        </span>
       </label>
       <div className="data-actions">
         {draft.enabled ? (
@@ -2080,7 +2086,7 @@ export function PlannedPurchasePanel({ items, todayRemainingCents, onAdd, onTogg
   return (
     <section className="panel planbuy-panel">
       <div className="chart-heading">
-        <h2>计划购买<InfoTip text="清单云端同步，多设备一致；余额够买时应用内高亮 + 手机推送提醒（每天一轮）。点条目可编辑名称/预算；「买到手」移入已买列表；右侧垃圾桶才是删除。" /></h2>
+        <h2>计划购买<InfoTip text="清单云端同步，多设备一致；余额够买时应用内高亮。点条目可编辑名称/预算；「买到手」移入已买列表；右侧垃圾桶才是删除。" /></h2>
         <span>
           {pending.length > 0
             ? `${pending.length} 项待买 · 合计 ¥${centsToYuan(pendingTotal)}`

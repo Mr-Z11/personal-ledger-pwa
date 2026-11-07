@@ -69,7 +69,7 @@ export async function sendSalaryReminder(userId: string, content: string) {
 export async function sendTestReminder(userId: string) {
   return deliver(userId, {
     title: "测试推送（通道验证）",
-    body: "推送通道正常！当日限额警告、计划购买提醒都会像这样送到手机。",
+    body: "推送通道正常！当日限额警告与低消费表扬都会像这样送到手机。",
     url: "/"
   });
 }
@@ -81,16 +81,6 @@ export async function sendDailyLimitReminder(userId: string, spentCents: number,
     body: overCents > 0
       ? `今日已花 ¥${centsToYuan(spentCents)}，超出今日限额 ¥${centsToYuan(limitCents)} 共 ¥${centsToYuan(overCents)}。剩下的时间悠着点花！`
       : `今日已花 ¥${centsToYuan(spentCents)}，已达今日限额 ¥${centsToYuan(limitCents)} 附近（限额已含 ¥${centsToYuan(toleranceCents)} 误差线），还没超。`,
-    url: "/"
-  });
-}
-
-export async function sendPlanBuyReminder(userId: string, remainingCents: number, names: string[]) {
-  const shown = names.slice(0, 3).join("、");
-  const more = names.length > 3 ? ` 等 ${names.length} 项` : "";
-  return deliver(userId, {
-    title: "今日预算有余额，可以安排计划购买",
-    body: `今日预算余额 ¥${centsToYuan(remainingCents)}，够买：${shown}${more}。打开总览标记完成。`,
     url: "/"
   });
 }
@@ -153,7 +143,7 @@ async function checkAndSendReminders(log: FastifyBaseLogger) {
 }
 
 /* ------------------------------------------------------------------ */
-/* 当日限额警告 + 计划购买余额提醒（复用前端分类口径的关键词规则）            */
+/* 当日限额警告 + 低消费表扬（复用前端分类口径的关键词规则）                  */
 /* ------------------------------------------------------------------ */
 
 /** 与前端 utils.ts isNonDailyExpenseCategory 保持一致 */
@@ -299,17 +289,9 @@ async function checkSpendingAlerts(log: FastifyBaseLogger) {
         continue;
       }
 
-      // 预算还有余额：看看计划购买清单里有没有今天买得起的东西
-      const remainingCents = dailyLimitCents - spentTodayCents;
-      const affordable = await prisma.plannedPurchase.findMany({
-        where: { ledgerId: ledger.id, deletedAt: null, completedAt: null, amountCents: { lte: BigInt(remainingCents) } },
-        orderBy: { amountCents: "asc" }
-      });
-      if (affordable.length === 0) continue;
-      if (await alreadySentToday(ledger.ownerId, "planbuy", today.dayKey)) continue;
-      const delivered = await sendPlanBuyReminder(ledger.ownerId, remainingCents, affordable.map((item) => item.name));
-      if (delivered) await markSentToday(ledger.ownerId, "planbuy", today.dayKey);
-      log.info({ userId: ledger.ownerId, remainingCents, count: affordable.length, delivered }, "plan-buy reminder dispatched");
+      // 「今日预算余额 / 计划购买可买」推送已按用户要求移除（2026-11-07）：
+      // 原先没有时段门槛，每天凌晨额度重置后就会推一条「今日预算余额 ¥X」，属于不需要的打扰。
+      // 计划购买清单本身保留，余额够买时仍会在应用内高亮（见 PlannedPurchasePanel）。
     } catch (error) {
       log.error(error, `spending alert check failed for ledger ${ledger.id}`);
     }
