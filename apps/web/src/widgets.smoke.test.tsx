@@ -192,7 +192,9 @@ describe("常规项支出与规划页", () => {
 
   it("FixedExpenseOverview 手动模式渲染关键标签与空状态", () => {
     const html = renderToString(<FixedExpenseOverview />);
-    expect(html).toContain("本月固定支出");
+    // 子页右上角徽章已是「本月固定支出」，标题条不再重复一遍（2026-11-07）
+    expect(html).not.toContain(">本月固定支出");
+    expect(html).toContain("手动维护");
     expect(html).toContain("固定项合计");
     expect(html).toContain("已支出合计");
     expect(html).toContain("待支出额度");

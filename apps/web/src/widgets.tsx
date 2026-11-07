@@ -1467,10 +1467,12 @@ export function FixedExpenseOverview({ transactions = [], categories = [] }: {
 
   return (
     <section className="panel fixed-expense-overview">
-      <div className="chart-heading">
-        <h2>本月固定支出<InfoTip text="手动维护，不依赖交易记录；从参考项目添加且关联了分类时，已支出会随当月该分类的实际消费自动更新（显示「自动」）。导入 AI 后可由消费记录全自动生成，此处改为只读对照。" /></h2>
+      {/* 右上角徽章已是「本月固定支出」：标题条不再重复标题，
+          只留月份摘要 + 原来的 ? 说明气泡 + 新增按钮（功能一个不少） */}
+      <div className="chart-heading no-title">
         <div className="fe-head-right">
           <span>{monthLabel(currentKey)} · {items.length} 项 · 手动维护</span>
+          <InfoTip text="手动维护，不依赖交易记录；从参考项目添加且关联了分类时，已支出会随当月该分类的实际消费自动更新（显示「自动」）。导入 AI 后可由消费记录全自动生成，此处改为只读对照。" />
           <button
             type="button"
             className={showAdd ? "fe-add-icon active" : "fe-add-icon"}
@@ -1617,7 +1619,7 @@ export function FixedExpenseOverview({ transactions = [], categories = [] }: {
 
       <div className="fixed-expense-list">
         {items.length === 0 ? (
-          <p className="empty">还没有固定支出项。点标题右侧的「＋」手动新建，或展开上方参考项目点选添加；已支出可手动填，也可关联分类后自动跟踪当月消费。</p>
+          <p className="empty">还没有固定支出项。点上方标题条右侧的「＋」手动新建，或展开上方参考项目点选添加；已支出可手动填，也可关联分类后自动跟踪当月消费。</p>
         ) : (
           items.map((item) => {
             const auto = autoSpentByItem.get(item.id) ?? null;
@@ -2086,18 +2088,22 @@ export function PlannedPurchasePanel({ items, todayRemainingCents, onAdd, onTogg
 
   return (
     <section className="panel planbuy-panel">
-      <div className="chart-heading">
-        <h2>计划购买<InfoTip text="清单云端同步，多设备一致；余额够买时应用内高亮。点条目可编辑名称/预算；「买到手」移入已买列表；右侧垃圾桶才是删除。" /></h2>
-        <span>
-          {pending.length > 0
-            ? `${pending.length} 项待买 · 合计 ¥${centsToYuan(pendingTotal)}`
-            : "把想买的东西和预算记在这里，当天有额度时会提醒你"}
-          {todayRemainingCents !== null && pending.length > 0
-            ? todayRemainingCents >= 0
-              ? ` · 今日还可花 ¥${centsToYuan(todayRemainingCents)}`
-              : ` · 今日已超限额 ¥${centsToYuan(-todayRemainingCents)}`
-            : ""}
-        </span>
+      {/* 右上角徽章已是「计划购买」：标题条不再重复标题，
+          只留原来的摘要 + ? 说明气泡 */}
+      <div className="chart-heading no-title">
+        <div className="planbuy-head-meta">
+          <span>
+            {pending.length > 0
+              ? `${pending.length} 项待买 · 合计 ¥${centsToYuan(pendingTotal)}`
+              : "把想买的东西和预算记在这里，当天有额度时会提醒你"}
+            {todayRemainingCents !== null && pending.length > 0
+              ? todayRemainingCents >= 0
+                ? ` · 今日还可花 ¥${centsToYuan(todayRemainingCents)}`
+                : ` · 今日已超限额 ¥${centsToYuan(-todayRemainingCents)}`
+              : ""}
+          </span>
+          <InfoTip text="清单云端同步，多设备一致；余额够买时应用内高亮。点条目可编辑名称/预算；「买到手」移入已买列表；右侧垃圾桶才是删除。" />
+        </div>
       </div>
 
       <div className="planbuy-toolbar">

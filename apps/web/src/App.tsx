@@ -1368,14 +1368,8 @@ export function App() {
       case "about":
         return (
           <section className="settings-stack">
-            <div className="settings-section data-section">
-              <div className="data-section-head">
-                <span className="settings-row-icon tone-green"><Info size={16} /></span>
-                <span className="settings-row-text">
-                  <strong>关于与更新</strong>
-                  <small>当前应用版本（git 短 hash）与更新检查</small>
-                </span>
-              </div>
+            {/* 右上角徽章已是「关于与更新」：卡片头整块去掉，内容区不再重复一遍标题 */}
+            <div className="settings-section data-section section-no-head">
               <div className="settings-section-body">
                 <AppVersionPanel onToast={setToast} />
               </div>
@@ -4033,28 +4027,16 @@ function ReminderDetailPage({ which, token, salarySettings, onSalarySettingsChan
   return (
     <section className="settings-stack">
       {which === "salary" ? (
-        <div className="settings-section data-section">
-          <div className="data-section-head">
-            <span className="settings-row-icon tone-gold"><Banknote size={16} /></span>
-            <span className="settings-row-text">
-              <strong>工资日提醒</strong>
-              <small>纯本地提醒，随时可改</small>
-            </span>
-          </div>
+        // 右上角徽章已是「工资日提醒」：卡片头整块去掉，内容区不再重复一遍标题
+        <div className="settings-section data-section section-no-head">
           <div className="settings-section-body">
             <LocalSalaryReminderPanel value={salarySettings} onChange={onSalarySettingsChange} />
           </div>
         </div>
       ) : (
         <>
-          <div className="settings-section data-section">
-            <div className="data-section-head">
-              <span className="settings-row-icon tone-danger"><BellRing size={16} /></span>
-              <span className="settings-row-text">
-                <strong>当日限额提醒</strong>
-                <small>达线全屏警告与手机推送</small>
-              </span>
-            </div>
+          {/* 同理：第一块卡片头与徽章「当日限额提醒」重复，去掉；下面的「手机推送」是分区标题，保留 */}
+          <div className="settings-section data-section section-no-head">
             <div className="settings-section-body">
               <LocalDailyLimitAlertPanel value={dailyLimitSettings} onChange={onDailyLimitSettingsChange} />
             </div>
@@ -5945,8 +5927,8 @@ function Trash({ transactions, accounts, categories, onRestore, onPurge, onClear
   return (
     <section className="panel trash-panel">
       <div className="trash-head">
-        <div className="trash-head-text">
-          <h2>流水回收站</h2>
+        {/* 右上角徽章已是「回收站」：去掉重复的 h2，只留一行状态说明 */}
+        <div className="trash-head-text no-title">
           <p>{rows.length > 0 ? `共 ${rows.length} 笔已删除流水，可恢复或彻底删除` : "删除的流水会先放到这里，可随时恢复"}</p>
         </div>
       </div>

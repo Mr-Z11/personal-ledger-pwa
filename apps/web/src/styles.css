@@ -2343,6 +2343,12 @@ button.settings-section {
   padding: 0 0.85rem 0.8rem;
 }
 
+/* 二级/三级子页右上角徽章就是页面标题，卡片头整块去掉后由内容区自己补顶部内边距
+   （关于与更新 / 工资日提醒 / 当日限额提醒 三处） */
+.data-section.section-no-head > .settings-section-body {
+  padding-top: 0.85rem;
+}
+
 /* 展开分区内的子块标题（提醒设置等） */
 .settings-subblock + .settings-subblock {
   margin-top: 0.9rem;
@@ -2502,6 +2508,11 @@ button.settings-section {
   color: rgba(36, 49, 39, 0.58);
   font-size: 0.78rem;
   font-weight: 700;
+}
+
+/* 回收站去掉与徽章重复的 h2 后，状态说明不再需要跟着标题的上边距 */
+.trash-head-text.no-title p {
+  margin-top: 0;
 }
 
 /* 清空回收站：全宽危险按钮。原来是 .ghost.danger，而 .ghost.danger 的样式只在
@@ -4557,6 +4568,42 @@ button.insight-card {
   gap: 0.4rem;
   font-size: 0.95rem;
   font-weight: 700;
+}
+
+/* 「本月固定支出」/「计划购买」子页：右上角徽章已是页面标题，标题条不再重复 h2。
+   只留摘要 + ? 说明气泡 + 新增按钮；sticky、主题底色、主题色小竖条全部保留，
+   小竖条从 h2::before 挪到摘要容器的 ::before。 */
+.chart-heading.no-title > .fe-head-right,
+.chart-heading.no-title > .planbuy-head-meta {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.chart-heading.no-title > .planbuy-head-meta {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+}
+
+.chart-heading.no-title > .planbuy-head-meta > span:not(.info-tip) {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+/* 新增按钮仍贴标题条最右（原来靠 justify-content:space-between，现在只有一行摘要） */
+.chart-heading.no-title > .fe-head-right > .fe-add-icon {
+  margin-left: auto;
+}
+
+.chart-heading.no-title > .fe-head-right::before,
+.chart-heading.no-title > .planbuy-head-meta::before {
+  content: "";
+  flex: 0 0 auto;
+  width: 0.34rem;
+  height: 1.05rem;
+  border-radius: 999px;
+  background: var(--module-accent);
 }
 
 .fixed-expense-overview > .chart-heading h2 {
