@@ -191,7 +191,11 @@ main {
    预览内容才能与内容层 .view-track 的左边缘对齐，否则会横向错位。
    注意：拖动期间 JS 会用 clip-path 把本层裁到「内容层让出来的那一条」宽度
    （不做视差位移，也不改 width/right——只裁绘制不重排），
-   否则短页面的下方会透出上一层的其余内容，看起来像「切换的页面只有一半」。 */
+   否则短页面的下方会透出上一层的其余内容，看起来像「切换的页面只有一半」。
+   **隐藏用 opacity:0 而不是 visibility:hidden**（2026-11-07 全局返回闪烁）：
+   本层是铺满 main 的不透明底色层，visibility 切换会让 iOS 重组/重栅格化这一整块
+   合成层，返回时偶发「整屏底色一闪」；opacity:0 让它在引擎眼里始终存在且透明，
+   不触发层重建。项目在 .report-list-layer.parked 上已验证过同一条结论。 */
 .view-prev {
   position: absolute;
   inset: 0;
@@ -199,13 +203,16 @@ main {
   padding: inherit;
   overflow: hidden;
   pointer-events: none;
-  visibility: hidden;
+  opacity: 0;
   background: #f6f1e7;
 }
 
+/* 不要常驻 will-change：它把这块（哪怕隐藏着的）预览层永久提升为独立合成层，
+   内容整块替换时 iOS 会重组合成层、首帧丢内容 → 整屏白闪。手势 engage 时由
+   mountPreview 动态写 inline will-change（快照里 position:fixed 的副本需要它建立
+   包含块），clearPreview 同块撤掉，空闲期没有常驻合成层。 */
 .view-prev-scroll {
   min-height: 100%;
-  will-change: transform;
 }
 
 /* 上一层露出时轻微压暗，随手势推进递减（iOS 交互式返回的层次感） */
@@ -233,8 +240,12 @@ main {
      否则内容会从透明的 margin 缝隙里穿过去 */
   padding-bottom: 0.7rem;
   margin-bottom: 0;
-  background: rgba(246, 241, 231, 0.94);
-  backdrop-filter: blur(10px);
+  /* 实色不透明背景、**不要 backdrop-filter**（2026-11-07 全局返回闪烁）：
+     iOS Safari 在吸顶元素上做 backdrop-filter 时，背后整块内容被替换（二级页返回
+     会卸载重建 .view-track 的整棵子树）就要重算 backdrop 表面，首帧经常是一整屏
+     空白/底色 —— 表现为「返回时整屏白闪」。实色背景视觉差别极小，但不需要读背后
+     像素，从机制上消掉这次重栅格化。 */
+  background: #f6f1e7;
 }
 
 .page-heading {
@@ -290,7 +301,9 @@ main {
   box-shadow: 0 2px 12px rgba(31, 95, 116, 0.18);
   pointer-events: none;
   z-index: 62;
-  will-change: transform, opacity;
+  /* 不要 will-change：这是每页常驻的 fixed 层，永久提升后 iOS 在整棵内容树被替换
+     时会重组它，首帧丢画面。跟手位移本来就是每次 touchmove 直接写 inline transform，
+     不需要预先提升（同 2900a9b 移除 .page-tabs-track will-change 的结论）。 */
 }
 
 .app-heading {
@@ -1134,9 +1147,9 @@ input[type="month"],
   margin: 0.1rem -0.2rem 0;
   border: 1px solid rgba(49, 71, 58, 0.1);
   border-radius: 0.72rem;
-  background: rgba(255, 250, 240, 0.94);
+  /* sticky 上不用 backdrop-filter：见 .topbar 的说明（返回时整屏重栅格化白闪） */
+  background: #fffaf0;
   box-shadow: 0 -0.6rem 1.6rem rgba(36, 49, 39, 0.12);
-  backdrop-filter: blur(10px);
 }
 
 .entry-actions .primary,
@@ -3535,8 +3548,8 @@ button.settings-section {
   overflow-x: hidden;
   padding: 0.28rem 0.12rem 0;
   border-bottom: 1px solid rgba(49, 71, 58, 0.1);
-  background: rgba(246, 241, 231, 0.94);
-  backdrop-filter: blur(10px);
+  /* sticky 上不用 backdrop-filter：见 .topbar 的说明（返回时整屏重栅格化白闪） */
+  background: #f6f1e7;
   box-shadow: 0 0.3rem 0.6rem rgba(36, 49, 39, 0.06);
 }
 
@@ -3948,8 +3961,8 @@ button.insight-card {
   align-items: center;
   gap: 0.7rem;
   padding: 0.05rem 0.05rem 0.25rem;
-  background: rgba(246, 241, 231, 0.94);
-  backdrop-filter: blur(10px);
+  /* sticky 上不用 backdrop-filter：见 .topbar 的说明（返回时整屏重栅格化白闪） */
+  background: #f6f1e7;
 }
 
 .report-subpage-title {

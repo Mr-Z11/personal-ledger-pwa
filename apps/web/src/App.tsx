@@ -150,6 +150,7 @@ import {
   Zap
 } from "lucide-react";
 import { Fragment, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
+import { flushSync } from "react-dom";
 import { api } from "./api";
 import { getApiBase, setApiBase, getDefaultApiBase } from "./api";
 import { clearOutbox, db, enqueue, readOutboxPayload, resetLocalData, saveSnapshot } from "./db";
@@ -1903,7 +1904,7 @@ const paintTrackBackground = (track: HTMLElement) => {
  *  坑：轨道一带 transform，`position:fixed` 的包含块就从视口偷换成轨道——短页面
  *  （如提醒设置只有 195px 高）的 FAB 会从屏幕底部**瞬移到轨道顶**，长页面则直接
  *  出屏不见；看起来像「被甩下」，不是整页整体切换。快照层里的副本同理：包含块是
- *  带 will-change 的 .view-prev-scroll，会锚到它的底边而不是视口底边。
+ *  手势期间带 inline will-change 的 .view-prev-scroll，会锚到它的底边而不是视口底边。
  *  解法：手势 engage 时（轨道还没 transform）先量下 fixed 后代的静止视口位置，轨道带上
  *  transform 后再量一次，差值作为**恒定**补偿写进元素自己的 transform（transition 临时关掉，
  *  否则 180ms 渐变跟不上手）；松手后随 clearTrack 同一同步块清掉，不留残样式。 */
@@ -1960,9 +1961,16 @@ const applySnapshotFixedCompensation = (root: HTMLElement, restByClass: Map<stri
 const clearFixedCompensation = (els: HTMLElement[]) => {
   for (const el of els) {
     if (!el.isConnected) continue;
-    el.style.transition = "";
+    // 不能直接 style.transition="" + style.transform=""：.floating 的 CSS 自带
+    // `transition: transform 180ms`，撤掉 inline 的 "none" 会把这条过渡放回来，
+    // FAB 会从补偿位置一路滑回 0（实测 6~7 帧、约 180ms 可见滑入 = 返回时闪一下）。
+    // 先把过渡钉成 none 再撤位移，下一帧才还原 CSS 过渡（那时 transform 已是终值，不会动画）。
+    el.style.transition = "none";
     el.style.transform = "";
   }
+  requestAnimationFrame(() => {
+    for (const el of els) if (el.isConnected) el.style.transition = "";
+  });
 };
 
 type SwipePreview = { layer: HTMLElement; scroll: HTMLElement | null; dim: HTMLElement | null };
@@ -2009,31 +2017,48 @@ function useEdgeSwipeBack({ enabled, onBack, attach = "element" }: {
 
   /** 把上一层快照挂进预览层：滚动位置靠 translateY 补偿（快照内容是整页，从顶部开始）。
    *  快照里的 fixed 副本（FAB 等）包含块是带 will-change 的 .view-prev-scroll，会锚到它的
-   *  底边而不是视口底边——按 live 元素的静止视口位置补偿回去，露出来的那一条才完整。 */
+   *  底边而不是视口底边——按 live 元素的静止视口位置补偿回去，露出来的那一条才完整。
+   *  will-change 只在手势期间由这里动态写入（CSS 里不再常驻），空闲时没有多余合成层。 */
   const mountPreview = (restByClass?: Map<string, DOMRect>): SwipePreview | null => {
     const parts = previewParts();
     const snap = snapshotRef.current;
     if (!parts || !snap) return null;
     if (parts.scroll) {
+      // 先写 will-change 再注入 DOM：fixed 副本的包含块从第一帧起就是 .view-prev-scroll
+      parts.scroll.style.willChange = "transform";
       parts.scroll.innerHTML = snap.html;
       parts.scroll.style.transform = `translateY(${-snap.scrollY}px)`;
       if (restByClass) applySnapshotFixedCompensation(parts.scroll, restByClass);
     }
-    parts.layer.style.visibility = "visible";
+    parts.layer.style.opacity = "1";
     parts.layer.style.transition = "none";
     return parts;
   };
 
-  const clearPreview = () => {
-    const parts = stateRef.current.preview ?? previewParts();
+  /** 只把预览层藏起来、不动 DOM：手势提交后与新页面同一帧切换，避免旧快照残影。 */
+  const hidePreview = () => {
+    const parts = stateRef.current.preview;
     if (!parts) return;
-    parts.layer.style.visibility = "hidden";
+    parts.layer.style.transition = "none";
+    parts.layer.style.opacity = "0";
+    if (parts.dim) parts.dim.style.transition = "none";
+  };
+
+  /** 撤掉预览层的所有 inline 样式与快照 DOM。
+   *  **没有挂过预览就直接 return**：点击「返回」时 enabled 变 false 会跑 effect cleanup，
+   *  旧实现无条件写 8 条 inline 样式（含 visibility）、清 innerHTML，等于每次返回都去
+   *  戳一块铺满 main 的不透明合成层 —— iOS 会因此重栅格化，表象是「整屏底色一闪」。 */
+  const clearPreview = () => {
+    const parts = stateRef.current.preview;
+    if (!parts) return;
+    parts.layer.style.opacity = "0";
     parts.layer.style.transition = "";
     parts.layer.style.transform = "";
     parts.layer.style.clipPath = "";
     if (parts.scroll) {
       parts.scroll.innerHTML = "";
       parts.scroll.style.transform = "";
+      parts.scroll.style.willChange = "";
     }
     if (parts.dim) {
       parts.dim.style.transition = "";
@@ -2176,8 +2201,12 @@ function useEdgeSwipeBack({ enabled, onBack, attach = "element" }: {
           s.fixedTouched = [];
           s.fixedRest = null;
           s.fixedDone = false;
-          onBackRef.current();
-          // 等上一层真实渲染出来再撤快照，否则中间会闪一帧空背景
+          // 同步提交新页面 DOM：concurrent root 的 setState 默认排在下一个任务，
+          // 直接 onBack() 就撤预览的话，浏览器可能先画一帧「轨道已归位但还是旧子页」。
+          // flushSync 保证新页面与撤预览落在同一个同步块、同一帧，既无空背景也无旧快照残影。
+          flushSync(() => onBackRef.current());
+          hidePreview();
+          // DOM 快照稍后再清（此刻已经 opacity:0，不可见），不影响画面
           window.setTimeout(clearPreview, 60);
         }, COMMIT);
       } else {
