@@ -1651,6 +1651,8 @@ function Overview({ summary, budgetCents, totalBudgetCents, categories, transact
   /** 进入「计划购买」二级子模块 */
   onOpenPlanBuy: () => void;
 }) {
+  // 随手记式分层：速览默认只露两个关键数字，其余按需展开，别把一屏塞满
+  const [showAllQuickStats, setShowAllQuickStats] = useState(false);
   const monthTransactions = transactions.filter((item) => item.occurredAt.startsWith(monthKey()));
   const prevMonthKey = offsetMonthKey(monthKey(), -1);
   const prevMonthTransactions = transactions.filter((item) => item.occurredAt.startsWith(prevMonthKey));
@@ -1741,19 +1743,31 @@ function Overview({ summary, budgetCents, totalBudgetCents, categories, transact
           <strong>¥{centsToYuan(dailyAverage)}</strong>
           {trendTag(dailyAvgDelta) ?? <em>按已过天数估算</em>}
         </article>
-        <article className="overview-quick-card">
-          <span>最大单笔</span>
-          <strong>¥{centsToYuan(largestExpense)}</strong>
-          <em>本月日常消费</em>
-        </article>
-        <article className="overview-quick-card category">
-          <span>最大分类</span>
-          <strong className="overview-quick-category">
-            {topCategory && <CategoryIcon icon={topCategory.icon} size={14} />}
-            {topCategory ? categoryPath(topCategory, categories) : "暂无支出"}
-          </strong>
-          <em>{topCategoryEntry ? `¥${centsToYuan(topCategoryEntry[1])}` : "¥0.00"}</em>
-        </article>
+        {showAllQuickStats && (
+          <>
+            <article className="overview-quick-card">
+              <span>最大单笔</span>
+              <strong>¥{centsToYuan(largestExpense)}</strong>
+              <em>本月日常消费</em>
+            </article>
+            <article className="overview-quick-card category">
+              <span>最大分类</span>
+              <strong className="overview-quick-category">
+                {topCategory && <CategoryIcon icon={topCategory.icon} size={14} />}
+                {topCategory ? categoryPath(topCategory, categories) : "暂无支出"}
+              </strong>
+              <em>{topCategoryEntry ? `¥${centsToYuan(topCategoryEntry[1])}` : "¥0.00"}</em>
+            </article>
+          </>
+        )}
+        <button
+          type="button"
+          className="overview-more-toggle"
+          aria-expanded={showAllQuickStats}
+          onClick={() => setShowAllQuickStats((value) => !value)}
+        >
+          {showAllQuickStats ? "收起速览" : "展开更多数据"}
+        </button>
       </div>
     </section>
   );

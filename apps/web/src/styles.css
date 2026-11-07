@@ -408,7 +408,8 @@ h2 {
 
 .overview-dashboard {
   display: grid;
-  gap: 0.5rem;
+  /* 随手记式留白：模块之间留出呼吸空间，宁可让用户上下滑，也别把一屏塞满 */
+  gap: 1.15rem;
 }
 
 .overview-hero {
@@ -508,7 +509,7 @@ h2 {
 .overview-quick-card span,
 .overview-insight span {
   color: rgba(36, 49, 39, 0.6);
-  font-size: 0.72rem;
+  font-size: 0.78rem;
   font-weight: 700;
 }
 
@@ -540,11 +541,46 @@ h2 {
   min-width: 0;
   overflow: hidden;
   color: rgba(36, 49, 39, 0.5);
-  font-size: 0.68rem;
+  font-size: 0.74rem;
   font-style: normal;
   font-weight: 800;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+/* 「本月速览」折叠开关：默认只露两个关键数字，其余按需展开（随手记式分层） */
+.overview-more-toggle {
+  grid-column: 1 / -1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.4rem;
+  min-height: 2.35rem;
+  border: 1px dashed rgba(49, 71, 58, 0.16);
+  border-radius: 0.7rem;
+  background: transparent;
+  color: rgba(36, 49, 39, 0.58);
+  font-size: 0.8rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.overview-more-toggle::after {
+  content: "";
+  width: 0.42rem;
+  height: 0.42rem;
+  border-right: 1.5px solid currentColor;
+  border-bottom: 1.5px solid currentColor;
+  transform: rotate(45deg) translateY(-0.1rem);
+  transition: transform 180ms ease;
+}
+
+.overview-more-toggle[aria-expanded="true"]::after {
+  transform: rotate(-135deg) translateY(-0.1rem);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .overview-more-toggle::after { transition: none; }
 }
 
 .trend-tag {
@@ -555,7 +591,7 @@ h2 {
   overflow: hidden;
   padding: 0.12rem 0.38rem;
   border-radius: 999px;
-  font-size: 0.68rem;
+  font-size: 0.72rem;
   font-style: normal;
   font-weight: 900;
   text-overflow: ellipsis;
@@ -1954,7 +1990,8 @@ input[type="month"],
 .settings-stack {
   display: grid;
   grid-template-columns: minmax(0, 1fr);
-  gap: 0.7rem;
+  /* 子页里卡片之间也拉开：宁可多滑一点，也不要上下两张卡贴在一起 */
+  gap: 1rem;
 }
 
 /* 顶部工具卡网格（随手记风格）：2 列白卡，彩色图标砖 + 标题 + 副标题 */
@@ -1988,7 +2025,7 @@ input[type="month"],
 
 .settings-tool-card small {
   color: rgba(36, 49, 39, 0.56);
-  font-size: 0.72rem;
+  font-size: 0.78rem;
   font-weight: 700;
 }
 
@@ -2021,18 +2058,43 @@ input[type="month"],
   text-align: center;
 }
 
-/* 分组小标题（对照随手记「基础功能」） */
+/* 分组小标题：随手记用「整条浅灰底」把一组设置明确框开，而不是靠卡片缝隙暗示分组 */
 .settings-group-label {
-  margin: 0.15rem 0.2rem -0.15rem;
+  margin: 0;
+  padding: 0.55rem 0.95rem;
+  border-radius: 0.5rem;
+  background: rgba(36, 49, 39, 0.045);
   color: rgba(36, 49, 39, 0.5);
-  font-size: 0.76rem;
-  font-weight: 900;
-  letter-spacing: 0.04em;
+  font-size: 0.78rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
 }
 
+/* 导航行列表：整块白底 + 细分隔线（随手记式），不再是一张张浮起来的卡片。
+   只作用于导航列表，二级子页里的表单卡片 .settings-section 不受影响。
+   hidden 仍是真滚动容器，优先用 clip（历史坑：焦点滚进可视区会让画面动一下）。 */
 .settings-list {
   display: grid;
-  gap: 0.6rem;
+  gap: 0;
+  overflow: hidden;
+  border: 1px solid rgba(49, 71, 58, 0.08);
+  border-radius: 0.9rem;
+  background: #fff;
+}
+
+@supports (overflow: clip) {
+  .settings-list { overflow: clip; }
+}
+
+.settings-list > .settings-section {
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+.settings-list > .settings-section + .settings-section {
+  border-top: 1px solid rgba(49, 71, 58, 0.08);
 }
 
 /* 设置页列表行：整行白卡，点击进入二级子模块 */
@@ -2088,18 +2150,31 @@ button.settings-section {
 }
 
 .settings-row-text strong {
-  font-size: 0.92rem;
+  font-size: 1rem;
 }
 
 .settings-row-text small {
   color: rgba(36, 49, 39, 0.56);
-  font-size: 0.74rem;
+  font-size: 0.8rem;
   font-weight: 700;
 }
 
 .settings-row-chevron {
   color: rgba(36, 49, 39, 0.32);
   flex: 0 0 auto;
+}
+
+/* 列表行高从 3.4rem 提到 4.2rem（≈67px，贴近随手记），左右留白也放宽 */
+.settings-list .settings-row-head {
+  min-height: 4.2rem;
+  gap: 0.85rem;
+  padding: 0.75rem 0.95rem;
+}
+
+/* 图标只留线形颜色、去掉彩色圆角底砖：整页色彩变少，画面更透气。
+   选择器带 [class*="tone-"] 是为了压过 .settings-row-icon.tone-xxx 的 (0,2,0)。 */
+.settings-list .settings-row-icon[class*="tone-"] {
+  background: none;
 }
 
 /* 二级入口行（分类标签/提醒设置内）：大图标 + 数量 */
@@ -5667,7 +5742,7 @@ button.insight-card {
 
   .overview-quick-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
-    gap: 0.5rem;
+    gap: 0.7rem;
   }
 
   .overview-quick-card {
@@ -5951,7 +6026,8 @@ button.insight-card {
   }
 
   .overview-dashboard {
-    gap: 0.58rem;
+    /* 手机端也要保持随手记式留白，别被断点压回紧凑值 */
+    gap: 1.15rem;
   }
 
   .overview-hero {
@@ -5992,11 +6068,11 @@ button.insight-card {
   }
 
   .overview-quick-grid {
-    gap: 0.42rem;
+    gap: 0.7rem;
   }
 
   .overview-quick-card {
-    padding: 0.52rem;
+    padding: 0.72rem;
   }
 
   .overview-quick-card em {
@@ -7174,11 +7250,12 @@ button.insight-card {
   }
 
   .reservoir-readout span {
-    font-size: 0.66rem;
+    /* 别为了塞进窄卡把说明压到 10px 以下 */
+    font-size: 0.72rem;
   }
 
   .reservoir-foot {
-    font-size: 0.66rem;
+    font-size: 0.72rem;
   }
 
   .trend-focus-grid {
@@ -7226,11 +7303,11 @@ button.insight-card {
   }
 
   .reservoir-readout span {
-    font-size: 0.6rem;
+    font-size: 0.72rem;
   }
 
   .reservoir-foot {
-    font-size: 0.6rem;
+    font-size: 0.72rem;
     line-height: 1.35;
   }
 }
