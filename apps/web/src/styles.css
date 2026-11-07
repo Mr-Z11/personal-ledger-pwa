@@ -3726,9 +3726,9 @@ button.settings-section {
   gap: 0.62rem;
   align-items: center;
   padding: 0.5rem 0.68rem;
-  background: rgba(255, 250, 240, 0.92);
+  /* 同一轮「返回整屏白闪」清理时漏掉的一处 sticky backdrop-filter，一并改实色 */
+  background: rgba(255, 250, 240, 0.98);
   box-shadow: 0 0.75rem 1.8rem rgba(36, 49, 39, 0.13);
-  backdrop-filter: blur(14px);
 }
 
 .report-context-anchor span,
@@ -6567,13 +6567,13 @@ button.insight-card {
   flex-direction: column;
   align-items: center;
   gap: 0.16rem;
-  background: rgba(255, 253, 247, 0.88);
+  /* 原来用 backdrop-filter 模糊下面无限流动的水波；那是一个持续的重绘源，
+     iOS 上会让整块预算卡（乃至叠在上面的全屏警示层）反复重栅格化。改实色。 */
+  background: rgba(255, 253, 247, 0.97);
   border: 1px solid rgba(49, 71, 58, 0.14);
   border-radius: 1rem;
   padding: 0.55rem 0.95rem;
   box-shadow: 0 3px 10px rgba(36, 49, 39, 0.16);
-  backdrop-filter: blur(3px);
-  -webkit-backdrop-filter: blur(3px);
 }
 
 .reservoir-readout strong {
@@ -8698,6 +8698,23 @@ body.daily-limit-lock {
   overscroll-behavior: none;
 }
 
+/* hidden 仍是「真滚动容器」（历史坑 6a3dc5c）：iOS 在地址栏收放 / 视觉视口变化时
+   会反复重锚定整页，叠加整屏红色 fixed 层就是「红色画面一闪一闪」。clip 不建滚动
+   容器，同样彻底锁住滚动、还能抑制橡皮筋；旧 Safari 走上面的 hidden 兜底。 */
+@supports (overflow: clip) {
+  html.daily-limit-lock,
+  body.daily-limit-lock { overflow: clip; }
+}
+
+/* 超限警示期间，预算卡里那两条 5s / 7.5s 的无限水波动画完全被遮罩盖住（或只是红色
+   皮肤下的背景），却会每帧推动 iOS 重栅格化整块合成层。暂停它们，零视觉损失。 */
+html.daily-limit-lock .reservoir-wave-a,
+html.daily-limit-lock .reservoir-wave-b,
+body.daily-limit-over .reservoir-wave-a,
+body.daily-limit-over .reservoir-wave-b {
+  animation: none;
+}
+
 .daily-limit-overlay {
   position: fixed;
   inset: 0;
@@ -8732,12 +8749,20 @@ body.daily-limit-lock {
   color: #fff8f2;
   padding: 2rem 1.6rem;
   border-radius: 1.4rem;
-  background: rgba(60, 8, 4, 0.38);
+  /* 不透明实色、不要 backdrop-filter：遮罩本身就是整屏 fixed 渐变，卡片再对它做模糊
+     会让 iOS 每帧重算整屏 backdrop 表面（与上一轮「返回整屏白闪」同源），表现为
+     红色画面一闪一闪。实色深红观感几乎一致，但不再有采样源。 */
+  background: rgba(52, 7, 4, 0.94);
   border: 1px solid rgba(255, 226, 214, 0.28);
   box-shadow: 0 2rem 5rem rgba(40, 4, 0, 0.5);
-  backdrop-filter: blur(6px);
   /* 弹性缩放只在内部卡片上做（非 fixed，transform 安全）；固定遮罩层只淡入，避免 iOS 抖动 */
   animation: daily-limit-pop 0.3s cubic-bezier(0.18, 0.92, 0.24, 1.08);
+}
+
+/* body.daily-limit-over 会把全局 h2 染成深红 #8c1616；卡片改成不透明深红实色后，
+   这行标题会糊在背景里。在遮罩作用域内用更高特异性压回浅色。 */
+.daily-limit-overlay .daily-limit-card h2 {
+  color: #fff8f2;
 }
 
 .daily-limit-icon {
