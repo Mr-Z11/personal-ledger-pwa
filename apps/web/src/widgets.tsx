@@ -2282,7 +2282,7 @@ export function PlannedPurchasePanel({ items, todayRemainingCents, onAdd, onTogg
 /* 搜索历史记录（关键词 + 按月/年汇总）                                  */
 /* ------------------------------------------------------------------ */
 
-/** 关键词匹配消费记录（排除收入/已删除），匹配备注、商户、标签、账户名、分类名。 */
+/** 关键词匹配消费记录（排除收入/已删除），匹配备注、商户、标签、账户名、分类名、父分类名。 */
 export function searchMatches(needle: string, transactions: Transaction[], accounts: Account[], categories: Category[]): Transaction[] {
   const q = needle.trim().toLowerCase();
   if (!q) return [];
@@ -2290,17 +2290,31 @@ export function searchMatches(needle: string, transactions: Transaction[], accou
     .filter((item) => item.type !== "income" && !item.deletedAt)
     .filter((item) => {
       const category = categories.find((entry) => entry.id === item.categoryId);
+      // 只拼「真实存在的名字」。categoryPath() 是显示用的：它会给所有顶层分类补一个
+      // 「其他 > 」前缀，若把它拼进 haystack，搜「其他」会命中几乎全部记录，
+      // 看起来就像「把当天所有消费都收进来了」。父分类名单独取，一样能按层级搜。
+      const parentName = category?.parentId
+        ? categories.find((entry) => entry.id === category.parentId)?.name ?? ""
+        : "";
       const haystack = [
         item.note ?? "",
         item.merchant ?? "",
         (item.tags ?? []).join(" "),
         accounts.find((entry) => entry.id === item.accountId)?.name ?? "",
         category?.name ?? "",
-        categoryPath(category, categories)
+        parentName
       ].join(" ").toLowerCase();
       return haystack.includes(q);
     })
     .sort((left, right) => right.occurredAt.localeCompare(left.occurredAt));
+}
+
+/** 搜索结果里的分类标签只用真实名字。categoryPath() 给顶层分类补的
+ *  「其他 > 」只是显示装饰：搜索口径已不认它，展示上也不该让人误以为
+ *  存在一个叫「其他」的父分类（否则会出现「搜其他搜不到、结果却写着其他」）。 */
+function searchCategoryLabel(category: Category | undefined, categories: Category[]) {
+  if (!category) return "";
+  return category.parentId ? categoryPath(category, categories) : category.name;
 }
 
 /** 按时间段汇总支出：sliceLen=7 按月、4 按年。 */
@@ -2318,10 +2332,12 @@ export function aggregateByPeriod(matches: Transaction[], sliceLen: number): { k
     .sort((left, right) => right.key.localeCompare(left.key));
 }
 
-export function SearchView({ transactions, accounts, categories }: {
+export function SearchView({ transactions, accounts, categories, onEdit }: {
   transactions: Transaction[];
   accounts: Account[];
   categories: Category[];
+  /** 点整行直接编辑这笔流水；结果行不放「编辑」按钮，保持干净 */
+  onEdit: (item: Transaction) => void;
 }) {
   const [query, setQuery] = useState("");
   const [visibleLimit, setVisibleLimit] = useState(200);
@@ -2348,7 +2364,7 @@ export function SearchView({ transactions, accounts, categories }: {
     const seen = new Map<string, string>();
     matched.forEach((item) => {
       if (item.categoryId && !seen.has(item.categoryId)) {
-        seen.set(item.categoryId, categoryPath(categories.find((entry) => entry.id === item.categoryId), categories) || "未分类");
+        seen.set(item.categoryId, searchCategoryLabel(categories.find((entry) => entry.id === item.categoryId), categories) || "未分类");
       }
     });
     return Array.from(seen, ([id, name]) => ({ id, name }));
@@ -2499,14 +2515,25 @@ export function SearchView({ transactions, accounts, categories }: {
             <ul className="search-detail-list">
               {visible.map((item) => {
                 const category = categories.find((entry) => entry.id === item.categoryId);
+                const accountName = accounts.find((entry) => entry.id === item.accountId)?.name ?? "";
+                // 商户与备注都要显示：结果行原先只取 merchant，改了备注/分类在搜索里
+                // 完全看不出变化，会被误认为「搜索还在展示修改前的内容」。
+                const detail = [item.merchant, item.note].filter(Boolean).join(" · ") || "无备注";
                 return (
                   <li key={item.id}>
-                    <span className="sd-date">{item.occurredAt.slice(0, 10)}</span>
-                    <span className="sd-cat">{categoryPath(category, categories) || (item.type === "transfer" ? "转账" : "未分类")}</span>
-                    <span className="sd-note">{item.merchant || item.note || ""}</span>
-                    <strong className={`sd-amount ${item.type === "income" ? "income" : item.type === "expense" ? "expense" : "transfer"}`}>
-                      {item.type === "income" ? "+" : item.type === "expense" ? "-" : ""}¥{centsToYuan(item.amountCents)}
-                    </strong>
+                    <button type="button" className="sd-row-button" onClick={() => onEdit(item)} title="点击编辑这笔流水">
+                      <span className="sd-row-main">
+                        <span className="sd-date">{item.occurredAt.slice(0, 10)}</span>
+                        <span className="sd-cat">{searchCategoryLabel(category, categories) || (item.type === "transfer" ? "转账" : "未分类")}</span>
+                        <strong className={`sd-amount ${item.type === "income" ? "income" : item.type === "expense" ? "expense" : "transfer"}`}>
+                          {item.type === "income" ? "+" : item.type === "expense" ? "-" : ""}¥{centsToYuan(item.amountCents)}
+                        </strong>
+                      </span>
+                      <span className="sd-row-meta">
+                        <span className="sd-note">{detail}</span>
+                        {accountName && <span className="sd-account">{accountName}</span>}
+                      </span>
+                    </button>
                   </li>
                 );
               })}

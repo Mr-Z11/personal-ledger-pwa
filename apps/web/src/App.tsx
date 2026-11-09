@@ -1159,19 +1159,23 @@ export function App() {
   const openEntry = useCallback(() => {
     setView("entry");
     setSubStack([]);
+    setEditingTransaction(null);
     setEntryFocusSignal((value) => value + 1);
   }, []);
 
-  // 切换主视图时清空子模块栈；进入子模块用 pushSub
+  // 切换主视图时清空子模块栈与编辑态；进入子模块用 pushSub
   const goView = useCallback((next: View) => {
     setView(next);
     setSubStack([]);
+    // 编辑浮层是 App 级的，不关掉会跨页盖在别的模块上
+    setEditingTransaction(null);
   }, []);
   /** 抓「上一层页面快照」的入口：真正的实现在下面的 subSwipe（hook 要在 sub 之后才能定义），
    *  这里用 ref 懒绑定，pushSub 就能保持原位、每次进入子页前抓住切换前的页面。 */
   const captureSnapshotRef = useRef<() => void>(() => undefined);
   const pushSub = useCallback((item: SubView) => {
     captureSnapshotRef.current(); // 必须在 setState 之前：抓的是当前（即将被盖住）的那一层
+    setEditingTransaction(null);
     setSubStack((current) => [...current, item]);
   }, []);
   const popSub = useCallback(() => setSubStack((current) => current.slice(0, -1)), []);
@@ -1525,17 +1529,13 @@ export function App() {
             const deleted = { ...item, deletedAt: new Date().toISOString(), updatedAt: new Date().toISOString(), version: item.version + 1 };
             await saveLocalAndQueue("transactions", deleted);
             setToast("流水已移入回收站");
-          }} onEdit={(item) => setEditingTransaction(item)} editingTransaction={editingTransaction} onCancelEdit={() => setEditingTransaction(null)} onSaveEdit={async (item) => {
-            await saveLocalAndQueue("transactions", item);
-            setEditingTransaction(null);
-            setToast("流水已更新");
-          }} onBulkUpdate={async (items) => {
+          }} onEdit={(item) => setEditingTransaction(item)} onBulkUpdate={async (items) => {
             await saveManyLocalAndQueue("transactions", items);
             setToast(`已批量更新 ${items.length} 笔流水`);
-          }} onSaveCategory={(item) => saveLocalAndQueue("categories", item)} />
+          }} />
         )}
         {view === "search" && (
-          <SearchView transactions={activeTransactions} accounts={activeAccounts} categories={activeCategories} />
+          <SearchView transactions={activeTransactions} accounts={activeAccounts} categories={activeCategories} onEdit={(item) => setEditingTransaction(item)} />
         )}
         {view === "reports" && (
           <Reports
@@ -1584,6 +1584,36 @@ export function App() {
         )}
         <button className="floating entry-fab" onClick={openEntry} title="记一笔"><Plus size={30} /></button>
         </div>
+        {/* 流水编辑共用浮层：流水页（含很早的明细）与搜索结果页都用它。
+            旧写法把编辑表单插在流水列表最顶部，滚到列表深处点「编辑」时表单在视口外
+            约一万多像素，看起来像「点了没反应」，切走再回来滚动归零才看得见。
+            改成 fixed 浮层后无论滚到哪都立刻可见。
+            必须挂在 main 直接子级、.view-track 之外：.view-track 自带 z-index:1
+            会创建层叠上下文，放里面的 z-index 再高也盖不住底部导航（z-index:20）。
+            背景用普通实色遮罩、无 blur，避免给 iOS 合成层引入采样源。 */}
+        {editingTransaction && !sub && (view === "transactions" || view === "search") && (
+          <div className="transaction-edit-backdrop" onClick={() => setEditingTransaction(null)}>
+            <section className="transaction-edit-sheet" onClick={(event) => event.stopPropagation()} role="dialog" aria-modal="true" aria-label="编辑流水">
+              <div className="transaction-edit-head">
+                <strong>编辑流水</strong>
+                <button className="icon-button mini" type="button" onClick={() => setEditingTransaction(null)} title="关闭"><X size={15} /></button>
+              </div>
+              <EntryForm
+                accounts={accounts}
+                categories={activeCategories}
+                transactions={activeTransactions}
+                editing={editingTransaction}
+                onSave={async (item) => {
+                  await saveLocalAndQueue("transactions", item);
+                  setEditingTransaction(null);
+                  setToast("流水已更新");
+                }}
+                onSaveCategory={(item) => saveLocalAndQueue("categories", item)}
+                onCancel={() => setEditingTransaction(null)}
+              />
+            </section>
+          </div>
+        )}
       </main>
     </div>
   );
@@ -2741,17 +2771,13 @@ function QuickCategoryForm({ categories, onSave, onClose }: { categories: Catego
   );
 }
 
-function TransactionList({ transactions, accounts, categories, onDelete, onEdit, editingTransaction, onCancelEdit, onSaveEdit, onBulkUpdate, onSaveCategory }: {
+function TransactionList({ transactions, accounts, categories, onDelete, onEdit, onBulkUpdate }: {
   transactions: Transaction[];
   accounts: Account[];
   categories: Category[];
   onDelete: (item: Transaction) => Promise<void>;
   onEdit: (item: Transaction) => void;
-  editingTransaction: Transaction | null;
-  onCancelEdit: () => void;
-  onSaveEdit: (item: Transaction) => Promise<void>;
   onBulkUpdate: (items: Transaction[]) => Promise<void>;
-  onSaveCategory: (item: Category) => Promise<void>;
 }) {
   const [query, setQuery] = useState("");
   const [type, setType] = useState<"all" | "expense" | "transfer">("all");
@@ -2901,12 +2927,6 @@ function TransactionList({ transactions, accounts, categories, onDelete, onEdit,
             updatedAt: new Date().toISOString(),
             version: item.version + 1
           }))}>批量删除</button>
-        </div>
-      )}
-      {editingTransaction && (
-        <div className="edit-panel">
-          <h2>编辑流水</h2>
-          <EntryForm accounts={accounts} categories={activeCategories} transactions={transactions} editing={editingTransaction} onSave={onSaveEdit} onSaveCategory={onSaveCategory} onCancel={onCancelEdit} />
         </div>
       )}
       {transactionGroups.length === 0 && <p className="empty">暂无记录</p>}

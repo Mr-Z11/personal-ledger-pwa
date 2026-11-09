@@ -346,6 +346,39 @@ describe("搜索记录：关键词匹配与按月/年汇总", () => {
     expect(hits.map((item) => item.id).sort()).toEqual(["s1", "s2", "s4"]);
   });
 
+  it("不把显示用的「其他 > 」前缀当关键词，避免搜一个词收进整批记录", () => {
+    // categoryPath(顶层分类) 会补「其他 > 三餐」，旧写法把它拼进 haystack，
+    // 搜「其他」会命中所有顶层分类的流水，看起来像把当天消费全部收进来了。
+    expect(searchMatches("其他", searchTxs, accounts, categories)).toEqual([]);
+  });
+
+  it("负对照：旧写法（categoryPath 拼进 haystack）确实会误命中整批记录", () => {
+    const oldHaystack = (item: Transaction) => {
+      const cat = categories.find((entry) => entry.id === item.categoryId);
+      const parent = cat?.parentId ? categories.find((entry) => entry.id === cat.parentId)?.name ?? "" : "";
+      const displayPath = cat ? (parent ? `${parent} > ${cat.name}` : `其他 > ${cat.name}`) : "";
+      return [
+        item.note ?? "", item.merchant ?? "", (item.tags ?? []).join(" "),
+        accounts.find((entry) => entry.id === item.accountId)?.name ?? "",
+        cat?.name ?? "", displayPath
+      ].join(" ").toLowerCase();
+    };
+    const oldHits = searchTxs.filter((item) => item.type !== "income" && !item.deletedAt && oldHaystack(item).includes("其他"));
+    expect(oldHits.length).toBeGreaterThan(0);
+    expect(searchMatches("其他", searchTxs, accounts, categories)).toHaveLength(0);
+  });
+
+  it("仍能按父分类名命中（层级搜索不受影响）", () => {
+    const childCats: Category[] = [
+      ...categories,
+      { ...stamp, id: "cat-lunch", name: "午餐", kind: "expense", parentId: "cat-food", icon: "circle", color: "#d45b3f" }
+    ];
+    const childTx = tx("s6", 120, "2026-03-06T10:00:00.000+08:00", "cat-lunch", "公司食堂");
+    expect(searchMatches("三餐", [...searchTxs, childTx], accounts, childCats).map((item) => item.id)).toContain("s6");
+    // 子分类自己的名字同样可搜
+    expect(searchMatches("午餐", [...searchTxs, childTx], accounts, childCats).map((item) => item.id)).toEqual(["s6"]);
+  });
+
   it("按月份汇总支出（含笔数与金额）", () => {
     const hits = searchMatches("加油", searchTxs, accounts, categories);
     const byMonth = aggregateByPeriod(hits, 7);

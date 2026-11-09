@@ -1840,6 +1840,62 @@ input[type="month"],
   padding: 0.95rem;
 }
 
+/* 流水编辑共用浮层（流水页 / 搜索结果页）。刻意不加 backdrop-filter、
+   will-change 或无限动画：整屏 fixed 层一旦带模糊就会成为 iOS 合成层的
+   持续重绘源（见 9a391de 超限红色闪烁）。这里只用普通实色遮罩。 */
+.transaction-edit-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 85;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  padding: 0.75rem;
+  background: rgba(20, 29, 23, 0.46);
+}
+
+.transaction-edit-sheet {
+  width: min(100%, 38rem);
+  max-height: 88vh;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  border: 1px solid rgba(49, 71, 58, 0.14);
+  border-radius: 0.9rem 0.9rem 0.72rem 0.72rem;
+  background: #fffdf7;
+  box-shadow: 0 1.2rem 3rem rgba(20, 29, 23, 0.24);
+  padding: 0.75rem;
+}
+
+.transaction-edit-sheet .entry-panel {
+  border: 0;
+  box-shadow: none;
+  background: transparent;
+}
+
+/* 浮层里的保存条固定不吸底。主记一笔页的 .entry-actions 是 sticky，
+   且 body.keyboard-open 时会被改成 static——点「保存修改」时输入框失焦、
+   键盘收起，这个 sticky↔static 切换会让按钮瞬间跳位，真实点击的 mouseup
+   落到父容器上，form submit 不触发，表现就是「点保存没反应」。浮层本身
+   已经能滚动，这里不需要吸底。 */
+.transaction-edit-sheet .entry-actions {
+  position: static;
+  bottom: auto;
+  box-shadow: none;
+}
+
+.transaction-edit-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.8rem;
+  padding: 0.1rem 0.2rem 0.6rem;
+}
+
+.transaction-edit-head strong {
+  font-size: 1rem;
+  color: #243127;
+}
+
 .transaction-detail-head {
   display: flex;
   align-items: start;
@@ -9379,13 +9435,46 @@ body.daily-limit-over .reservoir-wave-b {
 }
 
 .search-detail-list li {
-  display: grid;
-  grid-template-columns: 5.6rem minmax(0, 1.1fr) minmax(0, 1fr) auto;
-  align-items: center;
-  gap: 0.55rem;
-  padding: 0.4rem 0.6rem;
   border-radius: 0.55rem;
   background: rgba(49, 71, 58, 0.05);
+}
+
+/* 整行可点编辑，不另放「编辑」按钮；两行布局才能在手机上同时显示
+   分类、商户、备注、账户（旧版 ≤640px 直接把 .sd-cat 隐藏，改了分类在
+   搜索结果里完全看不出来）。 */
+.sd-row-button {
+  display: block;
+  width: 100%;
+  padding: 0.48rem 0.6rem;
+  border: 0;
+  border-radius: 0.55rem;
+  background: transparent;
+  text-align: left;
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
+}
+
+@media (hover: hover) {
+  .sd-row-button:hover { background: rgba(49, 71, 58, 0.08); }
+}
+
+.sd-row-button:active { background: rgba(49, 71, 58, 0.12); }
+
+.sd-row-main {
+  display: grid;
+  grid-template-columns: 5.6rem minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 0.55rem;
+}
+
+.sd-row-meta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.55rem;
+  margin-top: 0.22rem;
+  min-width: 0;
 }
 
 .sd-date {
@@ -9403,10 +9492,19 @@ body.daily-limit-over .reservoir-wave-b {
 }
 
 .sd-note {
+  flex: 1 1 auto;
+  min-width: 0;
   font-size: 0.78rem;
   color: rgba(36, 49, 39, 0.6);
   overflow: hidden;
   text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sd-account {
+  flex: 0 0 auto;
+  font-size: 0.72rem;
+  color: rgba(36, 49, 39, 0.45);
   white-space: nowrap;
 }
 
@@ -9443,12 +9541,14 @@ body.daily-limit-over .reservoir-wave-b {
     gap: 0.45rem;
   }
 
-  .search-detail-list li {
+  .sd-row-main {
     grid-template-columns: 4.6rem minmax(0, 1fr) auto;
+    gap: 0.45rem;
   }
 
+  /* 不要再隐藏分类：用户改了分类名/流水分类，搜索结果必须跟着变 */
   .sd-cat {
-    display: none;
+    font-size: 0.76rem;
   }
 
   .bd-amount,
