@@ -103,8 +103,30 @@ export function daysInYear(value: string) {
 export function categoryPath(category: Category | undefined, categories: Category[]) {
   if (!category) return "";
   const parent = category.parentId ? categories.find((item) => item.id === category.parentId) : undefined;
-  if (parent) return `${parent.name} > ${category.name}`;
-  return category.name === "其他" ? category.name : `其他 > ${category.name}`;
+  // 顶层分类只显示自己的名字。旧实现会给它补一个「其他 > 」装饰前缀，但它并不真的挂在
+  // 「其他」下面：界面上会把「加油」这类二级分类误读成属于其他大类，搜「其他」也会误命中
+  // 几乎全部记录。父分类找不到（已下架 / 本地旧数据）时同理，只显示自己的名字。
+  return parent ? `${parent.name} > ${category.name}` : category.name;
+}
+
+/** 明细名称 → 应归属的顶层大类。只在「快速新增分类」时用：把具体明细种类定义清楚，
+ *  避免所有新分类都掉进一个凭空造出来的「其他」。具体词排在泛化词前面。 */
+const CATEGORY_PARENT_HINTS: { test: RegExp; parent: string }[] = [
+  { test: /加油|油费|过路|停车|洗车|公交|地铁|打车|租车|高铁|车票|交通|ETC|违章/, parent: "交通出行" },
+  { test: /保姆|家政|阿姨|月嫂|育儿嫂|看护|照顾|保险|贷款|本金|利息|购车|养车/, parent: "专项支出" },
+  { test: /三餐|早餐|午餐|晚餐|外卖|买菜|零食|饮料|餐饮/, parent: "餐饮食品" },
+  { test: /房租|水电|物业|日用品|维修|家具|家电/, parent: "居家日用" },
+  { test: /药|医院|体检|看病|保健|牙科|医疗/, parent: "健康医疗" },
+  { test: /书|课程|培训|考试|进修|学习/, parent: "学习成长" },
+  { test: /孩子|宝宝|学费|托管|校服|兴趣班|亲子/, parent: "孩子教育" },
+  { test: /旅游|酒店|电影|娱乐|礼金|人情|孝敬|休闲/, parent: "休闲社交" },
+  { test: /衣服|鞋|包|美妆|理发|护肤|服饰/, parent: "服饰个护" },
+  { test: /手机|话费|宽带|数码|电脑|软件|云服务/, parent: "通讯数码" }
+];
+
+export function inferCategoryParentName(name: string): string | null {
+  const trimmed = name.trim();
+  return CATEGORY_PARENT_HINTS.find((hint) => hint.test.test(trimmed))?.parent ?? null;
 }
 
 export function isNonDailyExpenseCategory(category: Category | undefined, categories: Category[]) {

@@ -27,7 +27,9 @@ import {
 } from "./widgets";
 import { PlanView, loadInsuranceSchedule, parseInsuranceText, saveInsuranceSchedule } from "./plan";
 import {
+  categoryPath,
   inferCategoryIcon,
+  inferCategoryParentName,
   isPlaceholderCategoryIcon,
   entryChunkFromIndexHtml,
   markAllPurged,
@@ -218,10 +220,10 @@ describe("常规项支出与规划页", () => {
     saveInsuranceSchedule([{ id: "ins1", name: "重疾险", month: Number(thisMonth.slice(5, 7)), amountCents: 470000, note: undefined }]);
     const list = buildFixedExpenseSuggestions(regularTransactions, categories, thisMonth);
     const names = list.map((candidate) => candidate.name);
-    expect(names).toContain("其他 > 三餐");
-    expect(names).toContain("其他 > 贷款本金");
+    expect(names).toContain("三餐");
+    expect(names).toContain("贷款本金");
     expect(names.some((name) => name.includes("保险"))).toBe(true);
-    const loan = list.find((candidate) => candidate.name === "其他 > 贷款本金");
+    const loan = list.find((candidate) => candidate.name === "贷款本金");
     expect(loan?.categoryId).toBe("cat-loan");
     saveInsuranceSchedule([]);
   });
@@ -346,13 +348,13 @@ describe("搜索记录：关键词匹配与按月/年汇总", () => {
     expect(hits.map((item) => item.id).sort()).toEqual(["s1", "s2", "s4"]);
   });
 
-  it("不把显示用的「其他 > 」前缀当关键词，避免搜一个词收进整批记录", () => {
-    // categoryPath(顶层分类) 会补「其他 > 三餐」，旧写法把它拼进 haystack，
-    // 搜「其他」会命中所有顶层分类的流水，看起来像把当天消费全部收进来了。
+  it("不把显示用的分类路径当关键词，避免搜一个词收进整批记录", () => {
+    // 早期把 categoryPath 拼进 haystack，它给顶层分类补的「其他 > 」会让搜「其他」
+    // 命中所有顶层分类的流水，看起来像把当天消费全部收进来了。
     expect(searchMatches("其他", searchTxs, accounts, categories)).toEqual([]);
   });
 
-  it("负对照：旧写法（categoryPath 拼进 haystack）确实会误命中整批记录", () => {
+  it("负对照：历史旧写法（带装饰前缀的显示路径拼进 haystack）确实会误命中整批记录", () => {
     const oldHaystack = (item: Transaction) => {
       const cat = categories.find((entry) => entry.id === item.categoryId);
       const parent = cat?.parentId ? categories.find((entry) => entry.id === cat.parentId)?.name ?? "" : "";
@@ -377,6 +379,33 @@ describe("搜索记录：关键词匹配与按月/年汇总", () => {
     expect(searchMatches("三餐", [...searchTxs, childTx], accounts, childCats).map((item) => item.id)).toContain("s6");
     // 子分类自己的名字同样可搜
     expect(searchMatches("午餐", [...searchTxs, childTx], accounts, childCats).map((item) => item.id)).toEqual(["s6"]);
+  });
+
+  it("分类路径不再给顶层分类补「其他 > 」装饰前缀", () => {
+    const tree: Category[] = [
+      { ...stamp, id: "top-traffic", name: "交通出行", kind: "expense", parentId: null, icon: "circle", color: "#31473a" },
+      { ...stamp, id: "child-fuel", name: "加油", kind: "expense", parentId: "top-traffic", icon: "fuel", color: "#d45b3f" },
+      { ...stamp, id: "orphan", name: "孤儿分类", kind: "expense", parentId: "已下架的父级", icon: "circle", color: "#31473a" }
+    ];
+    expect(categoryPath(tree[0], tree)).toBe("交通出行");
+    expect(categoryPath(tree[1], tree)).toBe("交通出行 > 加油");
+    expect(categoryPath(tree[2], tree)).toBe("孤儿分类");
+    expect(categoryPath(undefined, tree)).toBe("");
+    // 负对照：旧实现确实会补装饰前缀，证明上面的断言不是空转
+    const legacyPath = (c: Category, all: Category[]) => {
+      const parent = c.parentId ? all.find((x) => x.id === c.parentId) : undefined;
+      return parent ? `${parent.name} > ${c.name}` : c.name === "其他" ? c.name : `其他 > ${c.name}`;
+    };
+    expect(legacyPath(tree[0], tree)).toBe("其他 > 交通出行");
+    expect(legacyPath(tree[2], tree)).toBe("其他 > 孤儿分类");
+  });
+
+  it("新增分类按明细名称落到正确大类，不再一律塞进「其他」", () => {
+    expect(inferCategoryParentName("加油")).toBe("交通出行");
+    expect(inferCategoryParentName("停车费")).toBe("交通出行");
+    expect(inferCategoryParentName("保姆费")).toBe("专项支出");
+    expect(inferCategoryParentName("夏阿姨工资")).toBe("专项支出");
+    expect(inferCategoryParentName("律师费")).toBeNull();
   });
 
   it("按月份汇总支出（含笔数与金额）", () => {

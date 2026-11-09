@@ -173,6 +173,7 @@ import {
   daysInYear,
   entryChunkFromIndexHtml,
   inferCategoryIcon,
+  inferCategoryParentName,
   isPlaceholderCategoryIcon,
   monthBudgetTotal,
   monthLabel,
@@ -517,8 +518,15 @@ function analysisNoteFor(notes: AnalysisNote[], month: string, subjectType: Anal
   return notes.find((note) => note.month === month && note.subjectType === subjectType && note.subjectKey === subjectKey);
 }
 
-function otherCategory(categories: Category[], kind: Category["kind"]) {
-  return activeOnly(categories).find((category) => category.kind === kind && !category.parentId && category.name === "其他");
+/** 新增分类时决定归属：先按明细名称落到已有的顶层大类（加油→交通出行、保姆→专项支出），
+ *  匹配不到再兜到「杂项」；两者都没有就返回 null，让新分类自己成为一级分类。
+ *  旧实现会凭空创建一个「其他」并把所有新分类塞进去，导致「加油」被归到错误大类。 */
+function inferCategoryParent(name: string, categories: Category[], kind: Category["kind"]) {
+  const top = activeOnly(categories).filter((category) => category.kind === kind && !category.parentId);
+  const hinted = inferCategoryParentName(name);
+  const hintedCategory = hinted ? top.find((category) => category.name === hinted) : undefined;
+  if (hintedCategory) return hintedCategory;
+  return top.find((category) => category.name === "杂项") ?? top.find((category) => category.name === "其他") ?? null;
 }
 
 function viewTitle(view: View) {
@@ -2629,6 +2637,10 @@ function CategoryPicker({ categories, options, usageCounts, kind, value, onChang
     return path === normalizedQuery || category.name.toLowerCase() === normalizedQuery;
   });
   const canCreate = queryText.length > 0 && !hasExactMatch;
+  const createParent = useMemo(
+    () => (queryText ? inferCategoryParent(queryText, categories, kind) : null),
+    [categories, kind, queryText]
+  );
 
   function chooseCategory(id: string) {
     onChange(id);
@@ -2638,12 +2650,8 @@ function CategoryPicker({ categories, options, usageCounts, kind, value, onChang
   async function createQuickCategory() {
     const name = queryText;
     if (!name) return;
-    let parent = otherCategory(categories, kind);
-    if (!parent) {
-      parent = makeCategory({ name: "其他", kind, parentId: null, icon: "folder", color: kind === "expense" ? "#6b6f3f" : "#2f7d4f" });
-      await onCreate(parent);
-    }
-    const child = makeCategory({ name, kind, parentId: parent.id });
+    const parent = inferCategoryParent(name, categories, kind);
+    const child = makeCategory({ name, kind, parentId: parent?.id ?? null });
     await onCreate(child);
     onChange(child.id);
     setQuery("");
@@ -2664,7 +2672,7 @@ function CategoryPicker({ categories, options, usageCounts, kind, value, onChang
           ))}
           {canCreate && (
             <button type="button" className="category-chip create" onClick={() => void createQuickCategory()}>
-              新增：其他 &gt; {queryText}
+              新增：{createParent ? `${createParent.name} > ` : ""}{queryText}
             </button>
           )}
         </div>
@@ -2695,7 +2703,7 @@ function CategoryPicker({ categories, options, usageCounts, kind, value, onChang
         </div>
         {normalizedQuery && (
           <small className="category-search-meta">
-            {matches.length > 0 ? `找到 ${matches.length} 个匹配分类` : "没有匹配分类，可以新增到其他分类"}
+            {matches.length > 0 ? `找到 ${matches.length} 个匹配分类` : "没有匹配分类，可以按上方提示新增"}
           </small>
         )}
         <select className={normalizedQuery ? "category-select filtered" : "category-select"} value={selectedCategory?.id ?? ""} onChange={(event) => chooseCategory(event.target.value)} required>
@@ -2729,12 +2737,7 @@ function QuickCategoryForm({ categories, onSave, onClose }: { categories: Catego
     try {
       let nextParentId: string | null = parentId || null;
       if (parentId === "__other__") {
-        let parent = otherCategory(activeCategories, kind);
-        if (!parent) {
-          parent = makeCategory({ name: "其他", kind, parentId: null, icon: "folder", color: kind === "expense" ? "#6b6f3f" : "#2f7d4f" });
-          await onSave(parent);
-        }
-        nextParentId = parent.id;
+        nextParentId = inferCategoryParent(name, activeCategories, kind)?.id ?? null;
       }
       await onSave(makeCategory({ name: name.trim(), kind, parentId: nextParentId }));
       setName("");
@@ -2761,7 +2764,7 @@ function QuickCategoryForm({ categories, onSave, onClose }: { categories: Catego
           <option value="income">收入</option>
         </select>
         <select value={parentId} onChange={(event) => setParentId(event.target.value)}>
-          <option value="__other__">放入其他</option>
+          <option value="__other__">智能归类</option>
           <option value="">一级分类</option>
           {parentOptions.map((category) => <option key={category.id} value={category.id}>{category.name}</option>)}
         </select>
@@ -3777,13 +3780,8 @@ function CategoryEditorPage({ category, categoryKind, categories, onSave, onDele
     blurActiveElement();
     let nextParentId: string | null = parentId || null;
     if (!category && !nextParentId) {
-      // 新分类默认放进「其他」
-      let parent = otherCategory(activeCategories, kind);
-      if (!parent) {
-        parent = makeCategory({ name: "其他", kind, parentId: null, icon: "folder", color: kind === "expense" ? "#6b6f3f" : "#2f7d4f" });
-        await onSave(parent);
-      }
-      nextParentId = parent.id;
+      // 新分类先按明细名称推断大类，兜底到「杂项」；不再凭空造一个「其他」
+      nextParentId = inferCategoryParent(name, activeCategories, kind)?.id ?? null;
     }
     await onSave({
       ...(category ?? makeCategory({ name, kind, parentId: nextParentId })),

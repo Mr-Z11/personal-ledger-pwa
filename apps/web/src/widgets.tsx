@@ -1199,7 +1199,9 @@ export function copyFixedExpensesToFuture(sourceMonth: string, count: number): n
 
 function resolveCategoryId(path: string, categories: Category[]): string | null {
   if (!path || path === "未分类") return null;
-  return categories.find((category) => categoryPath(category, categories) === path)?.id ?? null;
+  // 兼容早期版本存下来的「其他 > 三餐」这类装饰前缀，避免显示口径变了就解析不到分类
+  const normalized = path.replace(/^其他 > /, "");
+  return categories.find((category) => categoryPath(category, categories) === normalized)?.id ?? null;
 }
 
 /** 参考项：沿用原「根据规划」的口径——近数月常规支出 + 保险缴费日历，作为手动添加时的推荐。 */
@@ -2290,9 +2292,9 @@ export function searchMatches(needle: string, transactions: Transaction[], accou
     .filter((item) => item.type !== "income" && !item.deletedAt)
     .filter((item) => {
       const category = categories.find((entry) => entry.id === item.categoryId);
-      // 只拼「真实存在的名字」。categoryPath() 是显示用的：它会给所有顶层分类补一个
-      // 「其他 > 」前缀，若把它拼进 haystack，搜「其他」会命中几乎全部记录，
-      // 看起来就像「把当天所有消费都收进来了」。父分类名单独取，一样能按层级搜。
+      // 只拼「真实存在的名字」。早期把 categoryPath() 拼进 haystack 时，它给顶层分类
+      // 补的「其他 > 」装饰前缀会让搜「其他」命中几乎全部记录，看起来就像把当天所有
+      // 消费都收进来了。父分类名单独取，一样能按层级搜，且不会被显示口径污染。
       const parentName = category?.parentId
         ? categories.find((entry) => entry.id === category.parentId)?.name ?? ""
         : "";
@@ -2307,14 +2309,6 @@ export function searchMatches(needle: string, transactions: Transaction[], accou
       return haystack.includes(q);
     })
     .sort((left, right) => right.occurredAt.localeCompare(left.occurredAt));
-}
-
-/** 搜索结果里的分类标签只用真实名字。categoryPath() 给顶层分类补的
- *  「其他 > 」只是显示装饰：搜索口径已不认它，展示上也不该让人误以为
- *  存在一个叫「其他」的父分类（否则会出现「搜其他搜不到、结果却写着其他」）。 */
-function searchCategoryLabel(category: Category | undefined, categories: Category[]) {
-  if (!category) return "";
-  return category.parentId ? categoryPath(category, categories) : category.name;
 }
 
 /** 按时间段汇总支出：sliceLen=7 按月、4 按年。 */
@@ -2364,7 +2358,8 @@ export function SearchView({ transactions, accounts, categories, onEdit }: {
     const seen = new Map<string, string>();
     matched.forEach((item) => {
       if (item.categoryId && !seen.has(item.categoryId)) {
-        seen.set(item.categoryId, searchCategoryLabel(categories.find((entry) => entry.id === item.categoryId), categories) || "未分类");
+        // categoryPath 现在对顶层分类只返回自己的名字，不会再冒出不存在的「其他」父分类
+        seen.set(item.categoryId, categoryPath(categories.find((entry) => entry.id === item.categoryId), categories) || "未分类");
       }
     });
     return Array.from(seen, ([id, name]) => ({ id, name }));
@@ -2524,7 +2519,7 @@ export function SearchView({ transactions, accounts, categories, onEdit }: {
                     <button type="button" className="sd-row-button" onClick={() => onEdit(item)} title="点击编辑这笔流水">
                       <span className="sd-row-main">
                         <span className="sd-date">{item.occurredAt.slice(0, 10)}</span>
-                        <span className="sd-cat">{searchCategoryLabel(category, categories) || (item.type === "transfer" ? "转账" : "未分类")}</span>
+                        <span className="sd-cat">{categoryPath(category, categories) || (item.type === "transfer" ? "转账" : "未分类")}</span>
                         <strong className={`sd-amount ${item.type === "income" ? "income" : item.type === "expense" ? "expense" : "transfer"}`}>
                           {item.type === "income" ? "+" : item.type === "expense" ? "-" : ""}¥{centsToYuan(item.amountCents)}
                         </strong>
