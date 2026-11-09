@@ -31,6 +31,7 @@ import {
   inferCategoryIcon,
   inferCategoryParentName,
   isPlaceholderCategoryIcon,
+  resolveImportedCategoryNames,
   entryChunkFromIndexHtml,
   markAllPurged,
   markPurged
@@ -406,6 +407,31 @@ describe("搜索记录：关键词匹配与按月/年汇总", () => {
     expect(inferCategoryParentName("保姆费")).toBe("专项支出");
     expect(inferCategoryParentName("夏阿姨工资")).toBe("专项支出");
     expect(inferCategoryParentName("律师费")).toBeNull();
+    expect(inferCategoryParentName("机票")).toBe("交通出行");
+    expect(inferCategoryParentName("车辆保养")).toBe("交通出行");
+    expect(inferCategoryParentName("社保")).toBe("专项支出");
+  });
+
+  it("导入 CSV 不再凭空建「其他」大类", () => {
+    const tops = ["餐饮食品", "交通出行", "专项支出", "杂项", "孩子教育"];
+    // 旧版导出的「其他 > 三餐」：装饰前缀要剥掉，落回真实大类
+    expect(resolveImportedCategoryNames({ primary: "其他", secondary: "三餐", combined: "其他 > 三餐", existingTopNames: tops }))
+      .toEqual({ primaryName: "餐饮食品", secondaryName: "三餐" });
+    // 只有明细名时按种类补大类
+    expect(resolveImportedCategoryNames({ primary: "", secondary: "加油", combined: "加油", existingTopNames: tops }))
+      .toEqual({ primaryName: "交通出行", secondaryName: "加油" });
+    // 名字本身就是已有顶层大类：保持一级，别降成「杂项 > X」
+    expect(resolveImportedCategoryNames({ primary: "", secondary: "专项支出", combined: "专项支出", existingTopNames: tops }))
+      .toEqual({ primaryName: "专项支出", secondaryName: "" });
+    // 完全没有分类信息：落到「杂项」，不建「其他」
+    expect(resolveImportedCategoryNames({ primary: "", secondary: "", combined: "", existingTopNames: tops }))
+      .toEqual({ primaryName: "杂项", secondaryName: "" });
+    // 已有真实一级分类时原样保留
+    expect(resolveImportedCategoryNames({ primary: "食品酒水", secondary: "买菜", combined: "食品酒水 > 买菜", existingTopNames: tops }))
+      .toEqual({ primaryName: "食品酒水", secondaryName: "买菜" });
+    // 负对照：旧写法缺一级分类时直接兜底「其他」，证明新断言不是空转
+    const legacy = (p: string, s: string) => ({ primaryName: p || "其他", secondaryName: s });
+    expect(legacy("", "三餐").primaryName).toBe("其他");
   });
 
   it("按月份汇总支出（含笔数与金额）", () => {

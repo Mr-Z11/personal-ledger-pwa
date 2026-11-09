@@ -45,6 +45,9 @@ services:
     # 注意：若后端新增 npm 依赖，需同步更新镜像内的 node_modules（pull 新镜像或本地 build）。
     volumes:
       - ./apps/api/dist:/app/apps/api/dist:ro
+      # shared 是镜像内 node_modules 的独立包；只挂 api/dist 时新注册账本的默认分类
+      # 仍会读到镜像里的旧常量。把本机构建产物一并挂进去，保证本地与生产口径一致。
+      - ./packages/shared/dist:/app/node_modules/@ledger/shared/dist:ro
 
   caddy-local:
     image: caddy:2.10-alpine

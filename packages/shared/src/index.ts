@@ -86,8 +86,11 @@ export interface SyncPayload {
 }
 
 export const DEFAULT_CATEGORIES: Omit<Category, keyof LedgerEntity>[] = [
-  { name: "其他", kind: "expense", parentId: null, icon: "folder", color: "#6b6f3f" },
-  { name: "其他", kind: "income", parentId: null, icon: "folder", color: "#2f7d4f" }
+  // 兜底大类统一叫「杂项」，与前端新增分类 / 导入 / 导出三处兜底一致。
+  // 旧默认值是「其他」，新账本一注册就自带一个并不存在的「其他」大类，
+  // 与「加油应归交通出行」的口径冲突。
+  { name: "杂项", kind: "expense", parentId: null, icon: "folder", color: "#6b6f3f" },
+  { name: "杂项", kind: "income", parentId: null, icon: "folder", color: "#2f7d4f" }
 ];
 
 export const DEFAULT_ACCOUNTS: Omit<Account, keyof LedgerEntity>[] = [

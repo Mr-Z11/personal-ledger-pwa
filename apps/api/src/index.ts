@@ -130,8 +130,19 @@ function timePart(value: Date) {
   return value.toISOString().slice(11, 19);
 }
 
-function categoryParts(category?: { name: string; parentId?: string | null } | null) {
-  return { primary: category?.parentId ? "" : category?.name ?? "", secondary: category?.parentId ? category.name : "" };
+type ExportCategory = { id: string; name: string; parentId: string | null };
+
+/** 导出分类时补齐父分类名。旧实现只取 item.category.name，二级分类拿不到父类，
+ *  于是「随手记兼容」格式把一级分类兜底成「其他」——导出/导入往返会把「加油」
+ *  归到一个并不存在的大类里。顶层分类只写自己的名字，与前端 categoryPath() 同口径。 */
+function categoryParts(category: { name: string; parentId?: string | null } | undefined | null, byId: Map<string, ExportCategory>) {
+  const parent = category?.parentId ? byId.get(category.parentId) : undefined;
+  const name = category?.name ?? "";
+  return {
+    primary: parent?.name ?? name,
+    secondary: name,
+    path: parent ? `${parent.name} > ${name}` : name
+  };
 }
 
 function exportRow(format: ExportFormat, item: {
@@ -144,16 +155,18 @@ function exportRow(format: ExportFormat, item: {
   merchant?: string | null;
   note?: string | null;
   tags: string[];
-}) {
-  const category = categoryParts(item.category);
+}, categoryById: Map<string, ExportCategory>) {
+  const category = categoryParts(item.category, categoryById);
+  // 未分类 / 占位统一为「杂项」，与前端导出、导入兜底一致；不再往 CSV 里写「其他」
+  const fallbackCategory = category.path || "杂项";
   const signedAmount = item.type === "expense" ? `-${centsToYuan(Number(item.amountCents))}` : centsToYuan(Number(item.amountCents));
   if (format === "portable") {
     return [
       datePart(item.occurredAt),
       timePart(item.occurredAt),
       typeLabel(item.type),
-      category.primary,
-      category.secondary || item.category?.name,
+      category.primary || fallbackCategory,
+      category.secondary || fallbackCategory,
       item.account.name,
       item.toAccount?.name,
       signedAmount,
@@ -167,8 +180,8 @@ function exportRow(format: ExportFormat, item: {
       typeLabel(item.type),
       datePart(item.occurredAt),
       timePart(item.occurredAt),
-      category.primary || "其他",
-      category.secondary || item.category?.name || "其他",
+      category.primary || fallbackCategory,
+      category.secondary || fallbackCategory,
       item.account.name,
       item.toAccount?.name,
       centsToYuan(Number(item.amountCents)),
@@ -180,7 +193,7 @@ function exportRow(format: ExportFormat, item: {
     return [
       datePart(item.occurredAt),
       typeLabel(item.type),
-      item.category?.name ?? "其他",
+      fallbackCategory,
       item.account.name,
       centsToYuan(Number(item.amountCents)),
       item.merchant,
@@ -192,7 +205,7 @@ function exportRow(format: ExportFormat, item: {
     item.type,
     item.account.name,
     item.toAccount?.name,
-    item.category?.name,
+    category.path,
     centsToYuan(Number(item.amountCents)),
     item.merchant,
     item.note,
@@ -438,14 +451,21 @@ export async function buildApp(): Promise<FastifyInstance> {
     const ledger = await getLedgerForUser(request.user.sub);
     const { format } = z.object({ format: z.string().optional() }).parse(request.query);
     const exportFormat = parseExportFormat(format);
-    const transactions = await prisma.transaction.findMany({
-      where: { ledgerId: ledger.id, deletedAt: null },
-      include: { account: true, toAccount: true, category: true },
-      orderBy: { occurredAt: "desc" }
-    });
+    const [transactions, categories] = await Promise.all([
+      prisma.transaction.findMany({
+        where: { ledgerId: ledger.id, deletedAt: null },
+        include: { account: true, toAccount: true, category: true },
+        orderBy: { occurredAt: "desc" }
+      }),
+      prisma.category.findMany({
+        where: { ledgerId: ledger.id },
+        select: { id: true, name: true, parentId: true }
+      })
+    ]);
+    const categoryById = new Map(categories.map((item) => [item.id, item]));
     const rows = [
       exportHeaders(exportFormat).join(","),
-      ...transactions.map((item) => exportRow(exportFormat, item).map(csvEscape).join(","))
+      ...transactions.map((item) => exportRow(exportFormat, item, categoryById).map(csvEscape).join(","))
     ];
     return reply.header("content-type", "text/csv; charset=utf-8").send(`\ufeff${rows.join("\n")}`);
   });

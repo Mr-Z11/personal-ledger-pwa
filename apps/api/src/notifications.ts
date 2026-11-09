@@ -175,7 +175,9 @@ function categoryPathOf(category: { name: string; parentId: string | null } | un
   if (!category) return "";
   const parent = category.parentId ? byId.get(category.parentId) : undefined;
   if (parent) return `${parent.name} > ${category.name}`;
-  return category.name === "其他" ? category.name : `其他 > ${category.name}`;
+  // 顶层分类只返回自己的名字，与前端 categoryPath() 同口径。旧实现补的「其他 > 」
+  // 只是显示装饰、不是真实父类，会让「非日常支出」判断和推送文案都读到假层级。
+  return category.name;
 }
 
 async function alreadySentToday(userId: string, kind: string, dayKey: string) {

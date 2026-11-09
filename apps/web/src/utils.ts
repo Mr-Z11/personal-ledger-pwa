@@ -112,8 +112,8 @@ export function categoryPath(category: Category | undefined, categories: Categor
 /** 明细名称 → 应归属的顶层大类。只在「快速新增分类」时用：把具体明细种类定义清楚，
  *  避免所有新分类都掉进一个凭空造出来的「其他」。具体词排在泛化词前面。 */
 const CATEGORY_PARENT_HINTS: { test: RegExp; parent: string }[] = [
-  { test: /加油|油费|过路|停车|洗车|公交|地铁|打车|租车|高铁|车票|交通|ETC|违章/, parent: "交通出行" },
-  { test: /保姆|家政|阿姨|月嫂|育儿嫂|看护|照顾|保险|贷款|本金|利息|购车|养车/, parent: "专项支出" },
+  { test: /加油|油费|过路|停车|洗车|公交|地铁|打车|租车|高铁|机票|车票|交通|ETC|违章|保养|充电桩/, parent: "交通出行" },
+  { test: /保姆|家政|阿姨|月嫂|育儿嫂|看护|照顾|保险|贷款|本金|利息|购车|养车|社保|医保|公积金/, parent: "专项支出" },
   { test: /三餐|早餐|午餐|晚餐|外卖|买菜|零食|饮料|餐饮/, parent: "餐饮食品" },
   { test: /房租|水电|物业|日用品|维修|家具|家电/, parent: "居家日用" },
   { test: /药|医院|体检|看病|保健|牙科|医疗/, parent: "健康医疗" },
@@ -127,6 +127,33 @@ const CATEGORY_PARENT_HINTS: { test: RegExp; parent: string }[] = [
 export function inferCategoryParentName(name: string): string | null {
   const trimmed = name.trim();
   return CATEGORY_PARENT_HINTS.find((hint) => hint.test.test(trimmed))?.parent ?? null;
+}
+
+/** 导入 CSV 时归一化一级/二级分类。旧版导出会把顶层分类写成「其他 > 三餐」，
+ *  那个「其他」只是显示装饰、不是真实父类；直接导入会凭空建出一个「其他」大类，
+ *  与「加油不能放其他大类」的口径冲突。这里剥掉装饰前缀，缺一级分类时按明细名称
+ *  推断已有大类，推断不到才落到「杂项」。绝不返回「其他」作为新分类名。 */
+export function resolveImportedCategoryNames({ primary = "", secondary = "", combined = "", existingTopNames = [] }: {
+  primary?: string;
+  secondary?: string;
+  combined?: string;
+  existingTopNames?: string[];
+}): { primaryName: string; secondaryName: string } {
+  const p = primary.trim();
+  const s = secondary.trim();
+  const c = combined.trim();
+  const realPrimary = p && p !== "其他" ? p : "";
+  const displayName = s || c;
+
+  if (realPrimary) return { primaryName: realPrimary, secondaryName: s || (c !== realPrimary ? c : "") };
+  if (!displayName) return { primaryName: "杂项", secondaryName: "" };
+  // 名字本身就是已有的顶层大类：保持一级，别把它降成「杂项 > X」
+  if (existingTopNames.includes(displayName)) return { primaryName: displayName, secondaryName: "" };
+  const inferred = inferCategoryParentName(displayName);
+  if (inferred && existingTopNames.includes(inferred)) {
+    return { primaryName: inferred, secondaryName: displayName };
+  }
+  return { primaryName: "杂项", secondaryName: displayName };
 }
 
 export function isNonDailyExpenseCategory(category: Category | undefined, categories: Category[]) {

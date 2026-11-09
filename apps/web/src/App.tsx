@@ -175,6 +175,7 @@ import {
   inferCategoryIcon,
   inferCategoryParentName,
   isPlaceholderCategoryIcon,
+  resolveImportedCategoryNames,
   monthBudgetTotal,
   monthLabel,
   monthTotalBudgetCents,
@@ -6044,9 +6045,17 @@ async function importCsv(
   async function findOrCreateCategory(kind: Category["kind"], row: Record<string, string>) {
     const combined = rowValue(row, ["分类", "类别", "账目分类", "收支分类", "科目"]);
     const split = splitCategoryName(combined);
-    const importedPrimaryName = rowValue(row, ["一级分类", "大类", "父分类"]) || split.primary || "其他";
-    const importedSecondaryName = rowValue(row, ["二级分类", "子分类", "小类", "明细分类"]) || split.secondary;
-    const { primaryName, secondaryName } = normalizeEducationCategory(kind, importedPrimaryName, importedSecondaryName, row);
+    // 旧版导出的「其他 > X」里「其他」只是显示装饰，不能当真实父类建出来；
+    // 缺一级分类时按明细名称推断已有大类，推断不到落「杂项」。
+    const resolved = resolveImportedCategoryNames({
+      primary: rowValue(row, ["一级分类", "大类", "父分类"]) || split.primary,
+      secondary: rowValue(row, ["二级分类", "子分类", "小类", "明细分类"]) || split.secondary,
+      combined,
+      existingTopNames: nextCategories
+        .filter((item) => item.kind === kind && !item.parentId && !item.deletedAt)
+        .map((item) => item.name)
+    });
+    const { primaryName, secondaryName } = normalizeEducationCategory(kind, resolved.primaryName, resolved.secondaryName, row);
     let parent = nextCategories.find((item) => item.kind === kind && !item.parentId && item.name === primaryName);
     if (!parent) {
       parent = makeCategory({ name: primaryName, kind, parentId: null, icon: "folder", color: kind === "expense" ? "#6b6f3f" : "#2f7d4f" });
@@ -6103,16 +6112,18 @@ function localExportRows(format: ExportFormat, accounts: Account[], categories: 
     const date = new Date(item.occurredAt);
     const day = date.toISOString().slice(0, 10);
     const time = date.toISOString().slice(11, 19);
+    // 未分类导出的占位统一为「杂项」，与导入兜底一致；不再往 CSV 里写「其他」
+    const fallbackCategory = categoryName(item.categoryId) || "杂项";
     if (format === "portable") {
       const parts = splitCategoryName(categoryName(item.categoryId));
-      return [day, time, typeName(item.type), parts.primary, parts.secondary || categoryName(item.categoryId), accountName(item.accountId), accountName(item.toAccountId), item.type === "expense" ? `-${centsToYuan(item.amountCents)}` : centsToYuan(item.amountCents), item.merchant, item.note, item.tags.join("|")];
+      return [day, time, typeName(item.type), parts.primary || fallbackCategory, parts.secondary || fallbackCategory, accountName(item.accountId), accountName(item.toAccountId), item.type === "expense" ? `-${centsToYuan(item.amountCents)}` : centsToYuan(item.amountCents), item.merchant, item.note, item.tags.join("|")];
     }
     if (format === "suishouji") {
       const parts = splitCategoryName(categoryName(item.categoryId));
-      return [typeName(item.type), day, time, parts.primary || "其他", parts.secondary || categoryName(item.categoryId) || "其他", accountName(item.accountId), accountName(item.toAccountId), centsToYuan(item.amountCents), item.merchant, item.note];
+      return [typeName(item.type), day, time, parts.primary || fallbackCategory, parts.secondary || fallbackCategory, accountName(item.accountId), accountName(item.toAccountId), centsToYuan(item.amountCents), item.merchant, item.note];
     }
     if (format === "qianji") {
-      return [day, typeName(item.type), categoryName(item.categoryId) || "其他", accountName(item.accountId), centsToYuan(item.amountCents), item.merchant, item.note];
+      return [day, typeName(item.type), fallbackCategory, accountName(item.accountId), centsToYuan(item.amountCents), item.merchant, item.note];
     }
     return [item.occurredAt, item.type, accountName(item.accountId), accountName(item.toAccountId), categoryName(item.categoryId), centsToYuan(item.amountCents), item.merchant, item.note, item.tags.join("|")];
   });
