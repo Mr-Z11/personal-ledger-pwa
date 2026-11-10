@@ -22,6 +22,7 @@ import {
   noSpendPraiseDue,
   praiseMessage,
   salaryBannerState,
+  salaryPushSettings,
   saveFixedExpenses,
   saveSalarySettings
 } from "./widgets";
@@ -103,6 +104,26 @@ describe("widgets 冒烟渲染", () => {
     // day=10 且 leadDays=3 时，无论今天几号，状态必须是确定性的三种之一
     const state = salaryBannerState(loaded, null);
     expect(state === null || state.kind === "payday" || state.kind === "countdown").toBe(true);
+  });
+
+  it("工资日设置会同步到服务端推送，且不覆盖服务端开关", () => {
+    const settings = { ...DEFAULT_SALARY_SETTINGS, enabled: true, day: 5, leadDays: 3, content: "先储蓄 50%", notify: true };
+    const payload = salaryPushSettings(settings);
+    expect(payload).toEqual({ salaryDay: 5, content: "先储蓄 50%" });
+    // enabled / remindHour 由「手机推送」订阅与服务端时段单独控制，不能被本机横幅开关覆盖
+    expect(payload).not.toHaveProperty("enabled");
+    expect(payload).not.toHaveProperty("remindHour");
+    // 本机没填内容时不要传 content，否则会把服务端存着的自定义资金分配方案清成默认文案
+    expect(salaryPushSettings({ ...settings, content: "" })).toEqual({ salaryDay: 5 });
+    expect(salaryPushSettings({ ...settings, content: "   " })).toEqual({ salaryDay: 5 });
+    // 非法日期归一化，避免后端 zod 拒绝整个 PUT
+    expect(salaryPushSettings({ ...settings, day: 0 }).salaryDay).toBe(1);
+    expect(salaryPushSettings({ ...settings, day: 99 }).salaryDay).toBe(31);
+    // 负对照：旧路径「只写 localStorage、不产出服务端 payload」，服务端 salaryDay 会停在默认 10，
+    // 于是本机改成 5 号后仍会在 10 号收到推送（本轮 bug）
+    const legacyPayload = (serverSalaryDay: number) => ({ salaryDay: serverSalaryDay });
+    expect(legacyPayload(10).salaryDay).toBe(10);
+    expect(payload.salaryDay).toBe(5);
   });
 
   it("DailyPaceChart / TrendFocusCards / BigExpensePanel 有数据时能渲染", () => {

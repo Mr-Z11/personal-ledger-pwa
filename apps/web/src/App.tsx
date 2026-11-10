@@ -218,6 +218,7 @@ import {
   maybeNotifyPayday,
   maybePraiseNoSpend,
   regularExpenseTransactions,
+  salaryPushSettings,
   setPushSubscribed,
   salaryBannerDismissedKey,
   salaryBannerState,
@@ -908,9 +909,22 @@ export function App() {
     }
   }, [token, isLocalPreview]);
 
-  // 启动时同步一次，确保服务端不按默认 21 点门控推送
+  /** 工资日设置同步到服务端：服务端另有一份独立的 salaryDay（默认 10），只改本机
+   *  localStorage 时，应用关闭后收到的手机推送仍会按旧日期发。保存与启动各同步一次，
+   *  让「工资日提醒」页成为唯一数据源；离线 / 本地预览时静默失败，本机横幅仍生效。 */
+  const syncSalarySettings = useCallback(async (next: SalarySettings) => {
+    if (!token || isLocalPreview) return;
+    try {
+      await api.saveNotificationSettings(token, salaryPushSettings(next));
+    } catch {
+      // 离线或服务端旧版本：忽略，本机提醒仍生效
+    }
+  }, [token, isLocalPreview]);
+
+  // 启动时同步一次：当日限额门控 + 工资日，避免服务端残留旧默认值
   useEffect(() => {
     void syncDailyLimitSettings(dailyLimitSettings);
+    void syncSalarySettings(salarySettings);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -1346,6 +1360,7 @@ export function App() {
             onSalarySettingsChange={(next) => {
               setSalarySettings(next);
               saveSalarySettings(next);
+              void syncSalarySettings(next);
               setSalaryDismissed(salaryBannerDismissedKey());
               setToast("工资日提醒设置已保存");
             }}
@@ -4040,7 +4055,7 @@ function RemindersView({ onOpen }: { onOpen: (which: "salary" | "dailyLimit") =>
   return (
     <section className="settings-stack">
       <div className="settings-list">
-        <SubEntryRow icon={Banknote} tone="gold" title="工资日提醒" subtitle="纯本地提醒，离线、无服务器也能用" onClick={() => onOpen("salary")} />
+        <SubEntryRow icon={Banknote} tone="gold" title="工资日提醒" subtitle="工资日当天提醒（离线横幅 + 手机推送）" onClick={() => onOpen("salary")} />
         <SubEntryRow icon={BellRing} tone="danger" title="当日限额提醒" subtitle="达线全屏警告与手机推送" onClick={() => onOpen("dailyLimit")} />
       </div>
     </section>

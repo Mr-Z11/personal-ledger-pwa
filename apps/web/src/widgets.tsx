@@ -168,6 +168,21 @@ export function saveSalarySettings(settings: SalarySettings) {
   localStorage.setItem(SALARY_SETTINGS_KEY, JSON.stringify(settings));
 }
 
+/** 本机「工资日提醒」→ 服务端推送设置。服务端原先自己存着一份 salaryDay（默认 10），
+ *  而设置页只写 localStorage，两边从不同步：本机改成 5 号，应用关闭时收到的推送仍在
+ *  10 号发。这里把日期（以及本机填过的提醒内容）同步过去。
+ *  **故意不带 enabled / remindHour**：服务端 enabled 是工资日推送开关，用户通过「手机推送」
+ *  订阅控制是否收推送；拿本机横幅开关去覆盖它会让推送被意外关掉。
+ *  **content 为空时不传**：服务端可能存着用户早先写的资金分配方案，不能被本机空值清成默认文案。 */
+export function salaryPushSettings(settings: SalarySettings) {
+  const day = Number.isFinite(settings.day) ? Math.round(settings.day) : 10;
+  const content = typeof settings.content === "string" && settings.content.trim() ? settings.content : null;
+  return {
+    salaryDay: Math.min(31, Math.max(1, day)),
+    ...(content !== null ? { content } : {})
+  };
+}
+
 function effectiveSalaryDay(day: number, month: string) {
   return Math.min(day, daysInMonth(month));
 }
@@ -281,7 +296,7 @@ export function LocalSalaryReminderPanel({ value, onChange }: {
       <div className={`reminder-status ${value.enabled ? "on" : ""}`}>
         <BellRing size={16} />
         <span>{value.enabled ? `已开启：每月 ${value.day} 日提醒${value.leadDays > 0 ? ` · 提前 ${value.leadDays} 天` : ""}` : "未开启"}</span>
-        <InfoTip text="提醒完全保存在本机（离线、无服务器也能用）。打开应用时若到了工资日或倒计时范围内，首页顶部会显示横幅。当月没有 31 日时自动在当月最后一天提醒。" />
+        <InfoTip text="工资日与提醒内容会同步到服务端，用于应用关闭时的手机推送；横幅与倒计时保存在本机，离线也能显示。当月没有 31 日时自动在当月最后一天提醒。" />
       </div>
       <div className="reminder-row">
         <label>工资日
@@ -311,7 +326,7 @@ export function LocalSalaryReminderPanel({ value, onChange }: {
       <label className="reminder-toggle">
         <input type="checkbox" checked={draft.notify} onChange={(event) => void toggleNotify(event.target.checked)} />
         <span className="reminder-toggle-text">
-          同时发送系统通知<InfoTip text="打开应用时触发，纯本地不经过服务器；需先允许系统通知权限。" />
+          同时发送系统通知<InfoTip text="打开应用时触发的本机通知（不经服务器）；应用关闭时的推送由「手机推送」订阅控制。" />
         </span>
       </label>
       <div className="data-actions">
