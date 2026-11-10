@@ -118,23 +118,38 @@ function chinaNow() {
   return { year: get("year"), month: get("month"), day: get("day"), hour: get("hour") };
 }
 
+/** 工资日推送的判重键：按「实际提醒日」YYYY-MM-DD，而不是按月份。
+ *  旧实现用 YYYY-MM，一个月只能发一次：用户把工资日从 5 号改成 15 号后，
+ *  本月 5 号已发过的记录会把 15 号整月锁死，只能等下个月才按新日期发。
+ *  改成按日后，同一天仍只发一次（20 分钟一轮的调度不会重复打扰），但改了日期
+ *  就能在**当月的新日期**再发一次，与限额/表扬的 alreadySentToday 口径一致。
+ *  effectiveDay 已做过月末 clamp（设 31 号在 11 月按 30 号发），用它保证键与实际触发日一致。 */
+export function salaryReminderKey(year: number, month: number, effectiveDay: number) {
+  return `${year}-${String(month).padStart(2, "0")}-${String(effectiveDay).padStart(2, "0")}`;
+}
+
+/** 给定北京时间当前时刻与工资日设置，返回今天该用的判重键；今天不该发则返回 null。
+ *  抽成纯函数便于脚本验证「改日期后本月能否再发」，不依赖数据库与推送通道。 */
+export function salaryReminderDue(
+  now: { year: number; month: number; day: number; hour: number },
+  setting: { salaryDay: number; remindHour: number }
+) {
+  const effectiveDay = Math.min(setting.salaryDay, daysInMonth(now.year, now.month - 1));
+  if (effectiveDay !== now.day || now.hour < setting.remindHour) return null;
+  return salaryReminderKey(now.year, now.month, effectiveDay);
+}
+
 async function checkAndSendReminders(log: FastifyBaseLogger) {
   try {
     const now = chinaNow();
-    const monthKey = `${now.year}-${String(now.month).padStart(2, "0")}`;
     const settings = await prisma.reminderSetting.findMany({ where: { enabled: true } });
     for (const setting of settings) {
-      const effectiveDay = Math.min(setting.salaryDay, daysInMonth(now.year, now.month - 1));
-      if (effectiveDay !== now.day || now.hour < setting.remindHour) continue;
-      const alreadySent = await prisma.reminderLog.findUnique({
-        where: { userId_kind_month: { userId: setting.userId, kind: "salary", month: monthKey } }
-      });
-      if (alreadySent) continue;
+      const dayKey = salaryReminderDue(now, setting);
+      if (!dayKey) continue;
+      if (await alreadySentToday(setting.userId, "salary", dayKey)) continue;
       const delivered = await sendSalaryReminder(setting.userId, setting.content);
-      await prisma.reminderLog.create({
-        data: { userId: setting.userId, kind: "salary", month: monthKey }
-      });
-      log.info({ userId: setting.userId, delivered }, "salary reminder dispatched");
+      await markSentToday(setting.userId, "salary", dayKey);
+      log.info({ userId: setting.userId, delivered, dayKey }, "salary reminder dispatched");
     }
     await checkSpendingAlerts(log);
   } catch (error) {
