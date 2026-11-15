@@ -511,6 +511,17 @@ describe("低消费表扬：时段判定与文案", () => {
     expect(noSpendPraiseDue(19, 6000, 5000)).toBeNull();
   });
 
+  it("已超额 / 本月超支时不发「额度充足」类表扬（2026-11-15 反馈）", () => {
+    // 误差金额：今日已花 ¥48，日限额 ¥50、误差 ¥10 → 48 ≥ 40 已达线，不能夸额度充足
+    expect(noSpendPraiseDue(19, 4800, 5000, 4800, 1000)).toBeNull();
+    expect(noSpendPraiseDue(19, 6200, 5000, 6200, 1000)).toBeNull();
+    // 本月已超预算：dailyLimitBreakdown 把日限额压到 0，此时「今天没花钱」也不能夸
+    expect(noSpendPraiseDue(19, 0, 0, 0, 1000)).toBeNull();
+    // 负对照：同样 0 花费但预算健康 → 仍应表扬，证明门控没把功能一刀切关掉
+    expect(noSpendPraiseDue(19, 0, 5000, 0, 1000)).toEqual({ period: "pm", kind: "zero" });
+    expect(noSpendPraiseDue(19, 2000, 5000, 2000, 1000)).toEqual({ period: "pm", kind: "thrifty" });
+  });
+
   it("文案包含正向鼓励关键词", () => {
     expect(praiseMessage("zero")).toContain("存款");
     expect(praiseMessage("thrifty")).toContain("压力");

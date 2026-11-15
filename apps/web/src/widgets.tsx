@@ -1839,14 +1839,20 @@ export function maybeNotifyDailyLimit(settings: DailyLimitAlertSettings, spentTo
 /** 低消费表扬是否到期：只在晚上（19 点）起评。
  * 用户要求晚上 19 点主动发一条（服务端 web push，不依赖打开 App）——每天最多一条。
  * 条件：
+ * - 先过「超额门」：未设预算 / 本月已超支（日限额被压到 0）/ 今日已达线（含误差金额）
+ *   一律不表扬。旧实现只看「今天有没有花钱」，于是已经超额时仍会收到「存款在悄悄变厚、
+ *   选择更多」这种暗示额度充足的消息，与限额警告自相矛盾；与服务端 spendingAlertState 同口径。
  * - zero：今天全部支出（含专项）=0，即真的「一分钱没花」；
- * - thrifty：设有日限额且今日日常消费低于限额（没超支）。
- * totalSpentTodayCents 为今日全部支出，缺省回退到日常支出以兼容旧调用。 */
-export function noSpendPraiseDue(hour: number, spentTodayCents: number, limitCents: number, totalSpentTodayCents: number = spentTodayCents): { period: "am" | "pm"; kind: "zero" | "thrifty" } | null {
+ * - thrifty：今日日常消费低于限额（没超支）。
+ * totalSpentTodayCents 为今日全部支出，缺省回退到日常支出以兼容旧调用；
+ * toleranceCents 缺省 0，由 maybePraiseNoSpend 传入设置页的误差金额。 */
+export function noSpendPraiseDue(hour: number, spentTodayCents: number, limitCents: number, totalSpentTodayCents: number = spentTodayCents, toleranceCents: number = 0): { period: "am" | "pm"; kind: "zero" | "thrifty" } | null {
   const period = hour >= 19 ? "pm" : null;
   if (!period) return null;
+  if (limitCents <= 0) return null;
+  if (spentTodayCents >= limitCents - toleranceCents) return null;
   if (totalSpentTodayCents <= 0) return { period, kind: "zero" };
-  if (limitCents > 0 && spentTodayCents < limitCents) return { period, kind: "thrifty" };
+  if (spentTodayCents < limitCents) return { period, kind: "thrifty" };
   return null;
 }
 
@@ -1862,7 +1868,7 @@ export function praiseMessage(kind: "zero" | "thrifty"): string {
 export function maybePraiseNoSpend(settings: DailyLimitAlertSettings, spentTodayCents: number, limitCents: number, totalSpentTodayCents?: number) {
   if (!settings.enabled || !settings.notify || settings.praiseEnabled === false) return;
   if (isPushSubscribed()) return; // 已订阅后台推送，避免与 web-push 重复弹窗
-  const due = noSpendPraiseDue(Number(beijingDateTimeParts().hour), spentTodayCents, limitCents, totalSpentTodayCents ?? spentTodayCents);
+  const due = noSpendPraiseDue(Number(beijingDateTimeParts().hour), spentTodayCents, limitCents, totalSpentTodayCents ?? spentTodayCents, settings.toleranceCents);
   if (!due) return;
   const stamp = `${dateKey(new Date().toISOString())}:${due.period}`;
   if (localStorage.getItem(PRAISE_NOTIFY_KEY) === stamp) return;

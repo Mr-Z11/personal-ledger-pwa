@@ -206,9 +206,41 @@ async function markSentToday(userId: string, kind: string, dayKey: string) {
   await prisma.reminderLog.create({ data: { userId, kind, month: dayKey } });
 }
 
+/** 当日消费状态：表扬与限额警告共用这一套判据，避免「已超额还提醒额度充足」。
+ *  抽成纯函数便于脚本验证，不依赖数据库与推送通道。 */
+export function spendingAlertState(input: {
+  monthDailyBudgetCents: number;
+  spentThroughYesterdayCents: number;
+  spentTodayCents: number;
+  daysLeft: number;
+  toleranceCents: number;
+}) {
+  const { monthDailyBudgetCents, spentThroughYesterdayCents, spentTodayCents, toleranceCents } = input;
+  const monthRemainingCents = monthDailyBudgetCents > 0
+    ? Math.max(0, monthDailyBudgetCents - spentThroughYesterdayCents)
+    : 0;
+  const dailyLimitCents = Math.round(monthRemainingCents / Math.max(1, input.daysLeft));
+  // 与前端 dailyLimitAlertTriggered 同口径：达线判据含误差金额
+  const reached = spentTodayCents >= dailyLimitCents - toleranceCents;
+  const monthOverBudget = monthDailyBudgetCents > 0
+    && spentThroughYesterdayCents + spentTodayCents > monthDailyBudgetCents;
+  // 未设预算 / 本月已超支时 dailyLimitCents 会是 0：此时既没法说「额度充足」，
+  // 也不该在超额当天发正向表扬（旧实现的漏洞）。
+  const overLimit = reached || monthOverBudget || dailyLimitCents <= 0;
+  return { monthRemainingCents, dailyLimitCents, reached, monthOverBudget, overLimit };
+}
+
+/** 账本数据是否陈旧：超过 36 小时没有任何写入（手机没同步 / 没连到本机 API）就认为不可信。
+ *  「今天一分钱没花」是建立在「服务端今天没查到交易」这一**缺失证据**上的强断言，
+ *  数据没同步时分不清「真没花」和「没收到」，此时发「存款在悄悄变厚、选择更多」
+ *  会在用户已经超额时变成一条错误的「额度充足」提醒。 */
+export function ledgerDataStale(updatedAt: Date, nowMs: number = Date.now()) {
+  return nowMs - updatedAt.getTime() > 36 * 3600_000;
+}
+
 async function checkSpendingAlerts(log: FastifyBaseLogger) {
   const today = chinaToday();
-  const ledgers = await prisma.ledger.findMany({ select: { id: true, ownerId: true } });
+  const ledgers = await prisma.ledger.findMany({ select: { id: true, ownerId: true, updatedAt: true } });
   for (const ledger of ledgers) {
     try {
       const budgets = await prisma.budget.findMany({
@@ -261,20 +293,35 @@ async function checkSpendingAlerts(log: FastifyBaseLogger) {
         .reduce((sum, item) => sum + Number(item.amountCents), 0);
 
       const setting = await prisma.reminderSetting.findUnique({ where: { userId: ledger.ownerId } });
+      const dailyLimitEnabled = setting?.dailyLimitEnabled ?? true;
+      const dailyLimitHour = setting?.dailyLimitHour ?? 21;
+      const dailyLimitToleranceCents = setting?.dailyLimitToleranceCents ?? DAILY_LIMIT_TOLERANCE_CENTS;
 
-      // ---- 低消费表扬（不依赖预算即可发 zero 表扬；thrifty 需有日限额） ----
+      // 表扬与限额警告共用同一套限额状态。旧实现把表扬放在限额判定之前、只看「今天有没有花钱」：
+      // 本月预算已超支（限额被压到 0）或今日已达线时，晚上照样发「存款在悄悄变厚、选择更多」，
+      // 与同一次检查可能发出的限额警告自相矛盾——用户看到的就是「已经超额了还提醒额度充足」。
+      const { dailyLimitCents, reached, overLimit } = spendingAlertState({
+        monthDailyBudgetCents,
+        spentThroughYesterdayCents,
+        spentTodayCents,
+        daysLeft,
+        toleranceCents: dailyLimitToleranceCents
+      });
+
+      // ---- 低消费表扬（只在确实没超额、且预算仍有余额时发） ----
       // 开关对齐前端：主开关 dailyLimitEnabled（=设置页「当日限额提醒」）与子开关 praiseEnabled 同时开启才发
       // 时段对齐前端：只在晚上 19 点后发一条（用户要求晚上 19 点主动发一条、不依赖打开 App，白天不发）
-      const praiseOn = (setting?.dailyLimitEnabled ?? true) && (setting?.praiseEnabled ?? true);
-      if (praiseOn) {
+      const praiseOn = dailyLimitEnabled && (setting?.praiseEnabled ?? true);
+      if (praiseOn && !overLimit) {
         const period = today.hour >= 19 ? "pm" : null;
         if (period) {
           let praise: { period: "am" | "pm"; kind: "zero" | "thrifty" } | null = null;
           if (spentTodayTotalCents <= 0) {
-            praise = { period, kind: "zero" };
-          } else if (monthDailyBudgetCents > 0) {
-            const dynamicLimitCents = Math.round(Math.max(0, monthDailyBudgetCents - spentThroughYesterdayCents) / daysLeft);
-            if (spentTodayCents < dynamicLimitCents) praise = { period, kind: "thrifty" };
+            // zero 靠「没查到交易」下结论，账本超过 36 小时没同步时宁可不发；
+            // thrifty 有实际交易记录作正面证据，不受影响。
+            if (!ledgerDataStale(ledger.updatedAt)) praise = { period, kind: "zero" };
+          } else if (spentTodayCents < dailyLimitCents) {
+            praise = { period, kind: "thrifty" };
           }
           if (praise && !(await alreadySentToday(ledger.ownerId, "praise", `${today.dayKey}:${praise.period}`))) {
             const delivered = await sendPraiseReminder(ledger.ownerId, praise.period, praise.kind);
@@ -284,16 +331,8 @@ async function checkSpendingAlerts(log: FastifyBaseLogger) {
         }
       }
 
-      // ---- 预算相关分支（需设预算；无预算则跳过，但上面的表扬分支已先执行） ----
+      // ---- 预算相关分支（需设预算；无预算则跳过） ----
       if (monthDailyBudgetCents <= 0) continue;
-
-      const monthRemainingCents = Math.max(0, monthDailyBudgetCents - spentThroughYesterdayCents);
-      const dailyLimitCents = Math.round(monthRemainingCents / daysLeft);
-
-      const dailyLimitEnabled = setting?.dailyLimitEnabled ?? true;
-      const dailyLimitHour = setting?.dailyLimitHour ?? 21;
-      const dailyLimitToleranceCents = setting?.dailyLimitToleranceCents ?? DAILY_LIMIT_TOLERANCE_CENTS;
-      const reached = spentTodayCents >= dailyLimitCents - dailyLimitToleranceCents;
 
       if (reached) {
         // 未到设定的提醒时间不发推送（应用内全屏警告不受此限制）
