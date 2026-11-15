@@ -13,6 +13,11 @@ import {
   SalaryBanner,
   TrendFocusCards,
   DEFAULT_SALARY_SETTINGS,
+  DEFAULT_DAILY_LIMIT_ALERT,
+  LOCAL_NOTIFY_TAGS,
+  isPushSubscribed,
+  setPushSubscribed,
+  maybeNotifyDailyLimit,
   buildFixedExpenseSuggestions,
   dailyLimitBreakdown,
   dailyLimitCents,
@@ -525,6 +530,54 @@ describe("低消费表扬：时段判定与文案", () => {
   it("文案包含正向鼓励关键词", () => {
     expect(praiseMessage("zero")).toContain("存款");
     expect(praiseMessage("thrifty")).toContain("压力");
+  });
+});
+
+describe("本机通知以本地数据为准（2026-11-15）", () => {
+  it("已订阅 web push 时不再一刀切跳过：仍按本地数据发通知，且带去重 tag", async () => {
+    // 当前 TS lib 的 NotificationOptions 未声明 renotify（浏览器运行时支持），测试里补上交叉类型
+    const calls: { title: string; options: NotificationOptions & { renotify?: boolean } }[] = [];
+    const previous = (globalThis as unknown as { Notification?: unknown }).Notification;
+    class FakeNotification {
+      static permission = "granted";
+      constructor(title: string, options: NotificationOptions) { calls.push({ title, options }); }
+    }
+    (globalThis as unknown as { Notification?: unknown }).Notification = FakeNotification;
+    try {
+      localStorage.clear();
+      setPushSubscribed(true);
+      expect(isPushSubscribed()).toBe(true);
+
+      const settings = { ...DEFAULT_DAILY_LIMIT_ALERT, enabled: true, notify: true, toleranceCents: 1000 };
+      // 本地今日已花 ¥60 > 限额 ¥50 → 达线，应当发本机通知（旧写法在这里直接 return）
+      maybeNotifyDailyLimit(settings, 6000, 5000);
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      expect(calls).toHaveLength(1);
+      expect(calls[0].title).toContain("超出日限额");
+      expect(calls[0].options.tag).toBe(LOCAL_NOTIFY_TAGS.dailyLimit);
+      expect(calls[0].options.renotify).toBe(false);
+
+      // 负对照：同样已订阅，但本地数据未达线 → 不发，证明不是无条件弹
+      localStorage.removeItem("ledger-daily-limit-notified");
+      maybeNotifyDailyLimit(settings, 1000, 5000);
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      expect(calls).toHaveLength(1);
+    } finally {
+      (globalThis as unknown as { Notification?: unknown }).Notification = previous;
+      localStorage.clear();
+      setPushSubscribed(false);
+    }
+  });
+
+  it("tag 与服务端 payload、push-sw.js 三方同源，且旧跳过写法没被加回来", () => {
+    const webSrc = readFileSync(new URL("./widgets.tsx", import.meta.url), "utf8");
+    const apiSrc = readFileSync(new URL("../../api/src/notifications.ts", import.meta.url), "utf8");
+    const swSrc = readFileSync(new URL("../public/push-sw.js", import.meta.url), "utf8");
+    expect(webSrc).not.toContain("if (isPushSubscribed()) return;");
+    expect(apiSrc).toContain(`tag: "${LOCAL_NOTIFY_TAGS.dailyLimit}"`);
+    expect(apiSrc).toContain(`tag: "${LOCAL_NOTIFY_TAGS.praise}"`);
+    expect(swSrc).toContain("tag: payload.tag || \"ledger-reminder\"");
+    expect(swSrc).toContain("renotify: !payload.tag");
   });
 });
 

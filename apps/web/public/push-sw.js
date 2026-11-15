@@ -13,7 +13,9 @@ self.addEventListener("push", (event) => {
     icon: "/icon-192.png",
     badge: "/icon-192.png",
     tag: payload.tag || "ledger-reminder",
-    renotify: true,
+    // 消费类提醒带 tag：App 打开时本机通知已按本地数据发过同 tag 的一条，
+    // 后到的服务端推送静默替换它、不重复响铃；工资日 / 测试推送不带 tag，保持原行为。
+    renotify: !payload.tag,
     data: { url: payload.url || "/" },
     vibrate: [100, 50, 100]
   };

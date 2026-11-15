@@ -16,6 +16,8 @@ export interface ReminderPayload {
   title: string;
   body: string;
   url?: string;
+  /** 消费类提醒与 App 内本机通知共用同一个 tag：后到的那条静默替换，避免同日双响 */
+  tag?: string;
 }
 
 let pushReady = false;
@@ -77,6 +79,7 @@ export async function sendTestReminder(userId: string) {
 export async function sendDailyLimitReminder(userId: string, spentCents: number, limitCents: number, toleranceCents = DAILY_LIMIT_TOLERANCE_CENTS) {
   const overCents = spentCents - limitCents;
   return deliver(userId, {
+    tag: "ledger-daily-limit",
     title: overCents > 0 ? "⚠️ 今日消费已超出日限额" : "⚠️ 今日消费已到日限额",
     body: overCents > 0
       ? `今日已花 ¥${centsToYuan(spentCents)}，超出今日限额 ¥${centsToYuan(limitCents)} 共 ¥${centsToYuan(overCents)}。剩下的时间悠着点花！`
@@ -95,6 +98,7 @@ function praiseContent(kind: "zero" | "thrifty"): string {
 export async function sendPraiseReminder(userId: string, period: "am" | "pm", kind: "zero" | "thrifty") {
   const title = kind === "zero" ? "🌱 表扬：今天很会守住钱" : "👏 表扬：今天消费很节制";
   return deliver(userId, {
+    tag: "ledger-praise",
     title,
     body: praiseContent(kind),
     url: "/"
@@ -231,9 +235,9 @@ export function spendingAlertState(input: {
 }
 
 /** 账本数据是否陈旧：超过 36 小时没有任何写入（手机没同步 / 没连到本机 API）就认为不可信。
- *  「今天一分钱没花」是建立在「服务端今天没查到交易」这一**缺失证据**上的强断言，
- *  数据没同步时分不清「真没花」和「没收到」，此时发「存款在悄悄变厚、选择更多」
- *  会在用户已经超额时变成一条错误的「额度充足」提醒。 */
+ *  所有依赖消费数据的结论都不可信：「今天一分钱没花」是**缺失证据**上的强断言，
+ *  今日花费 / 日限额也是过期快照算出来的。此时服务端一条消费类提醒都不发，
+ *  把判断交给 App 打开时用本地数据触发的本机通知。 */
 export function ledgerDataStale(updatedAt: Date, nowMs: number = Date.now()) {
   return nowMs - updatedAt.getTime() > 36 * 3600_000;
 }
@@ -243,6 +247,14 @@ async function checkSpendingAlerts(log: FastifyBaseLogger) {
   const ledgers = await prisma.ledger.findMany({ select: { id: true, ownerId: true, updatedAt: true } });
   for (const ledger of ledgers) {
     try {
+      // 低消费表扬 / 当日限额警告都建立在账本交易上。账本长时间没有写入时，服务端手里是旧快照：
+      // 既会把「手机没同步」误判成「今天一分钱没花」，也会拿过期的今日花费去算 reached。
+      // 此时一条都不发——App 打开时由本机通知按本地最新数据判断，宁可不提醒也不发错结论。
+      // 工资日提醒不依赖交易，在 checkAndSendReminders 里独立处理，不受影响。
+      if (ledgerDataStale(ledger.updatedAt)) {
+        log.info({ ledgerId: ledger.id, updatedAt: ledger.updatedAt }, "skip spending alerts: ledger data stale");
+        continue;
+      }
       const budgets = await prisma.budget.findMany({
         where: { ledgerId: ledger.id, month: today.monthKey, deletedAt: null }
       });
@@ -317,9 +329,9 @@ async function checkSpendingAlerts(log: FastifyBaseLogger) {
         if (period) {
           let praise: { period: "am" | "pm"; kind: "zero" | "thrifty" } | null = null;
           if (spentTodayTotalCents <= 0) {
-            // zero 靠「没查到交易」下结论，账本超过 36 小时没同步时宁可不发；
-            // thrifty 有实际交易记录作正面证据，不受影响。
-            if (!ledgerDataStale(ledger.updatedAt)) praise = { period, kind: "zero" };
+            // 陈旧账本已在循环入口整体跳过，这里不必再判一次。
+            // zero 靠「没查到交易」下结论，只有数据新鲜时才可信。
+            praise = { period, kind: "zero" };
           } else if (spentTodayCents < dailyLimitCents) {
             praise = { period, kind: "thrifty" };
           }

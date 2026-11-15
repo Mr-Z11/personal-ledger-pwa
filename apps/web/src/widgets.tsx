@@ -1796,8 +1796,16 @@ export function dailyLimitAlertDismissedKey() {
 
 const PUSH_SUBSCRIBED_KEY = "ledger-push-subscribed";
 
-/** 是否已在手机 PWA 订阅服务端 web push。订阅后，表扬/限额提醒由服务端后台推送送达，
- * 前端不再叠发本地通知，避免「App 打开时同一条提醒弹两次」。 */
+/** 与服务端 push payload、public/push-sw.js 三方约定：消费类提醒共用的通知 tag。
+ *  App 打开时本机通知先按本地数据发；服务端推送后到时同 tag 静默替换，不重复响铃。 */
+export const LOCAL_NOTIFY_TAGS = {
+  dailyLimit: "ledger-daily-limit",
+  praise: "ledger-praise"
+} as const;
+
+/** 是否已在手机 PWA 订阅服务端 web push。旧实现据此直接跳过本机通知、把判断权全交给
+ *  服务端，但服务端只能看云端快照，手机没同步时就会拿旧数据下结论。现在它只用来决定
+ *  本机通知要不要带去重 tag，不再抑制本地判断。 */
 export function isPushSubscribed(): boolean {
   try {
     return localStorage.getItem(PUSH_SUBSCRIBED_KEY) === "1";
@@ -1815,25 +1823,53 @@ export function setPushSubscribed(value: boolean) {
   }
 }
 
-/** 触发后每天发一条系统通知（失败静默降级为应用内全屏警告） */
+/** 发一条本机通知。优先走 SW 的 registration.showNotification：iOS Safari 不支持页面内
+ *  `new Notification()`，但 Web Push 依赖的 registration.showNotification 可用；两条路径
+ *  共用同一个 tag 空间，才能与服务端推送按 tag 去重。SW 不可用时回退到页面内 Notification。 */
+async function showLocalNotification(title: string, options: NotificationOptions) {
+  if (typeof Notification === "undefined" || Notification.permission !== "granted") return false;
+  if (typeof navigator !== "undefined" && "serviceWorker" in navigator) {
+    try {
+      const registration = await Promise.race([
+        navigator.serviceWorker.ready,
+        // 没注册 SW 时 ready 永远不 resolve，超时后回退，别把本机通知卡死
+        new Promise<null>((resolve) => setTimeout(() => resolve(null), 1500))
+      ]);
+      if (registration) {
+        await registration.showNotification(title, options);
+        return true;
+      }
+    } catch {
+      // 回退到页面内 Notification
+    }
+  }
+  try {
+    new Notification(title, options);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/** 触发后每天发一条系统通知（失败静默降级为应用内全屏警告）。
+ *  App 打开时始终用本地最新数据判断：旧实现订阅 web push 后直接 return，把判断权全交给
+ *  服务端云端快照，手机没同步时就会用几天前的数据下结论。订阅状态现在只影响去重 tag。 */
 export function maybeNotifyDailyLimit(settings: DailyLimitAlertSettings, spentTodayCents: number, limitCents: number) {
   if (!settings.enabled || !settings.notify) return;
-  if (isPushSubscribed()) return; // 已订阅后台推送，避免与 web-push 重复弹窗
   if (!dailyLimitAlertTriggered(settings, spentTodayCents, limitCents)) return;
   const todayKey = dateKey(new Date().toISOString());
   if (localStorage.getItem(DAILY_LIMIT_NOTIFY_KEY) === todayKey) return;
-  try {
-    if (typeof Notification === "undefined" || Notification.permission !== "granted") return;
-    const overCents = spentTodayCents - limitCents;
-    new Notification(overCents > 0 ? "⚠️ 今日消费已超出日限额" : "⚠️ 今日消费已到日限额", {
-      body: overCents > 0
-        ? `今日已花 ¥${centsToYuan(spentTodayCents)}，超出今日限额 ¥${centsToYuan(limitCents)} 共 ¥${centsToYuan(overCents)}。`
-        : `今日已花 ¥${centsToYuan(spentTodayCents)}，已达今日限额 ¥${centsToYuan(limitCents)} 附近（限额已含 ¥${centsToYuan(settings.toleranceCents)} 误差线），还没超。`
-    });
-    localStorage.setItem(DAILY_LIMIT_NOTIFY_KEY, todayKey);
-  } catch {
-    // 部分平台不支持本地 Notification，忽略
-  }
+  const overCents = spentTodayCents - limitCents;
+  const dedupe = isPushSubscribed() ? { tag: LOCAL_NOTIFY_TAGS.dailyLimit, renotify: false } : {};
+  void showLocalNotification(overCents > 0 ? "⚠️ 今日消费已超出日限额" : "⚠️ 今日消费已到日限额", {
+    body: overCents > 0
+      ? `今日已花 ¥${centsToYuan(spentTodayCents)}，超出今日限额 ¥${centsToYuan(limitCents)} 共 ¥${centsToYuan(overCents)}。`
+      : `今日已花 ¥${centsToYuan(spentTodayCents)}，已达今日限额 ¥${centsToYuan(limitCents)} 附近（限额已含 ¥${centsToYuan(settings.toleranceCents)} 误差线），还没超。`,
+    ...dedupe
+  }).then((shown) => {
+    if (!shown) return;
+    try { localStorage.setItem(DAILY_LIMIT_NOTIFY_KEY, todayKey); } catch { /* 隐私模式忽略 */ }
+  });
 }
 
 /** 低消费表扬是否到期：只在晚上（19 点）起评。
@@ -1864,23 +1900,22 @@ export function praiseMessage(kind: "zero" | "thrifty"): string {
 }
 
 /** 低消费表扬：晚上（19 点后）没怎么花就发一条鼓励推送（每天最多一条）。
- * 白天一律不发——用户要求晚上 19 点主动发一条、不依赖打开 App。 */
+ * 白天一律不发——用户要求晚上 19 点主动发一条、不依赖打开 App。
+ * 同 maybeNotifyDailyLimit：App 打开时始终按本地数据判断，订阅只影响去重 tag。 */
 export function maybePraiseNoSpend(settings: DailyLimitAlertSettings, spentTodayCents: number, limitCents: number, totalSpentTodayCents?: number) {
   if (!settings.enabled || !settings.notify || settings.praiseEnabled === false) return;
-  if (isPushSubscribed()) return; // 已订阅后台推送，避免与 web-push 重复弹窗
   const due = noSpendPraiseDue(Number(beijingDateTimeParts().hour), spentTodayCents, limitCents, totalSpentTodayCents ?? spentTodayCents, settings.toleranceCents);
   if (!due) return;
   const stamp = `${dateKey(new Date().toISOString())}:${due.period}`;
   if (localStorage.getItem(PRAISE_NOTIFY_KEY) === stamp) return;
-  try {
-    if (typeof Notification === "undefined" || Notification.permission !== "granted") return;
-    new Notification(due.kind === "zero" ? "🌱 表扬：今天很会守住钱" : "👏 表扬：今天消费很节制", {
-      body: praiseMessage(due.kind)
-    });
-    localStorage.setItem(PRAISE_NOTIFY_KEY, stamp);
-  } catch {
-    // 不支持本地通知时忽略
-  }
+  const dedupe = isPushSubscribed() ? { tag: LOCAL_NOTIFY_TAGS.praise, renotify: false } : {};
+  void showLocalNotification(due.kind === "zero" ? "🌱 表扬：今天很会守住钱" : "👏 表扬：今天消费很节制", {
+    body: praiseMessage(due.kind),
+    ...dedupe
+  }).then((shown) => {
+    if (!shown) return;
+    try { localStorage.setItem(PRAISE_NOTIFY_KEY, stamp); } catch { /* 隐私模式忽略 */ }
+  });
 }
 
 /** 常驻的当日限额警示条：达线=琥珀、超支=深红。全屏遮罩关掉后它仍在，
