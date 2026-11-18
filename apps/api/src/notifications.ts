@@ -82,8 +82,8 @@ export async function sendDailyLimitReminder(userId: string, spentCents: number,
     tag: "ledger-daily-limit",
     title: overCents > 0 ? "⚠️ 今日消费已超出日限额" : "⚠️ 今日消费已到日限额",
     body: overCents > 0
-      ? `今日已花 ¥${centsToYuan(spentCents)}，超出今日限额 ¥${centsToYuan(limitCents)} 共 ¥${centsToYuan(overCents)}。剩下的时间悠着点花！`
-      : `今日已花 ¥${centsToYuan(spentCents)}，已达今日限额 ¥${centsToYuan(limitCents)} 附近（限额已含 ¥${centsToYuan(toleranceCents)} 误差线），还没超。`,
+      ? `今日日常支出 ¥${centsToYuan(spentCents)}，超出今日限额 ¥${centsToYuan(limitCents)} 共 ¥${centsToYuan(overCents)}（专项 / 教育 / 保险等不计入限额）。剩下的时间悠着点花！`
+      : `今日日常支出 ¥${centsToYuan(spentCents)}，已达今日限额 ¥${centsToYuan(limitCents)} 附近（限额已含 ¥${centsToYuan(toleranceCents)} 误差线），还没超。`,
     url: "/"
   });
 }

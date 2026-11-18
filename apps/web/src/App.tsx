@@ -1594,6 +1594,7 @@ export function App() {
             spentCents={todaySpentCents}
             limitCents={todayLimitCents}
             toleranceCents={dailyLimitSettings.toleranceCents}
+            allSpentCents={todayAllSpentCentsValue}
             onDismiss={() => setDailyLimitOverlayClosed(true)}
           />
         )}

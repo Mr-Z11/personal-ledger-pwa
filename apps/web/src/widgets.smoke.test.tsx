@@ -28,6 +28,8 @@ import {
   praiseMessage,
   salaryBannerState,
   salaryPushSettings,
+  todayDailySpentCents,
+  todayAllSpentCents,
   saveFixedExpenses,
   saveSalarySettings
 } from "./widgets";
@@ -582,11 +584,15 @@ describe("本机通知以本地数据为准（2026-11-15）", () => {
 });
 
 describe("当日限额全屏警告文案", () => {
-  it("明确标注大额数字是「今日已花」，限额单独一行，不产生歧义", () => {
+  it("明确标注大额数字是「计入日限额」的支出，限额单独一行，不产生歧义", () => {
     const html = renderToString(
-      <DailyLimitOverlay spentCents={123400} limitCents={120000} toleranceCents={2000} onDismiss={() => {}} />
+      <DailyLimitOverlay spentCents={123400} limitCents={120000} toleranceCents={2000} allSpentCents={123400} onDismiss={() => {}} />
     );
-    expect(html).toContain("今日已花（实际消费）");
+    expect(html).toContain("今日已花（计入日限额）");
+    // 旧文案「实际消费」会让人按全部流水去对账，必须去掉
+    expect(html).not.toContain("今日已花（实际消费）");
+    expect(html).toContain("今日全部支出");
+    expect(html).toContain("与上方计入限额的金额一致");
     // SSR 会在 ¥ 与数字之间插入注释节点，这里只断言数字
     expect(html).toContain("1234.00");
     expect(html).toContain("今日限额");
@@ -596,9 +602,27 @@ describe("当日限额全屏警告文案", () => {
     expect(html).toContain("今日消费已超出日限额");
   });
 
+  it("今日有专项支出时同时摆出全部支出与被剔除金额（2026-11-18 反馈）", () => {
+    const html = renderToString(
+      <DailyLimitOverlay spentCents={123400} limitCents={120000} toleranceCents={2000} allSpentCents={183400} onDismiss={() => {}} />
+    );
+    expect(html).toContain("1234.00"); // 计入限额的日常支出不变
+    expect(html).toContain("1834.00"); // 今日全部支出，与明细合计对得上
+    expect(html).toContain("600.00");  // 两者差额
+    expect(html).toContain("不计入日限额");
+  });
+
+  it("今日已花只算日常支出：贷款等被剔除，全部支出另算", () => {
+    const now = new Date().toISOString();
+    const list = [tx("t-daily", 50, now), tx("t-loan", 300, now, "cat-loan")];
+    expect(todayDailySpentCents(list, categories)).toBe(yuanToCents(50));
+    expect(todayAllSpentCents(list, categories)).toBe(yuanToCents(350));
+    expect(todayAllSpentCents(list, categories) - todayDailySpentCents(list, categories)).toBe(yuanToCents(300));
+  });
+
   it("误差线内未超出时给出「还没超」而不是金额", () => {
     const html = renderToString(
-      <DailyLimitOverlay spentCents={119000} limitCents={120000} toleranceCents={2000} onDismiss={() => {}} />
+      <DailyLimitOverlay spentCents={119000} limitCents={120000} toleranceCents={2000} allSpentCents={119000} onDismiss={() => {}} />
     );
     expect(html).toContain("今日消费已到日限额");
     expect(html).toContain("误差线内，还没超");

@@ -467,7 +467,7 @@ export function BudgetReservoir({ title, note, spentCents, budgetCents, accent, 
             <dl className="reservoir-today-detail">
               <dt>今日限额</dt>
               <dd>¥{centsToYuan(todayLimitCents)}</dd>
-              <dt>今日已花</dt>
+              <dt>今日已花（日常）</dt>
               <dd>¥{centsToYuan(todaySpentCents)}</dd>
               <dt>含今天还剩</dt>
               <dd>{daysLeft} 天</dd>
@@ -1863,8 +1863,8 @@ export function maybeNotifyDailyLimit(settings: DailyLimitAlertSettings, spentTo
   const dedupe = isPushSubscribed() ? { tag: LOCAL_NOTIFY_TAGS.dailyLimit, renotify: false } : {};
   void showLocalNotification(overCents > 0 ? "⚠️ 今日消费已超出日限额" : "⚠️ 今日消费已到日限额", {
     body: overCents > 0
-      ? `今日已花 ¥${centsToYuan(spentTodayCents)}，超出今日限额 ¥${centsToYuan(limitCents)} 共 ¥${centsToYuan(overCents)}。`
-      : `今日已花 ¥${centsToYuan(spentTodayCents)}，已达今日限额 ¥${centsToYuan(limitCents)} 附近（限额已含 ¥${centsToYuan(settings.toleranceCents)} 误差线），还没超。`,
+      ? `今日日常支出 ¥${centsToYuan(spentTodayCents)}，超出今日限额 ¥${centsToYuan(limitCents)} 共 ¥${centsToYuan(overCents)}（专项 / 教育 / 保险等不计入限额）。`
+      : `今日日常支出 ¥${centsToYuan(spentTodayCents)}，已达今日限额 ¥${centsToYuan(limitCents)} 附近（限额已含 ¥${centsToYuan(settings.toleranceCents)} 误差线），还没超。`,
     ...dedupe
   }).then((shown) => {
     if (!shown) return;
@@ -1932,22 +1932,29 @@ export function DailyLimitRibbon({ spentCents, limitCents }: {
       <span className="daily-limit-ribbon-mark">!</span>
       <div className="daily-limit-ribbon-body">
         <strong>{over ? `今日已超日限额 ¥${centsToYuan(overCents)}` : "今日已到日限额"}</strong>
-        <small>已花 ¥{centsToYuan(spentCents)} / 限额 ¥{centsToYuan(limitCents)} · 今天别再花了</small>
+        <small>日常已花 ¥{centsToYuan(spentCents)} / 限额 ¥{centsToYuan(limitCents)} · 今天别再花了</small>
       </div>
       <span className="daily-limit-ribbon-pct">{percent}%</span>
     </div>
   );
 }
 
-/** 全屏红色警告遮罩：达到限额时覆盖整个页面，关闭后仅本次会话不再弹出（下次打开仍会提醒） */
-export function DailyLimitOverlay({ spentCents, limitCents, toleranceCents, onDismiss }: {
+/** 全屏红色警告遮罩：达到限额时覆盖整个页面，关闭后仅本次会话不再弹出（下次打开仍会提醒）。
+ *  大额数字是「计入日限额的日常支出」，并不等于流水里今天花的全部钱：
+ *  专项支出 / 孩子教育 / 保险 / 贷款 / 购车养车等按预算口径不计入日限额，
+ *  但用户按明细合计去对账时一定会发现数字偏小。这里把两个数字与差额一起摆出来，
+ *  既保留预算算法不变，也能让用户自己验算。 */
+export function DailyLimitOverlay({ spentCents, limitCents, toleranceCents, allSpentCents, onDismiss }: {
   spentCents: number;
   limitCents: number;
   toleranceCents: number;
+  /** 今日全部支出（含不计入日限额的分类），只用于对账展示，不参与超限判断 */
+  allSpentCents: number;
   onDismiss: () => void;
 }) {
   const overCents = spentCents - limitCents;
   const reachedOnly = overCents <= 0;
+  const excludedCents = Math.max(0, allSpentCents - spentCents);
   useEffect(() => {
     document.body.classList.add("daily-limit-lock");
     document.documentElement.classList.add("daily-limit-lock");
@@ -1962,7 +1969,7 @@ export function DailyLimitOverlay({ spentCents, limitCents, toleranceCents, onDi
         <span className="daily-limit-icon">⚠️</span>
         <h2>{reachedOnly ? "今日消费已到日限额" : "今日消费已超出日限额"}</h2>
         <div className="daily-limit-figure">
-          <span className="daily-limit-label">今日已花（实际消费）</span>
+          <span className="daily-limit-label">今日已花（计入日限额）</span>
           <p className="daily-limit-amount">¥{centsToYuan(spentCents)}</p>
         </div>
         <div className="daily-limit-meta">
@@ -1977,6 +1984,12 @@ export function DailyLimitOverlay({ spentCents, limitCents, toleranceCents, onDi
             </strong>
           </div>
         </div>
+        <p className="daily-limit-detail">
+          今日全部支出 ¥{centsToYuan(allSpentCents)}
+          {excludedCents > 0
+            ? `，其中 ¥${centsToYuan(excludedCents)} 属于专项 / 教育 / 保险等，按预算口径不计入日限额。`
+            : "，与上方计入限额的金额一致。"}
+        </p>
         <p className="daily-limit-detail">
           今日限额已含 ¥{centsToYuan(toleranceCents)} 误差线，花到 ¥{centsToYuan(Math.max(0, limitCents - toleranceCents))} 就算达线。
         </p>
@@ -2033,7 +2046,7 @@ export function LocalDailyLimitAlertPanel({ value, onChange }: {
         <span>{value.enabled ? `已开启：达日限额 − ¥${centsToYuan(value.toleranceCents)} 时警告并推送` : "未开启"}</span>
       </div>
       <label>
-        <span className="reminder-label-head">误差金额（元）<InfoTip text="今日动态限额 =（月日常预算 − 截至昨日累计支出）÷ 含今日的剩余天数。今日消费 ≥ 今日动态限额 − 误差金额 时：打开应用立即全屏红色警告，同时推送手机提醒（每天一条）。当日花多少只影响明天及以后的限额，不改变今天自己的限额。" /></span>
+        <span className="reminder-label-head">误差金额（元）<InfoTip text="今日动态限额 =（月日常预算 − 截至昨日累计支出）÷ 含今日的剩余天数。今日消费 ≥ 今日动态限额 − 误差金额 时：打开应用立即全屏红色警告，同时推送手机提醒（每天一条）。当日花多少只影响明天及以后的限额，不改变今天自己的限额。注意：「今日消费」只统计日常支出，专项支出 / 孩子教育 / 保险 / 贷款 / 购车养车等分类不计入日限额，但会照常出现在流水里；全屏警告会同时显示今日全部支出与两者差额。" /></span>
         <input
           value={toleranceInput}
           inputMode="decimal"

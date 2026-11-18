@@ -5,8 +5,13 @@
 
 ## 1. 当前状态（2026-11-15）
 
-> **交接快照（2026-11-15，下一会话从这里开始）**
-> - **【最新】2026-11-15 15:0x 「提醒判断依据应以本地数据为准」**（用户：「当前最新数据肯定是本地数据，理应按照本地数据判断」；选项确认走 **「本地优先 + 陈旧不发」**）：先查清三条通道的数据源——① 屏幕上的红色遮罩 / 警示条 / 横幅 = 本地 Dexie `activeTransactions`（`App.tsx:850-867`）；② 本机系统通知 = 本地数据，但 `widgets.tsx` 的 `maybeNotifyDailyLimit` / `maybePraiseNoSpend` 各有一行 `if (isPushSubscribed()) return;`，**订阅 web push 后被一刀切跳过**；③ 服务端 web push = 云端 Postgres（`notifications.ts:checkSpendingAlerts`），`public/push-sw.js` 只做「收到什么显示什么」，不读本地。DB 里主用户 `PushSubscription` 有 1 条 → 用户收到的推送 100% 是③。**应用关闭时服务端进程读不到手机 IndexedDB，iOS PWA 也没有可靠的后台定时本地通知**，所以不能靠「把云端查询换成本地查询」实现，只能改分工（方案 2「SW 读本地二次判断」因 iOS Web Push 要求可见通知、风险大，用户未选）。
+> **交接快照（2026-11-18，下一会话从这里开始）**
+> - **【最新】2026-11-18 17:5x 「今日限额提醒里『今日已花』和实际对不上」**（用户）：**算法没错，是口径没说清 + 文案误导**。全屏遮罩的大数字写「今日已花（实际消费）」，实际取 `todaySpentCents = todayDailySpentCents()`，只统计 `dailyExpenseTransactions()`（日常支出）；`isNonDailyExpenseCategory` 正则命中的专项支出 / 孩子教育 / 保险 / 贷款 / 购车养车等整类被剔除，而 `todayAllSpentCentsValue`（今日全部支出）此前只在表扬判定里用、从未展示。`dailyLimitBreakdown()` 与 `todayDailySpentCents()` 同源，限额判断本身自洽，所以**不能把全部支出塞进限额判断**（会破坏日常预算模型）。
+>   - **量化证据**（云端 11 月按北京时间逐日）：11/12 日常 ¥39.68 / 全部 ¥4564.68，差 **¥4525**（`专项支出 > 保险` ¥3978 + ¥547）；11/08 差 ¥1800（保姆费）；11/04 差 ¥100（`孩子教育 > 兴趣课程`）。正是前几轮把 37 笔迁到专项支出 / 孩子教育后的必然结果。
+>   - **修复（4 个源文件，不动预算算法）**：① `DailyLimitOverlay` 新增 `allSpentCents` prop，标签改「今日已花（计入日限额）」，新增一段同时显示「今日全部支出 ¥Z」与「其中 ¥D 属于专项 / 教育 / 保险等，按预算口径不计入日限额」；差额为 0 时显示「与上方计入限额的金额一致」。② `DailyLimitRibbon`「已花」→「日常已花」、总览 `BudgetReservoir` 的 `<dt>今日已花</dt>` →「今日已花（日常）」。③ 设置页「误差金额」InfoTip 补口径说明。④ 本机通知与服务端 `sendDailyLimitReminder` 文案「今日已花 ¥X」→「今日日常支出 ¥X」，并注明专项等不计入。
+>   - **验证**：全仓 typecheck 通过、`widgets.smoke.test.tsx` **56 条**（新增 3 条：旧误导文案必须消失、有专项支出时双数字与差额同时出现、`todayDailySpentCents` vs `todayAllSpentCents` 口径差异）；负对照 `/tmp/neg-daily-limit.py` 注回旧文案 + 单数字展示后 **2 红 / 54 绿**，恢复后 56/56 全绿。
+>   - **待用户确认**：若「对不上」其实是数字**偏大**或来自推送消息，请给具体数字 / 截图——本次修的是「偏小且因专项支出被剔除」这一类；若希望专项支出也计入日限额，属于预算模型改动，需单独确认。
+> - **【上一轮】2026-11-15 15:0x 「提醒判断依据应以本地数据为准」**（用户：「当前最新数据肯定是本地数据，理应按照本地数据判断」；选项确认走 **「本地优先 + 陈旧不发」**）：先查清三条通道的数据源——① 屏幕上的红色遮罩 / 警示条 / 横幅 = 本地 Dexie `activeTransactions`（`App.tsx:850-867`）；② 本机系统通知 = 本地数据，但 `widgets.tsx` 的 `maybeNotifyDailyLimit` / `maybePraiseNoSpend` 各有一行 `if (isPushSubscribed()) return;`，**订阅 web push 后被一刀切跳过**；③ 服务端 web push = 云端 Postgres（`notifications.ts:checkSpendingAlerts`），`public/push-sw.js` 只做「收到什么显示什么」，不读本地。DB 里主用户 `PushSubscription` 有 1 条 → 用户收到的推送 100% 是③。**应用关闭时服务端进程读不到手机 IndexedDB，iOS PWA 也没有可靠的后台定时本地通知**，所以不能靠「把云端查询换成本地查询」实现，只能改分工（方案 2「SW 读本地二次判断」因 iOS Web Push 要求可见通知、风险大，用户未选）。
 >   - **修复（3 个源文件，不动数据 / schema）**：① 服务端 `checkSpendingAlerts()` 循环入口用 `ledgerDataStale(ledger.updatedAt)` **整条跳过**陈旧账本（表扬 + 限额警告都不发；工资日不依赖交易，在 `checkAndSendReminders` 独立处理、不受影响），zero 分支里重复的陈旧判断删掉，只留一套判据。② 前端取消两处 `isPushSubscribed()` 跳过：App 打开时始终按本地最新数据判断；订阅状态改为只决定本机通知是否带去重 tag。新增 `showLocalNotification()` **优先走 `registration.showNotification()`**（iOS Safari 不支持页面内 `new Notification()`，但 Web Push 依赖的 SW 路径可用），SW 不可用 / `ready` 超时 1.5s 回退 `new Notification`。③ `ReminderPayload` 加可选 `tag`，限额警告 / 表扬 payload 带 `ledger-daily-limit` / `ledger-praise`；`push-sw.js` 改 `renotify: !payload.tag`，后到的服务端推送静默替换同 tag 本机通知，避免双响。**服务端只在数据新鲜时才发消费类提醒 → 此时云端与本地一致，tag 替换才安全**。
 >   - **代价（用户已确认）**：一整天没开 App 又没同步 → 晚上可能收不到任何消费类提醒（宁可不发也不发错）；App 打开时屏幕上的遮罩 / 警示条本来就是本地判断。
 >   - **期间数据变化（重要）**：核对时发现用户已在 15:05 同步成功（`Ledger.updatedAt` 11/10 → `2026-11-15 07:05Z`、`serverVersion 306→308`、11/11 起补进 18 笔、11/15 两笔 ¥224.50，来源 `froridemacbook-air.local:8443` 的 `/sync/push` + `/sync/pull`）。云端复算：截至昨日日常 ¥2876.05 → 今日限额 ¥132.75，今日已花 ¥224.50 → `reached=true`、`overLimit=true` → 今晚**不发额度充足表扬、改发一条「今日消费已超出日限额」警告**，与屏幕一致。上一轮「今晚一条都不发」的结论因此作废。
@@ -74,11 +79,12 @@
 - 三容器当前均 Up；`api-local` 用**只读 bind-mount** 挂本机 `apps/api/dist`（见 §3）。
 - git：远端 `origin/main` 与本地一致（HEAD `453fd3d`，以 `git log -1` 为准；最新代码 commit `9a391de`，其后仅交接文档提交；功能历史见 §2，含模块签分页式横滑 + 左滑返回 iOS 交互式 + 整页整体切换修复 + 手势收尾「缓慢放置」600ms + 切签变色同步放慢 + 基础统计消费结构对比柱状图 + **报表子页返回空白/短页右滑失效/专项支出可点看流水三处修复** + **签条跟随内容滑动 + 常规项可点看 6 个月明细** + **子页返回零恢复过程（列表停靠不卸载 + 零重新定位）** + **今日限额与剩余天数口径统一、页脚改对账明细** + **内容容器改 overflow:clip，根除「返回时画面动一下」** + **返回时签条位置原样（停靠层改 opacity 隐藏）** + **返回时签条位置原样 + 停靠期签条去滚动容器化 + rAF 高频看守（根治「返回时标题从右边弹回中间」）** + **今日超限额警示画面在 iOS 上跳动修复（固定遮罩层只做 opacity 淡入、弹性缩放下沉到内部卡片、html+body 同时锁滚动，根除 iOS fixed+transform 抖动与橡皮筋位移）** + **报表子页返回后签条从右边滑到中间动画修复（签条平滑居中弃用原生 scrollTo smooth、改自驱动 rAF 动画，进子页前可彻底掐断，iOS 无原生滚动可挂起续播）** + **趋势图「涨幅贡献」诊断卡（取最近3个月、逐月对比日常消费分类构成，列出涨幅最大 4 个分类及各自净增额、占涨幅比与逐月金额；计算包 try/catch 防御）** + **工资日提醒横幅下计划购买面板右侧裁切修复（单列 grid 改 `minmax(0,1fr)`）**），已部署 caddy-local、已推送）。推送走 `python3 scripts/api-push-main.py`（见 §5）。
 
-## 2. 近期变更（2026-10-20 ~ 11-15，均已推送 origin/main）
+## 2. 近期变更（2026-10-20 ~ 11-18，均已推送 origin/main）
 
 | Commit | 内容 |
 |--------|------|
-| 2026-11-15（hash 见 `git log -1`，最新） | **「本地数据为准」改造**：消费类提醒改成本地优先——服务端陈旧账本整条跳过（表扬 + 限额警告都不发），前端取消订阅就跳过的本机通知、优先走 SW `showNotification`（iOS 兼容），消费类 payload 带 tag 与本机通知去重、SW 同 tag 不 renotify。用户已确认代价「没开 App 又没同步则晚上不提醒」。验证：typecheck + 54 单测 + 探针 22/22 + 负对照 8 红。另发现用户 15:05 已同步成功，云端数据不再是旧快照。详见 §1 最新快照。 |
+| 2026-11-18（hash 见 `git log -1`，最新） | **「今日已花」口径对账修复**：遮罩同时显示「计入日限额的日常支出」「今日全部支出」与差额；各处文案 / InfoTip / 本机通知 / 服务端推送统一标「日常」，不再写「实际消费」。预算算法不动。验证：typecheck + 56 单测 + 负对照 2 红恢复后全绿；云端 11/12 差额 ¥4525 证实根因。详见 §1 最新快照。 |
+| 2026-11-15 | **「本地数据为准」改造**：消费类提醒改成本地优先——服务端陈旧账本整条跳过（表扬 + 限额警告都不发），前端取消订阅就跳过的本机通知、优先走 SW `showNotification`（iOS 兼容），消费类 payload 带 tag 与本机通知去重、SW 同 tag 不 renotify。用户已确认代价「没开 App 又没同步则晚上不提醒」。验证：typecheck + 54 单测 + 探针 22/22 + 负对照 8 红。另发现用户 15:05 已同步成功，云端数据不再是旧快照。详见 §1 最新快照。 |
 | 2026-11-15 | **「已超额还发额度充足提醒」修复**：表扬推送移到限额状态判定之后，新增 `spendingAlertState()`（表扬与警告共用 `reached`/`monthOverBudget`/`overLimit`）+ `ledgerDataStale()`（36 小时没同步不发 zero 表扬）；前端 `noSpendPraiseDue()` 加超额门并传 `toleranceCents`。另一层根因是云端 11/10 后无同步、旧快照被误判成「今天没花钱」。验证：typecheck + 52 单测 + 探针 21/21 + 负对照 7 红。详见 §1 最新快照。 |
 | 2026-11-10（hash 见 `git log -1`，最新） | **「改日期当月即生效」修复**：工资日推送判重从按月 `YYYY-MM` 改成按实际提醒日 `YYYY-MM-DD`（新增 `salaryReminderKey()` / `salaryReminderDue()`，复用 `alreadySentToday()` / `markSentToday()`），同月内换日期不再被整月锁死；同一天仍只发一次。仅改 `apps/api/src/notifications.ts`，前端 / 数据 / schema 都不动。验证：typecheck + api build + 按日判重探针 19/19 + 负对照 10/9（9 红）+ 重启后 health 200 / 设置探针 7/7 / 日志总数不变。后端需 `--env-file .env.local --no-deps` 重建 api-local，并重启 caddy-local 清旧 upstream。详见 §1 最新快照。 |
 | 2026-11-10（hash 见 `git log -1`） | **「工资日提醒错发」修复**：双源（本机 localStorage vs 服务端 `ReminderSetting.salaryDay` 默认 10）导致本机设 5 号仍在 10 号收到推送。数据止血把主用户 `salaryDay` 10→5（备份 `/tmp/ledger-db-backup-before-salary-fix.sql`）；前端新增 `salaryPushSettings()` + `syncSalarySettings()`（启动 + 保存各 PUT 一次 `/notifications/settings`，只带 `salaryDay` 与非空 `content`），文案改「离线横幅 + 手机推送」，冒烟 51 条。验证：typecheck + 51 单测 + 服务端探针 7/7 + 浏览器同步探针 10/10 + 负对照 4/6（6 红）。**服务端零源码改动**，不 bump `serverVersion`、不重启 api-local。详见 §1 最新快照。 |
@@ -208,7 +214,10 @@
 
 ## 6. 当前待办 / 待确认
 
-> **[交接 2026-11-15 15:0x] 最高优先：真机确认「本地优先」的通知表现**
+> **[交接 2026-11-18 17:5x] 最高优先：真机确认遮罩双数字能否对上账**
+
+- **手机实测（本轮改造后）**：① 设置→「关于与更新」点一次「检查更新」，版本号 = 本轮新 commit 短 hash（不带 `-dirty`）；② 触发全屏红色警告后，核对「今日已花（计入日限额）」+「今日全部支出」+ 差额，拿明细页今日合计去对「今日全部支出」应完全一致；③ 若仍对不上，把两个数字、今日明细合计、以及哪几笔是专项 / 教育 / 保险告诉我；④ 确认警示条与推送文案已带「日常」字样。**注意**：若用户期望专项支出也进日限额，是预算模型改动（会改变 `isNonDailyExpenseCategory` 口径与今日限额分母），不要顺手改。
+> **[交接 2026-11-15 15:0x] 次优先：真机确认「本地优先」的通知表现**
 
 - **手机实测（本轮改造后）**：① 设置→「关于与更新」点一次「检查更新」，核对版本号 = 本轮新 commit 短 hash（不带 `-dirty`）；② **App 打开且已订阅推送时**，今日已达线应看到一条本机通知「⚠️ 今日消费已超出日限额」，同时服务端到点也会发一条——两条应被同 tag 合并、不重复响铃；若出现两条，说明 iOS 的 tag 去重没生效，需要改用「服务端推送到达时 SW 用 `getNotifications` 判重」；③ 今晚 19 点后**不应再收到「到今天都还没花钱 / 存款在悄悄变厚」这类额度充足表扬**；④ 若一整天没开 App 且没同步，晚上收不到任何消费类提醒是**已确认的设计代价**，不是 bug；⑤ iOS 上若本机通知完全不弹，查 `registration.showNotification()` 是否在前台被系统吞掉（回退路径 `new Notification()` 在 iOS 本就不可用）。
 > **[交接 2026-11-15 14:4x] 次优先：确认手机同步链路 + 今晚不再收到矛盾表扬**
