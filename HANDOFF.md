@@ -3,10 +3,17 @@
 > 本文件是本项目**唯一需要每次会话维护的活跃交接/计划文档**（已合并原 task_plan.md / findings.md / progress.md / HANDOFF.md 四个增长型文件）。
 > 长期蒸馏知识看 `.workbuddy/memory/MEMORY.md`；逐日会话历史看 `.workbuddy/memory/YYYY-MM-DD.md`；架构与数据安全看 `AGENTS.md`（会被 IDE 自动注入）；静态项目说明看 `docs/codex-handoff.md`。更早的完整历史在 git 记录里（`git log` / `git show <commit>:findings.md`）。
 
-## 1. 当前状态（2026-11-15）
+## 1. 当前状态（2026-11-20）
 
-> **交接快照（2026-11-18，下一会话从这里开始）**
-> - **【最新】2026-11-18 17:5x 「今日限额提醒里『今日已花』和实际对不上」**（用户）：**算法没错，是口径没说清 + 文案误导**。全屏遮罩的大数字写「今日已花（实际消费）」，实际取 `todaySpentCents = todayDailySpentCents()`，只统计 `dailyExpenseTransactions()`（日常支出）；`isNonDailyExpenseCategory` 正则命中的专项支出 / 孩子教育 / 保险 / 贷款 / 购车养车等整类被剔除，而 `todayAllSpentCentsValue`（今日全部支出）此前只在表扬判定里用、从未展示。`dailyLimitBreakdown()` 与 `todayDailySpentCents()` 同源，限额判断本身自洽，所以**不能把全部支出塞进限额判断**（会破坏日常预算模型）。
+> **交接快照（2026-11-20，下一会话从这里开始）**
+> - **【最新】2026-11-20 「昨天超了今日限额，晚上还收到奖励提醒」**（用户原话）：**根因不是 `spendingAlertState()` 写错，而是 36 小时陈旧门对「今日消费」这种日级判断太宽**。证据链：`ReminderLog` 有 `praise / 2026-11-19:pm`，`sentAt = 2026-11-19 14:01:51Z`（北京时间 22:01），api-local 日志同一毫秒 `kind:"thrifty", delivered:true, msg:"praise reminder dispatched"`。当时云端 `Ledger.updatedAt = 2026-11-19 10:53:55Z`（北京时间 18:53，`serverVersion=313`），距表扬仅 3 小时 → 旧 `ledgerDataStale()`（36h）判为新鲜，放行。
+>   - **云端当时实际看不到的消费**：主账本 11/19 只有 1 笔已同步支出——`occurredAt = 2026-11-19 06:32:32Z`（北京 14:32）、`amountCents=3030`、`餐饮食品 > 买菜`、`createdAt = 10:53:54Z`。当晚之后的新增消费没有同步进来。复算服务端判据：11 月日常预算 500000 分、截至昨日日常 334325 分、`daysLeft=12` → 日限额 `round(165675/12)=13806` 分；今日日常 3030 分、容差 2000 分 → `reached=false`、`monthOverBudget=false`、`overLimit=false`；今日全部支出 3030>0 → `kind="thrifty"`，于是发出「今天花得很稳，没有过度消费」。手机本地早已超额，两端口径分叉。**同一问题还体现在 `praise / 2026-11-20:pm`（11/20 19:01 北京发出）：云端仍停在 11/19 18:53 的快照，约 24 小时没写入，却因未过 36h 照发 zero 表扬。**
+>   - **修复（只改后端，不动数据 / schema / 前端）**：新增纯模块 `apps/api/src/spending-state.ts`，把 `chinaDateKey()` / `spendingAlertState()` 迁进去（仍从 `notifications.ts` re-export，旧探针 import 路径不坏）；新增 `spendingDataStale(updatedAt, nowMs, todayKey)`，**消费类提醒要求账本快照同时满足「距检查时刻 ≤2 小时」且「落在同一个北京时间自然日」**。`checkSpendingAlerts()` 循环入口改用它，`skip spending alerts: snapshot not current`；工资日提醒独立于交易、不受影响。旧 36h 函数删除。
+>   - **为什么这么改**：应用关闭时服务端读不到手机 IndexedDB，iOS PWA 也没有可靠后台定时本地通知；用户已确认「本地优先 + 陈旧不发」的代价是「没开 App 又没同步则晚上不提醒」。3 小时前写过不代表包含今晚的消费，日级结论必须要求当天近实时快照；本地通知仍由 App 打开时按 Dexie 最新数据触发。
+>   - **验证**：全仓 typecheck 通过、`npm test` 全绿（shared 3 / **api 8（新增 `spending-state.test.ts`，API 首个单测文件）** / web 56）。新测试复现 11/19 18:53→22:01 与 11/20 跨日两个真实时刻、2 小时边界、跨零点、限额状态。**负对照**：把 `spendingDataStale()` 临时注回旧 `>36h` 后 **4 红 / 4 绿**，恢复后 8/8 绿——断言不是空转。
+>   - **排查坑（务必记住）**：Prisma 把 `timestamp without time zone` 当 UTC 读，SQL 复核必须写 `occurredAt AT TIME ZONE 'UTC' AT TIME ZONE 'Asia/Shanghai'`，只写一层 `AT TIME ZONE 'Asia/Shanghai'` 会整差 8 小时，导致「11/19 零流水」的假结论。
+>   - **发布**：先 commit 再重建 `apps/api/dist`，`~/bin/docker compose --env-file .env.local -f docker-compose.local.yml up -d --no-deps --force-recreate api-local` + 必要时重启 caddy-local；commit hash 见 `git log -1`。**无前端改动 → 不需要用户更新 App**；`serverVersion` 不变。
+> - **【上一轮】2026-11-18 17:5x 「今日限额提醒里『今日已花』和实际对不上」**（用户）：**算法没错，是口径没说清 + 文案误导**。全屏遮罩的大数字写「今日已花（实际消费）」，实际取 `todaySpentCents = todayDailySpentCents()`，只统计 `dailyExpenseTransactions()`（日常支出）；`isNonDailyExpenseCategory` 正则命中的专项支出 / 孩子教育 / 保险 / 贷款 / 购车养车等整类被剔除，而 `todayAllSpentCentsValue`（今日全部支出）此前只在表扬判定里用、从未展示。`dailyLimitBreakdown()` 与 `todayDailySpentCents()` 同源，限额判断本身自洽，所以**不能把全部支出塞进限额判断**（会破坏日常预算模型）。
 >   - **量化证据**（云端 11 月按北京时间逐日）：11/12 日常 ¥39.68 / 全部 ¥4564.68，差 **¥4525**（`专项支出 > 保险` ¥3978 + ¥547）；11/08 差 ¥1800（保姆费）；11/04 差 ¥100（`孩子教育 > 兴趣课程`）。正是前几轮把 37 笔迁到专项支出 / 孩子教育后的必然结果。
 >   - **修复（4 个源文件，不动预算算法）**：① `DailyLimitOverlay` 新增 `allSpentCents` prop，标签改「今日已花（计入日限额）」，新增一段同时显示「今日全部支出 ¥Z」与「其中 ¥D 属于专项 / 教育 / 保险等，按预算口径不计入日限额」；差额为 0 时显示「与上方计入限额的金额一致」。② `DailyLimitRibbon`「已花」→「日常已花」、总览 `BudgetReservoir` 的 `<dt>今日已花</dt>` →「今日已花（日常）」。③ 设置页「误差金额」InfoTip 补口径说明。④ 本机通知与服务端 `sendDailyLimitReminder` 文案「今日已花 ¥X」→「今日日常支出 ¥X」，并注明专项等不计入。
 >   - **验证**：全仓 typecheck 通过、`widgets.smoke.test.tsx` **56 条**（新增 3 条：旧误导文案必须消失、有专项支出时双数字与差额同时出现、`todayDailySpentCents` vs `todayAllSpentCents` 口径差异）；负对照 `/tmp/neg-daily-limit.py` 注回旧文案 + 单数字展示后 **2 红 / 54 绿**，恢复后 56/56 全绿。
@@ -214,7 +221,11 @@
 
 ## 6. 当前待办 / 待确认
 
-> **[交接 2026-11-18 17:5x] 最高优先：真机确认遮罩双数字能否对上账**
+> **[交接 2026-11-20] 最高优先：确认今晚不再有「超额还发表扬」**
+> - **无需更新 App**（本轮只改服务端 `apps/api` + 新增后端单测）。手机今晚 19 点后若收到「今天花得很稳 / 存款在悄悄变厚」类表扬，请记下原文与时间，并同时查 `ReminderLog` 新记录、`Ledger.updatedAt` 是否已变新；若本地已超额但 App 一直开着却没收到本机限额警告，那是另一条路径（`widgets.tsx` 本地通知），单独报。
+> - **机制提醒**：新版服务端要求账本快照「当天且 2 小时内写过」才发消费类提醒。若一整天没开 App / 没同步，晚上收不到表扬或限额警告是**设计代价**；App 打开时本机通知仍按本地最新数据判断。想恢复服务端表扬，只需点一次同步让 `Ledger.updatedAt` 变新。
+
+> **[交接 2026-11-18 17:5x] 次优先：真机确认遮罩双数字能否对上账**
 
 - **手机实测（本轮改造后）**：① 设置→「关于与更新」点一次「检查更新」，版本号 = 本轮新 commit 短 hash（不带 `-dirty`）；② 触发全屏红色警告后，核对「今日已花（计入日限额）」+「今日全部支出」+ 差额，拿明细页今日合计去对「今日全部支出」应完全一致；③ 若仍对不上，把两个数字、今日明细合计、以及哪几笔是专项 / 教育 / 保险告诉我；④ 确认警示条与推送文案已带「日常」字样。**注意**：若用户期望专项支出也进日限额，是预算模型改动（会改变 `isNonDailyExpenseCategory` 口径与今日限额分母），不要顺手改。
 > **[交接 2026-11-15 15:0x] 次优先：真机确认「本地优先」的通知表现**

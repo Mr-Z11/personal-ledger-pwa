@@ -3,6 +3,9 @@ import { centsToYuan } from "@ledger/shared";
 import type { FastifyBaseLogger } from "fastify";
 import { config } from "./config.js";
 import { prisma } from "./prisma.js";
+import { chinaDateKey, spendingAlertState, spendingDataStale } from "./spending-state.js";
+
+export { spendingAlertState, spendingDataStale, SPENDING_SNAPSHOT_MAX_AGE_MS } from "./spending-state.js";
 
 export const DEFAULT_REMINDER_CONTENT = [
   "工资到账啦，按既定方案分配资金：",
@@ -178,18 +181,6 @@ function chinaToday() {
   return { dayKey, monthKey, hour: now.hour, start, end: new Date(start.getTime() + 24 * 3600_000), days: daysInMonth(now.year, now.month - 1), year: now.year, month: now.month, day: now.day };
 }
 
-/** 北京时间日期键 YYYY-MM-DD，用于和前端的 dateKey 对齐 */
-function chinaDateKey(date: Date) {
-  const parts = new Intl.DateTimeFormat("en-CA", {
-    timeZone: "Asia/Shanghai",
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit"
-  }).formatToParts(date);
-  const get = (type: string) => parts.find((part) => part.type === type)?.value ?? "0";
-  return `${get("year")}-${get("month")}-${get("day")}`;
-}
-
 function categoryPathOf(category: { name: string; parentId: string | null } | undefined, byId: Map<string, { name: string; parentId: string | null }>) {
   if (!category) return "";
   const parent = category.parentId ? byId.get(category.parentId) : undefined;
@@ -210,49 +201,21 @@ async function markSentToday(userId: string, kind: string, dayKey: string) {
   await prisma.reminderLog.create({ data: { userId, kind, month: dayKey } });
 }
 
-/** 当日消费状态：表扬与限额警告共用这一套判据，避免「已超额还提醒额度充足」。
- *  抽成纯函数便于脚本验证，不依赖数据库与推送通道。 */
-export function spendingAlertState(input: {
-  monthDailyBudgetCents: number;
-  spentThroughYesterdayCents: number;
-  spentTodayCents: number;
-  daysLeft: number;
-  toleranceCents: number;
-}) {
-  const { monthDailyBudgetCents, spentThroughYesterdayCents, spentTodayCents, toleranceCents } = input;
-  const monthRemainingCents = monthDailyBudgetCents > 0
-    ? Math.max(0, monthDailyBudgetCents - spentThroughYesterdayCents)
-    : 0;
-  const dailyLimitCents = Math.round(monthRemainingCents / Math.max(1, input.daysLeft));
-  // 与前端 dailyLimitAlertTriggered 同口径：达线判据含误差金额
-  const reached = spentTodayCents >= dailyLimitCents - toleranceCents;
-  const monthOverBudget = monthDailyBudgetCents > 0
-    && spentThroughYesterdayCents + spentTodayCents > monthDailyBudgetCents;
-  // 未设预算 / 本月已超支时 dailyLimitCents 会是 0：此时既没法说「额度充足」，
-  // 也不该在超额当天发正向表扬（旧实现的漏洞）。
-  const overLimit = reached || monthOverBudget || dailyLimitCents <= 0;
-  return { monthRemainingCents, dailyLimitCents, reached, monthOverBudget, overLimit };
-}
-
-/** 账本数据是否陈旧：超过 36 小时没有任何写入（手机没同步 / 没连到本机 API）就认为不可信。
- *  所有依赖消费数据的结论都不可信：「今天一分钱没花」是**缺失证据**上的强断言，
- *  今日花费 / 日限额也是过期快照算出来的。此时服务端一条消费类提醒都不发，
- *  把判断交给 App 打开时用本地数据触发的本机通知。 */
-export function ledgerDataStale(updatedAt: Date, nowMs: number = Date.now()) {
-  return nowMs - updatedAt.getTime() > 36 * 3600_000;
-}
-
 async function checkSpendingAlerts(log: FastifyBaseLogger) {
   const today = chinaToday();
   const ledgers = await prisma.ledger.findMany({ select: { id: true, ownerId: true, updatedAt: true } });
   for (const ledger of ledgers) {
     try {
-      // 低消费表扬 / 当日限额警告都建立在账本交易上。账本长时间没有写入时，服务端手里是旧快照：
-      // 既会把「手机没同步」误判成「今天一分钱没花」，也会拿过期的今日花费去算 reached。
-      // 此时一条都不发——App 打开时由本机通知按本地最新数据判断，宁可不提醒也不发错结论。
+      // 低消费表扬 / 当日限额警告都建立在账本交易上。服务端的「今日花费」只来自最近一次同步：
+      // 快照哪怕只差 3 小时，也可能完全没有当晚新增交易（11/19 18:53 同步、22:01 发「今天花得很稳」，
+      // 而手机本地早已超额）。因此消费类提醒要求快照「当天 + 2 小时内」写过，
+      // 不满足就一条都不发，交给 App 打开时按本地数据触发的本机通知。
       // 工资日提醒不依赖交易，在 checkAndSendReminders 里独立处理，不受影响。
-      if (ledgerDataStale(ledger.updatedAt)) {
-        log.info({ ledgerId: ledger.id, updatedAt: ledger.updatedAt }, "skip spending alerts: ledger data stale");
+      if (spendingDataStale(ledger.updatedAt, Date.now(), today.dayKey)) {
+        log.info(
+          { ledgerId: ledger.id, updatedAt: ledger.updatedAt, todayKey: today.dayKey },
+          "skip spending alerts: snapshot not current"
+        );
         continue;
       }
       const budgets = await prisma.budget.findMany({
