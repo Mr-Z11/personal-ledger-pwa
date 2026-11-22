@@ -5413,7 +5413,10 @@ function Reports({ transactions, accounts, categories, budgets, analysisNotes, o
         <div className="view-prev-dim" />
       </div>
       <div className="view-track report-view-track" ref={reportSwipe.trackRef as React.RefObject<HTMLDivElement>}>
-      {reportToolbar}
+      {/* 进子页时收起「分析报表」工具卡：子页里改月/年只会清空子页栈，控件在此无用却占 118px。
+          用条件渲染而非 .parked——它没有需要保住的滚动几何量；返回时重新挂载，
+          pendingReportScroll 在 useLayoutEffect 里按进入前的 scrollY 原样还原。 */}
+      {!reportSub && reportToolbar}
       {/* 子页：列表层不卸载，只是「停靠」隐藏（见下方 .report-list-layer），
           返回时签条/轨道/内容高度都还是原值，不需要任何重新定位 */}
       {reportSub && (
@@ -5477,15 +5480,12 @@ function Reports({ transactions, accounts, categories, budgets, analysisNotes, o
 
           {reportSub.kind === "categoryDetail" && activeCategory && (
             <>
+              {/* 子页头已显示分类名与笔数，这里只留金额与占比，避免重复标题占高（2026-11-22） */}
               <div className="panel report-category-summary">
                 <div className="report-category-summary-main">
                   <span>{periodLabel} · {activeCategoryScope === "special" ? "专项支出" : "日常消费"}</span>
-                  <strong className="report-category-summary-title">
-                    <CategoryIcon icon={activeCategory.icon} size={16} />
-                    {activeCategory.name}
-                  </strong>
                   <em>
-                    {activeCategoryTransactions.length} 笔 · ¥{centsToYuan(activeCategory.value)}
+                    ¥{centsToYuan(activeCategory.value)}
                     {activeCategoryTotal > 0 ? ` · 占 ${Math.round((activeCategory.value / activeCategoryTotal) * 100)}%` : ""}
                   </em>
                 </div>

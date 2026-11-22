@@ -911,3 +911,18 @@ describe("报表子页滚动：进明细从顶部读、返回还原点击前位�
     expect(app).toMatch(/reportScrollMemo\.current\.push\(\{ y: window\.scrollY, strip: stripLeft \}\)/);
   });
 });
+
+describe("报表子页头部精简（2026-11-22）", () => {
+  const app = readFileSync(new URL("./App.tsx", import.meta.url), "utf8");
+
+  it("进子页时收起分析报表工具卡，返回后恢复", () => {
+    expect(app).toMatch(/\{!reportSub && reportToolbar\}/);
+  });
+
+  it("分类明细汇总卡不再重复分类名与笔数（子页头已有）", () => {
+    const block = app.slice(app.indexOf("reportSub.kind === \"categoryDetail\""), app.indexOf("reportSub.kind === \"regularDetail\""));
+    expect(block).not.toContain("report-category-summary-title");
+    expect(block).not.toContain("activeCategoryTransactions.length 笔");
+    expect(block).toContain("centsToYuan(activeCategory.value)");
+  });
+});
