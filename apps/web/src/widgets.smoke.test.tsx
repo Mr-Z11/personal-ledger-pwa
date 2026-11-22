@@ -7,6 +7,7 @@ import {
   BudgetReservoir,
   CategoryTrendChart,
   categoryMonthlyTrend,
+  categoryTrendHitIndex,
   DailyPaceChart,
   DailyLimitOverlay,
   FixedExpenseOverview,
@@ -215,8 +216,21 @@ describe("widgets 冒烟渲染", () => {
     expect(html).toContain("pace-actual-line");
     expect(html).toContain("近 12 个月共 1 笔");
     expect(html).toContain("123.45");
+    expect(html).toContain("轻点图表查看各月金额");
     const empty = renderToString(<CategoryTrendChart points={points.map((point) => ({ ...point, cents: 0, count: 0 }))} periodKind="month" />);
     expect(empty).toContain("没有该分类的支出记录");
+  });
+
+  it("categoryTrendHitIndex 把点击位置换算成最近的点，并钳制边界", () => {
+    const left = 62, innerW = 604, count = 12;
+    expect(categoryTrendHitIndex(left, count, left, innerW)).toBe(0);
+    expect(categoryTrendHitIndex(left + innerW, count, left, innerW)).toBe(count - 1);
+    expect(categoryTrendHitIndex(left - 999, count, left, innerW)).toBe(0);
+    expect(categoryTrendHitIndex(left + innerW + 999, count, left, innerW)).toBe(count - 1);
+    // 第 5 个点落在 left + innerW*5/11 附近
+    expect(categoryTrendHitIndex(left + innerW * (5 / 11), count, left, innerW)).toBe(5);
+    expect(categoryTrendHitIndex(left + innerW * (5.4 / 11), count, left, innerW)).toBe(5);
+    expect(categoryTrendHitIndex(0, 0, left, innerW)).toBe(0);
   });
 
   it("LocalSalaryReminderPanel 可渲染", () => {
@@ -882,5 +896,18 @@ describe("版本更新探测（entryChunkFromIndexHtml）", () => {
     expect(entryChunkFromIndexHtml("")).toBeNull();
     expect(entryChunkFromIndexHtml("<html><body>no script</body></html>")).toBeNull();
     expect(entryChunkFromIndexHtml('<script src="/assets/App-CDPhU4g-.js"></script>')).toBeNull();
+  });
+});
+
+describe("报表子页滚动：进明细从顶部读、返回还原点击前位置（2026-11-22）", () => {
+  const app = readFileSync(new URL("./App.tsx", import.meta.url), "utf8");
+
+  it("进子页时归零纵向滚动，且只在 reportSub 非 null 时执行", () => {
+    expect(app).toMatch(/if \(reportSub === null\) return;\s*if \(window\.scrollY !== 0\) window\.scrollTo\(0, 0\);/);
+  });
+
+  it("返回时仍把列表滚动位置原样还回去（用户选择保留点击前位置）", () => {
+    expect(app).toMatch(/Math\.abs\(window\.scrollY - target\.y\) > 1\)\s*\{\s*window\.scrollTo\(0, target\.y\)/);
+    expect(app).toMatch(/reportScrollMemo\.current\.push\(\{ y: window\.scrollY, strip: stripLeft \}\)/);
   });
 });

@@ -5336,6 +5336,15 @@ function Reports({ transactions, accounts, categories, budgets, analysisNotes, o
     stripRef: reportTabsRef
   });
 
+  /** 进子页时把纵向滚动归零，让明细从顶部开始读（2026-11-22 两位用户反馈「点进分类停在最下方」）。
+   *  关键：这个 effect 在 reportSub 变为非 null 的 commit 里执行，此时列表层已被 .parked 隐藏
+   *  （opacity:0 + inert），归零动作用户看不到；返回时 pendingReportScroll 再把列表位置原样还回去，
+   *  两头都在绘制前完成，所以既不会「停在最下方」，也不会有可见的滚动过程。 */
+  useLayoutEffect(() => {
+    if (reportSub === null) return;
+    if (window.scrollY !== 0) window.scrollTo(0, 0);
+  }, [reportSub]);
+
   /** 返回列表时把滚动量与签条位置**原样**还回去（用户要求：标题原来在哪个位置，返回后还在哪）。
    *  子页比列表短，子页一渲染浏览器就把 scrollY 夹到了 0；不还回去的话，划到列表中段
    *  点开明细、返回会停在列表顶部，用户看到的就是「重新定位到点击前状态」的过程。
@@ -5486,7 +5495,11 @@ function Reports({ transactions, accounts, categories, budgets, analysisNotes, o
                   <h2>消费趋势</h2>
                   <span>{period === "month" ? "近 12 个月 · 按月" : "近 6 年 · 按年"}</span>
                 </div>
-                <CategoryTrendChart points={activeCategoryTrend} periodKind={period} />
+                <CategoryTrendChart
+                  key={`${activeCategory.id}-${period}`}
+                  points={activeCategoryTrend}
+                  periodKind={period}
+                />
               </div>
               <div className="panel">
                 <TransactionRows

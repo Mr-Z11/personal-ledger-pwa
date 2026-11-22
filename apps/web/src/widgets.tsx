@@ -669,11 +669,21 @@ export function categoryMonthlyTrend({
   });
 }
 
+/** 点按趋势图时，把 SVG 横坐标换算成最近的数据点下标（含边界钳制）。
+ *  抽成纯函数便于单测；组件里点击只负责取 clientX。 */
+export function categoryTrendHitIndex(clickX: number, count: number, left: number, innerW: number) {
+  if (count <= 0) return 0;
+  if (count === 1) return 0;
+  const raw = Math.round(((clickX - left) / innerW) * (count - 1));
+  return Math.max(0, Math.min(count - 1, raw));
+}
+
 /** 分类消费趋势折线图：复用 .pace-* 系列样式，避免新增 CSS 触碰 iOS 动画相关的布局规则。 */
 export function CategoryTrendChart({ points, periodKind }: {
   points: { period: string; cents: number; count: number }[];
   periodKind: "month" | "year";
 }) {
+  const [selectedIndex, setSelectedIndex] = useState<number | null>(null);
   const maxCents = Math.max(...points.map((point) => point.cents), 1);
   const niceTop = (() => {
     const pow = Math.pow(10, Math.floor(Math.log10(maxCents)));
@@ -712,10 +722,34 @@ export function CategoryTrendChart({ points, periodKind }: {
     : `${windowLabel}共 ${totalCount} 笔 · ¥${centsToYuan(totalCents)}，`
       + `${periodKind === "month" ? "月均" : "年均"} ¥${centsToYuan(Math.round(totalCents / points.length))}；`
       + `最高 ${peak ? label(peak.period) : ""} ¥${centsToYuan(peak?.cents ?? 0)}。`;
+  const selected = selectedIndex !== null ? points[selectedIndex] : null;
+  const selectedText = selected
+    ? `${label(selected.period)} · ${selected.count} 笔 · ¥${centsToYuan(selected.cents)}`
+    : `轻点图表查看${periodKind === "month" ? "各月" : "各年"}金额`;
+  // 数值标签靠边时换对齐方向，避免被 SVG 视口裁掉；被选点贴顶时标签下移到点下方
+  const valueAnchor = selectedIndex === 0 ? "start" : selectedIndex === points.length - 1 ? "end" : "middle";
+  const valueY = selected ? (y(selected.cents) < top + 22 ? y(selected.cents) + 20 : y(selected.cents) - 10) : 0;
 
   return (
     <div className="pace-chart-wrap">
-      <svg className="pace-chart" viewBox={`0 0 ${width} ${height}`} role="img" aria-label={`分类消费趋势：${windowLabel}按${periodKind === "month" ? "月" : "年"}支出折线图`}>
+      <p className="pace-status">{selectedText}</p>
+      <svg
+        className="pace-chart"
+        viewBox={`0 0 ${width} ${height}`}
+        role="img"
+        aria-label={`分类消费趋势：${windowLabel}按${periodKind === "month" ? "月" : "年"}支出折线图，点按可查看单期金额`}
+        onPointerDown={(event) => {
+          if (points.length === 0) return;
+          const rect = event.currentTarget.getBoundingClientRect();
+          if (rect.width <= 0) return;
+          const clickX = ((event.clientX - rect.left) / rect.width) * width;
+          setSelectedIndex((prev) => {
+            const hit = categoryTrendHitIndex(clickX, points.length, left, innerW);
+            return prev === hit ? null : hit;
+          });
+        }}
+        style={{ cursor: "pointer", touchAction: "manipulation" }}
+      >
         {[0, 0.5, 1].map((ratio) => (
           <g key={ratio}>
             <line className="pace-grid" x1={left} x2={width - right} y1={y(niceTop * ratio)} y2={y(niceTop * ratio)} />
@@ -729,8 +763,15 @@ export function CategoryTrendChart({ points, periodKind }: {
         ))}
         {totalCents > 0 && <polygon className="pace-area" points={areaPoints} />}
         <polyline className="pace-actual-line" points={linePoints.join(" ")} />
-        {totalCents > 0 && peak && (
+        {totalCents > 0 && peak && !selected && (
           <circle className="pace-today-dot" cx={x(points.indexOf(peak))} cy={y(peak.cents)} r="4.5" />
+        )}
+        {selected && selectedIndex !== null && (
+          <g>
+            <line className="pace-today-line" x1={x(selectedIndex)} x2={x(selectedIndex)} y1={top} y2={top + innerH} />
+            <circle className="pace-today-dot" cx={x(selectedIndex)} cy={y(selected.cents)} r="5.5" />
+            <text className="basic-value" x={x(selectedIndex)} y={valueY} textAnchor={valueAnchor}>¥{centsToYuan(selected.cents)}</text>
+          </g>
         )}
       </svg>
       <p className="basic-caption">{caption}</p>
