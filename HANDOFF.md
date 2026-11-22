@@ -3,10 +3,15 @@
 > 本文件是本项目**唯一需要每次会话维护的活跃交接/计划文档**（已合并原 task_plan.md / findings.md / progress.md / HANDOFF.md 四个增长型文件）。
 > 长期蒸馏知识看 `.workbuddy/memory/MEMORY.md`；逐日会话历史看 `.workbuddy/memory/YYYY-MM-DD.md`；架构与数据安全看 `AGENTS.md`（会被 IDE 自动注入）；静态项目说明看 `docs/codex-handoff.md`。更早的完整历史在 git 记录里（`git log` / `git show <commit>:findings.md`）。
 
-## 1. 当前状态（2026-11-20）
+## 1. 当前状态（2026-11-22）
 
-> **交接快照（2026-11-20，下一会话从这里开始）**
-> - **【最新】2026-11-20 「昨天超了今日限额，晚上还收到奖励提醒」**（用户原话）：**根因不是 `spendingAlertState()` 写错，而是 36 小时陈旧门对「今日消费」这种日级判断太宽**。证据链：`ReminderLog` 有 `praise / 2026-11-19:pm`，`sentAt = 2026-11-19 14:01:51Z`（北京时间 22:01），api-local 日志同一毫秒 `kind:"thrifty", delivered:true, msg:"praise reminder dispatched"`。当时云端 `Ledger.updatedAt = 2026-11-19 10:53:55Z`（北京时间 18:53，`serverVersion=313`），距表扬仅 3 小时 → 旧 `ledgerDataStale()`（36h）判为新鲜，放行。
+> **交接快照（2026-11-22，下一会话从这里开始）**
+> - **【最新】2026-11-22 「报表→分类→点某分类，除明细外还要看到消费趋势」**（用户）：分类明细子页原本只有汇总卡 + `TransactionRows`。改动只落 3 个前端文件：
+>   - `widgets.tsx` 新增纯函数 `categoryMonthlyTrend()`（入参 transactions/categories/categoryId/scope/anchor/periodKind）——**用全量 `transactions` 而非当期子集**，scope=daily 走 `dailyExpenseTransactions`、special 走 `specialExpenseTransactions`，`uncategorized` 用 `!categoryId` 匹配；月视图 12 个月、年视图 6 年，返回 `{period,cents,count}[]` 含补零月份。新增组件 `CategoryTrendChart()` 手写 SVG 折线 + 面积，**完全复用 `.pace-*` / `.basic-caption` 现有样式，styles.css 零改动**（避免碰 iOS 动画相关规则）。
+>   - `App.tsx` 在 `activeCategory` 附近用 `useMemo` 算 `activeCategoryTrend`（依赖 period/month/selectedYear/scope/全量 transactions），在 `categoryDetail` 子页的汇总卡与流水列表之间插入 `.panel.chart-panel`（标题「消费趋势」+ 近 12 个月/近 6 年）。
+>   - **验证**：typecheck 全绿、web 单测 60/60（新增 5 条：跨月聚合、专项/日常口径隔离、未分类、年视图、空数据文案）。**负对照**：把 scope 过滤注回「全 expense」后 1 红（首版测试没测出口径差异，补了「日常视图不能算专项分类」断言后才抓到），恢复后全绿。Playwright 11 项全过：`/tmp/category-trend-verify.mjs`（月视图 12 点 + 月份标签 + 无溢出 + 截图 `/tmp/category-trend-verify.png` 视觉复核干净）、`/tmp/category-trend-year.mjs`（年视图 21年–26年标签 + 文案）。
+>   - **发布**：commit `9b66601`（先提交再 build，版本号 `index-DYvk5zvr.js` 不含 `-dirty`），已推送 origin/main；caddy 原地重建 dist 免 force-recreate，`/api/health` = ok。**真机待确认**：设置→关于与更新点一次「检查更新」拿新版本，报表→分类→点任一分类，看趋势图与明细的间距/可读性（headless 截图 390px 正常，但 iOS 合成层仍需真机）。
+> - **【上一轮】2026-11-20 「昨天超了今日限额，晚上还收到奖励提醒」**（用户原话）：**根因不是 `spendingAlertState()` 写错，而是 36 小时陈旧门对「今日消费」这种日级判断太宽**。证据链：`ReminderLog` 有 `praise / 2026-11-19:pm`，`sentAt = 2026-11-19 14:01:51Z`（北京时间 22:01），api-local 日志同一毫秒 `kind:"thrifty", delivered:true, msg:"praise reminder dispatched"`。当时云端 `Ledger.updatedAt = 2026-11-19 10:53:55Z`（北京时间 18:53，`serverVersion=313`），距表扬仅 3 小时 → 旧 `ledgerDataStale()`（36h）判为新鲜，放行。
 >   - **云端当时实际看不到的消费**：主账本 11/19 只有 1 笔已同步支出——`occurredAt = 2026-11-19 06:32:32Z`（北京 14:32）、`amountCents=3030`、`餐饮食品 > 买菜`、`createdAt = 10:53:54Z`。当晚之后的新增消费没有同步进来。复算服务端判据：11 月日常预算 500000 分、截至昨日日常 334325 分、`daysLeft=12` → 日限额 `round(165675/12)=13806` 分；今日日常 3030 分、容差 2000 分 → `reached=false`、`monthOverBudget=false`、`overLimit=false`；今日全部支出 3030>0 → `kind="thrifty"`，于是发出「今天花得很稳，没有过度消费」。手机本地早已超额，两端口径分叉。**同一问题还体现在 `praise / 2026-11-20:pm`（11/20 19:01 北京发出）：云端仍停在 11/19 18:53 的快照，约 24 小时没写入，却因未过 36h 照发 zero 表扬。**
 >   - **修复（只改后端，不动数据 / schema / 前端）**：新增纯模块 `apps/api/src/spending-state.ts`，把 `chinaDateKey()` / `spendingAlertState()` 迁进去（仍从 `notifications.ts` re-export，旧探针 import 路径不坏）；新增 `spendingDataStale(updatedAt, nowMs, todayKey)`，**消费类提醒要求账本快照同时满足「距检查时刻 ≤2 小时」且「落在同一个北京时间自然日」**。`checkSpendingAlerts()` 循环入口改用它，`skip spending alerts: snapshot not current`；工资日提醒独立于交易、不受影响。旧 36h 函数删除。
 >   - **为什么这么改**：应用关闭时服务端读不到手机 IndexedDB，iOS PWA 也没有可靠后台定时本地通知；用户已确认「本地优先 + 陈旧不发」的代价是「没开 App 又没同步则晚上不提醒」。3 小时前写过不代表包含今晚的消费，日级结论必须要求当天近实时快照；本地通知仍由 App 打开时按 Dexie 最新数据触发。
@@ -221,7 +226,12 @@
 
 ## 6. 当前待办 / 待确认
 
-> **[交接 2026-11-20] 最高优先：确认今晚不再有「超额还发表扬」**
+> **[交接 2026-11-22] 最高优先：真机确认分类消费趋势图**
+> - 设置→「关于与更新」点一次「检查更新」，核对版本号 = `9b66601`（不带 `-dirty`）；iOS SW 有节流，别靠划掉重开。
+> - 报表→「分类」签→点任一分类（如买菜）：汇总卡下面应多出「消费趋势」面板，折线按近 12 个月展开、底部文案给出总笔数/总额/月均/最高月；切「按年」再点分类应变 6 年、横轴显示「24年」这类标签。
+> - 重点看：趋势面板与上下卡片的间距是否舒适、折线和月份小字在真机是否清晰、返回后无整屏白闪（新面板是普通实色 SVG，理论无合成层问题）。金额口径应与分类明细一致（日常签不含专项，专项签只含专项）。
+
+> **[交接 2026-11-20] 次优先：确认今晚不再有「超额还发表扬」**
 > - **无需更新 App**（本轮只改服务端 `apps/api` + 新增后端单测）。手机今晚 19 点后若收到「今天花得很稳 / 存款在悄悄变厚」类表扬，请记下原文与时间，并同时查 `ReminderLog` 新记录、`Ledger.updatedAt` 是否已变新；若本地已超额但 App 一直开着却没收到本机限额警告，那是另一条路径（`widgets.tsx` 本地通知），单独报。
 > - **机制提醒**：新版服务端要求账本快照「当天且 2 小时内写过」才发消费类提醒。若一整天没开 App / 没同步，晚上收不到表扬或限额警告是**设计代价**；App 打开时本机通知仍按本地最新数据判断。想恢复服务端表扬，只需点一次同步让 `Ledger.updatedAt` 变新。
 
