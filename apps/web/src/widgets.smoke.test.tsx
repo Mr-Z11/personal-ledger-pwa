@@ -5,6 +5,8 @@ import { yuanToCents, monthKey, type Account, type Budget, type Category, type T
 import {
   BigExpensePanel,
   BudgetReservoir,
+  CategoryTrendChart,
+  categoryMonthlyTrend,
   DailyPaceChart,
   DailyLimitOverlay,
   FixedExpenseOverview,
@@ -146,6 +148,75 @@ describe("widgets 冒烟渲染", () => {
   it("DailyPaceChart / BigExpensePanel 空数据时不崩溃", () => {
     expect(renderToString(<DailyPaceChart month={thisMonth} transactions={[]} categories={categories} budgetCents={0} />)).toContain("pace-chart");
     expect(renderToString(<BigExpensePanel month={thisMonth} transactions={[]} categories={categories} accounts={accounts} />)).toContain("没有超过");
+  });
+
+  it("categoryMonthlyTrend 按月聚合，跨月与当月都算进对应月份", () => {
+    const prevMonth = `${thisMonth.slice(0, 4)}-${String(Number(thisMonth.slice(5)) - 1).padStart(2, "0")}`;
+    const rows = [
+      tx("trend-1", 12, `${thisMonth}-02T12:00:00.000+08:00`),
+      tx("trend-2", 30, `${thisMonth}-18T12:00:00.000+08:00`),
+      tx("trend-3", 50, `${prevMonth}-06T12:00:00.000+08:00`)
+    ];
+    const points = categoryMonthlyTrend({
+      transactions: rows, categories, categoryId: "cat-food", scope: "daily", anchor: thisMonth, periodKind: "month"
+    });
+    expect(points).toHaveLength(12);
+    expect(points[11].period).toBe(thisMonth);
+    expect(points[11]).toMatchObject({ cents: 4200, count: 2 });
+    expect(points[10]).toMatchObject({ period: prevMonth, cents: 5000, count: 1 });
+    expect(points.slice(0, 10).every((point) => point.cents === 0 && point.count === 0)).toBe(true);
+    // 专项分类的流水不能漏进日常分类的趋势
+    expect(points[11].cents).toBe(4200);
+  });
+
+  it("categoryMonthlyTrend 专项口径只算专项，未分类单独匹配", () => {
+    const rows = [
+      tx("trend-s1", 100, `${thisMonth}-03T12:00:00.000+08:00`, "cat-loan"),
+      tx("trend-s2", 20, `${thisMonth}-09T12:00:00.000+08:00`, "cat-food")
+    ];
+    const special = categoryMonthlyTrend({
+      transactions: rows, categories, categoryId: "cat-loan", scope: "special", anchor: thisMonth, periodKind: "month"
+    });
+    expect(special[11].cents).toBe(10000);
+    // 口径不符时必须为空：日常视图不能把专项分类（贷款本金）的流水算进去
+    const wrongScope = categoryMonthlyTrend({
+      transactions: rows, categories, categoryId: "cat-loan", scope: "daily", anchor: thisMonth, periodKind: "month"
+    });
+    expect(wrongScope[11].cents).toBe(0);
+    const daily = categoryMonthlyTrend({
+      transactions: rows, categories, categoryId: "cat-food", scope: "daily", anchor: thisMonth, periodKind: "month"
+    });
+    expect(daily[11].cents).toBe(2000);
+    const uncategorized = categoryMonthlyTrend({
+      transactions: [tx("trend-u", 7, `${thisMonth}-04T12:00:00.000+08:00`, "")],
+      categories, categoryId: "uncategorized", scope: "daily", anchor: thisMonth, periodKind: "month"
+    });
+    expect(uncategorized[11].cents).toBe(700);
+  });
+
+  it("categoryMonthlyTrend 年视图按 6 年聚合", () => {
+    const year = thisMonth.slice(0, 4);
+    const rows = [tx("trend-y", 88, `${year}-06-06T12:00:00.000+08:00`)];
+    const points = categoryMonthlyTrend({
+      transactions: rows, categories, categoryId: "cat-food", scope: "daily", anchor: year, periodKind: "year"
+    });
+    expect(points).toHaveLength(6);
+    expect(points[5].period).toBe(year);
+    expect(points[5]).toMatchObject({ cents: 8800, count: 1 });
+  });
+
+  it("CategoryTrendChart 有数据/无数据都能渲染并给出汇总文案", () => {
+    const points = categoryMonthlyTrend({
+      transactions: [tx("trend-c", 123.45, `${thisMonth}-02T12:00:00.000+08:00`)],
+      categories, categoryId: "cat-food", scope: "daily", anchor: thisMonth, periodKind: "month"
+    });
+    const html = renderToString(<CategoryTrendChart points={points} periodKind="month" />);
+    expect(html).toContain("pace-chart");
+    expect(html).toContain("pace-actual-line");
+    expect(html).toContain("近 12 个月共 1 笔");
+    expect(html).toContain("123.45");
+    const empty = renderToString(<CategoryTrendChart points={points.map((point) => ({ ...point, cents: 0, count: 0 }))} periodKind="month" />);
+    expect(empty).toContain("没有该分类的支出记录");
   });
 
   it("LocalSalaryReminderPanel 可渲染", () => {

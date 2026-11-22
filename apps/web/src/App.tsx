@@ -193,6 +193,8 @@ import {
 import {
   BigExpensePanel,
   BudgetReservoir,
+  CategoryTrendChart,
+  categoryMonthlyTrend,
   DailyLimitOverlay,
   DailyLimitRibbon,
   DailyPaceChart,
@@ -5254,6 +5256,20 @@ function Reports({ transactions, accounts, categories, budgets, analysisNotes, o
       .filter((item) => activeCategory.id === "uncategorized" ? !item.categoryId : item.categoryId === activeCategory.id)
       .sort((left, right) => right.occurredAt.localeCompare(left.occurredAt))
     : [];
+  /* 单分类跨月趋势：用全量 transactions（不是当期子集），与分类签同口径过滤日常/专项 */
+  const activeCategoryTrend = useMemo(
+    () => activeCategory
+      ? categoryMonthlyTrend({
+        transactions,
+        categories,
+        categoryId: activeCategory.id,
+        scope: activeCategoryScope,
+        anchor: period === "month" ? month : selectedYear,
+        periodKind: period
+      })
+      : [],
+    [activeCategory, activeCategoryScope, transactions, categories, period, month, selectedYear]
+  );
 
   /* 常规项明细：窗口与 RegularExpensePanel 的 collectRegularExpenses 对齐（6 个月、含当月） */
   const activeRegularName = reportSub?.kind === "regularDetail" ? reportSub.id : null;
@@ -5464,6 +5480,13 @@ function Reports({ transactions, accounts, categories, budgets, analysisNotes, o
                     {activeCategoryTotal > 0 ? ` · 占 ${Math.round((activeCategory.value / activeCategoryTotal) * 100)}%` : ""}
                   </em>
                 </div>
+              </div>
+              <div className="panel chart-panel">
+                <div className="chart-heading">
+                  <h2>消费趋势</h2>
+                  <span>{period === "month" ? "近 12 个月 · 按月" : "近 6 年 · 按年"}</span>
+                </div>
+                <CategoryTrendChart points={activeCategoryTrend} periodKind={period} />
               </div>
               <div className="panel">
                 <TransactionRows

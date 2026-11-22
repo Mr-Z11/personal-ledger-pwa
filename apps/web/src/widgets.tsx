@@ -14,6 +14,7 @@ import {
   percentDelta,
   previousMonthKeys,
   shortMonthLabel,
+  specialExpenseTransactions,
   yearLabel
 } from "./utils";
 
@@ -615,6 +616,124 @@ export function DailyPaceChart({ month, transactions, categories, budgetCents }:
         {budgetCents > 0 && <span><i className="pace-swatch budget" />预算参考线</span>}
         {isCurrent && <span><i className="pace-swatch projection" />按当前节奏预测</span>}
       </div>
+    </div>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/* 分类明细 → 单分类消费趋势（按月 / 按年）                              */
+/* ------------------------------------------------------------------ */
+
+/** 单个分类按月的消费序列。与分类签的 categoryData 同口径：
+ *  scope=daily 走日常消费过滤、special 走专项过滤；uncategorized 用无分类Id匹配。
+ *  用传入的全量 transactions（而非当期子集）才能画出跨月趋势。 */
+export function categoryMonthlyTrend({
+  transactions,
+  categories,
+  categoryId,
+  scope,
+  anchor,
+  periodKind
+}: {
+  transactions: Transaction[];
+  categories: Category[];
+  categoryId: string;
+  scope: "daily" | "special";
+  /** 月视图传 month（YYYY-MM），年视图传 selectedYear（YYYY） */
+  anchor: string;
+  periodKind: "month" | "year";
+}): { period: string; cents: number; count: number }[] {
+  const length = periodKind === "month" ? 12 : 6;
+  const keys = Array.from({ length }, (_, index) => {
+    if (periodKind === "month") return offsetMonthKey(anchor, index - (length - 1));
+    return String(Number(anchor) - (length - 1 - index));
+  });
+  const source = scope === "special"
+    ? specialExpenseTransactions(transactions, categories)
+    : dailyExpenseTransactions(transactions, categories);
+  const matched = source.filter((item) =>
+    categoryId === "uncategorized" ? !item.categoryId : item.categoryId === categoryId
+  );
+  const sliceLen = periodKind === "month" ? 7 : 4;
+  const totals = new Map<string, { cents: number; count: number }>();
+  matched.forEach((item) => {
+    const key = item.occurredAt.slice(0, sliceLen);
+    const entry = totals.get(key) ?? { cents: 0, count: 0 };
+    entry.cents += item.amountCents;
+    entry.count += 1;
+    totals.set(key, entry);
+  });
+  return keys.map((period) => {
+    const entry = totals.get(period);
+    return { period, cents: entry?.cents ?? 0, count: entry?.count ?? 0 };
+  });
+}
+
+/** 分类消费趋势折线图：复用 .pace-* 系列样式，避免新增 CSS 触碰 iOS 动画相关的布局规则。 */
+export function CategoryTrendChart({ points, periodKind }: {
+  points: { period: string; cents: number; count: number }[];
+  periodKind: "month" | "year";
+}) {
+  const maxCents = Math.max(...points.map((point) => point.cents), 1);
+  const niceTop = (() => {
+    const pow = Math.pow(10, Math.floor(Math.log10(maxCents)));
+    const n = maxCents / pow;
+    return (n <= 1 ? 1 : n <= 2 ? 2 : n <= 2.5 ? 2.5 : n <= 5 ? 5 : 10) * pow;
+  })();
+  const width = 680;
+  const height = 220;
+  const left = 62;
+  const right = 14;
+  const top = 16;
+  const bottom = 42;
+  const innerW = width - left - right;
+  const innerH = height - top - bottom;
+  const x = (index: number) => points.length <= 1
+    ? left + innerW / 2
+    : left + (index / (points.length - 1)) * innerW;
+  const y = (value: number) => top + innerH - (value / niceTop) * innerH;
+  const linePoints = points.map((point, index) => `${x(index)},${y(point.cents)}`);
+  const areaPoints = `${x(0)},${y(0)} ${linePoints.join(" ")} ${x(points.length - 1)},${y(0)}`;
+  const compact = (cents: number) => {
+    const yuan = cents / 100;
+    if (Math.abs(yuan) >= 10000) return `¥${(yuan / 10000).toFixed(1)}万`;
+    if (Math.abs(yuan) >= 1000) return `¥${(yuan / 1000).toFixed(1)}k`;
+    return `¥${Math.round(yuan)}`;
+  };
+  const totalCents = points.reduce((sum, point) => sum + point.cents, 0);
+  const totalCount = points.reduce((sum, point) => sum + point.count, 0);
+  const peak = points.reduce<(typeof points)[number] | null>(
+    (best, point) => (best === null || point.cents > best.cents ? point : best), null
+  );
+  const label = (period: string) => periodKind === "month" ? shortMonthLabel(period) : `${period.slice(-2)}年`;
+  const windowLabel = periodKind === "month" ? "近 12 个月" : "近 6 年";
+  const caption = totalCents === 0
+    ? `${windowLabel}没有该分类的支出记录。`
+    : `${windowLabel}共 ${totalCount} 笔 · ¥${centsToYuan(totalCents)}，`
+      + `${periodKind === "month" ? "月均" : "年均"} ¥${centsToYuan(Math.round(totalCents / points.length))}；`
+      + `最高 ${peak ? label(peak.period) : ""} ¥${centsToYuan(peak?.cents ?? 0)}。`;
+
+  return (
+    <div className="pace-chart-wrap">
+      <svg className="pace-chart" viewBox={`0 0 ${width} ${height}`} role="img" aria-label={`分类消费趋势：${windowLabel}按${periodKind === "month" ? "月" : "年"}支出折线图`}>
+        {[0, 0.5, 1].map((ratio) => (
+          <g key={ratio}>
+            <line className="pace-grid" x1={left} x2={width - right} y1={y(niceTop * ratio)} y2={y(niceTop * ratio)} />
+            <text className="pace-axis-label" x={left - 8} y={y(niceTop * ratio) + 4} textAnchor="end">{compact(niceTop * ratio)}</text>
+          </g>
+        ))}
+        {points.map((point, index) => (
+          <text key={point.period} className="pace-axis-label" x={x(index)} y={height - 14} textAnchor="middle">
+            {label(point.period)}
+          </text>
+        ))}
+        {totalCents > 0 && <polygon className="pace-area" points={areaPoints} />}
+        <polyline className="pace-actual-line" points={linePoints.join(" ")} />
+        {totalCents > 0 && peak && (
+          <circle className="pace-today-dot" cx={x(points.indexOf(peak))} cy={y(peak.cents)} r="4.5" />
+        )}
+      </svg>
+      <p className="basic-caption">{caption}</p>
     </div>
   );
 }
