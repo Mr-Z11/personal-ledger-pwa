@@ -5,8 +5,14 @@
 
 ## 1. 当前状态（2026-11-22）
 
-> **交接快照（2026-11-22，下一会话从这里开始）**
-> - **【最新】2026-11-22 「报表→分类→点某分类，除明细外还要看到消费趋势」**（用户）：分类明细子页原本只有汇总卡 + `TransactionRows`。改动只落 3 个前端文件：
+> **交接快照（2026-11-22 14:1x，下一会话从这里开始）**
+> - **【最新】2026-11-22 「趋势图能看到数据」+ 两个滚动 bug**（用户三条连续反馈）：commit `9d39c1b`。
+>   - **点按趋势图看数据**：`CategoryTrendChart` 加 `selectedIndex` state + `categoryTrendHitIndex()` 纯函数（把点击的 SVG 横坐标换算成最近的点、边界钳制）。点按后图表上方 `.pace-status` 显示「26/05 · 1 笔 · ¥40.00」，图内画竖虚线 + 高亮圆点 + `.basic-value` 金额标签；再点同一点取消。数值标签靠边换 textAnchor、贴顶时下移，避免裁切。用 `onPointerDown`（触屏/鼠标统一）+ `touchAction:manipulation`。App 里给组件加 `key={`${activeCategory.id}-${period}`}`，切分类/周期时重置选中态。
+>   - **进明细停在最下方**（用户：「按照阅读习惯来修正」）：根因实测——列表滚到 500 后点分类，明细页 `scrollY` 仍是 500（加了趋势图后明细页够高，浏览器不再自动夹到顶）。修：新增 useLayoutEffect，`reportSub !== null` 时 `scrollTo(0,0)`；此刻列表层已 `.parked` 隐藏，归零动作看不见。
+>   - **返回时画面动一下**：用户明确选择「**回到点击前的位置**」而非停顶部。保留既有 `reportScrollMemo` / `pendingReportScroll` 恢复链路，配合上面的进页归零，两头都在绘制前完成。Playwright 实测：进明细 `scrollY=0`、返回 18 帧采样恒为 500（无抖动）。**这个取舍是用户当场确认的，别改成返回停顶部**。
+>   - **验证**：typecheck 全绿、`npm test` **63 条**（新增 3 条：`categoryTrendHitIndex` 边界、点击提示文案、两条源码静态断言锁进页归零 + 返回还原）。**负对照两次**：注掉 `setSelectedIndex` → 点击探针 5 红；注掉归零 effect → 明细又停 500 且静态断言红。浏览器探针 `/tmp/category-trend-click.mjs` 9/9、`/tmp/category-trend-verify.mjs` 11/11、`/tmp/report-scroll-probe.mjs` 进 0 / 回 500。视觉复核 `/tmp/category-trend-selected.png`（选中态状态条 + 竖线 + 数值标签清晰无裁切）。
+>   - **发布**：`9d39c1b` 先提交再 build，版本号 `index-Br1P5m-F.js`（不带 `-dirty`），已推送 origin/main。**真机待确认**：点趋势图任意月份能否看到金额、进明细是否从顶部开始、返回是否无感回到原位置；iOS 上 `onPointerDown` + SW 节流（记得先「检查更新」）。
+> - **【上一轮】2026-11-22 「报表→分类→点某分类，除明细外还要看到消费趋势」**（用户）：分类明细子页原本只有汇总卡 + `TransactionRows`。改动只落 3 个前端文件：
 >   - `widgets.tsx` 新增纯函数 `categoryMonthlyTrend()`（入参 transactions/categories/categoryId/scope/anchor/periodKind）——**用全量 `transactions` 而非当期子集**，scope=daily 走 `dailyExpenseTransactions`、special 走 `specialExpenseTransactions`，`uncategorized` 用 `!categoryId` 匹配；月视图 12 个月、年视图 6 年，返回 `{period,cents,count}[]` 含补零月份。新增组件 `CategoryTrendChart()` 手写 SVG 折线 + 面积，**完全复用 `.pace-*` / `.basic-caption` 现有样式，styles.css 零改动**（避免碰 iOS 动画相关规则）。
 >   - `App.tsx` 在 `activeCategory` 附近用 `useMemo` 算 `activeCategoryTrend`（依赖 period/month/selectedYear/scope/全量 transactions），在 `categoryDetail` 子页的汇总卡与流水列表之间插入 `.panel.chart-panel`（标题「消费趋势」+ 近 12 个月/近 6 年）。
 >   - **验证**：typecheck 全绿、web 单测 60/60（新增 5 条：跨月聚合、专项/日常口径隔离、未分类、年视图、空数据文案）。**负对照**：把 scope 过滤注回「全 expense」后 1 红（首版测试没测出口径差异，补了「日常视图不能算专项分类」断言后才抓到），恢复后全绿。Playwright 11 项全过：`/tmp/category-trend-verify.mjs`（月视图 12 点 + 月份标签 + 无溢出 + 截图 `/tmp/category-trend-verify.png` 视觉复核干净）、`/tmp/category-trend-year.mjs`（年视图 21年–26年标签 + 文案）。
@@ -226,7 +232,11 @@
 
 ## 6. 当前待办 / 待确认
 
-> **[交接 2026-11-22] 最高优先：真机确认分类消费趋势图**
+> **[交接 2026-11-22 14:1x] 最高优先：真机确认点按趋势图 + 进/出明细滚动**
+> - 「检查更新」后版本号应为 `9d39c1b`。进报表→分类→点某分类：① 明细从**顶部**开始（不再停在下方）；② 点趋势图任意月份，图表上方状态条应显示「26/05 · 1 笔 · ¥40.00」这类数据、图内有竖线 + 圆点 + 金额标签，再点一次取消；③ 点「返回」后列表应**无感回到点进去之前的位置**（用户已明确选这个行为，不是停顶部）。
+> - 若真机上点图无反应：iOS 上 `onPointerDown` 是否触发（headless 用真实 mouse 坐标已验 9/9）；若返回仍动一下，重点看 `reportScrollMemo` 恢复链路与 stripGuard，别直接改成停顶部。
+
+> **[交接 2026-11-22] 次优先：真机确认分类消费趋势图**
 > - 设置→「关于与更新」点一次「检查更新」，核对版本号 = `9b66601`（不带 `-dirty`）；iOS SW 有节流，别靠划掉重开。
 > - 报表→「分类」签→点任一分类（如买菜）：汇总卡下面应多出「消费趋势」面板，折线按近 12 个月展开、底部文案给出总笔数/总额/月均/最高月；切「按年」再点分类应变 6 年、横轴显示「24年」这类标签。
 > - 重点看：趋势面板与上下卡片的间距是否舒适、折线和月份小字在真机是否清晰、返回后无整屏白闪（新面板是普通实色 SVG，理论无合成层问题）。金额口径应与分类明细一致（日常签不含专项，专项签只含专项）。
