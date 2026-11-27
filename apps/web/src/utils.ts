@@ -177,6 +177,35 @@ export function specialExpenseTransactions(transactions: Transaction[], categori
   });
 }
 
+export type ExpenseTrendSplitPoint = {
+  period: string;
+  expense: number;
+  daily: number;
+  other: number;
+};
+
+/** 把「总支出」按周期拆成日常消费 + 其他支出（专项 / 贷款 / 保险 / 教育等）。
+ *  两项之和恒等于当期全部支出，保证图表与总支出口径对得上。 */
+export function splitExpenseTrendByPeriod(periods: string[], transactions: Transaction[], categories: Category[]): ExpenseTrendSplitPoint[] {
+  return periods.map((period) => {
+    const periodExpenses = transactions.filter((item) => item.type === "expense" && item.occurredAt.startsWith(period));
+    const daily = dailyExpenseTransactions(periodExpenses, categories).reduce((sum, item) => sum + item.amountCents, 0);
+    const other = specialExpenseTransactions(periodExpenses, categories).reduce((sum, item) => sum + item.amountCents, 0);
+    return { period, expense: daily + other, daily, other };
+  });
+}
+
+/** 某个周期的「其他支出」按分类汇总，用来回答「多出来的到底是哪些支出」 */
+export function otherExpenseCategoryBreakdown(periodTransactions: Transaction[], categories: Category[]) {
+  const totals = new Map<string, number>();
+  specialExpenseTransactions(periodTransactions, categories).forEach((item) => {
+    const category = categories.find((entry) => entry.id === item.categoryId);
+    const name = category ? categoryPath(category, categories) : "未分类";
+    totals.set(name, (totals.get(name) ?? 0) + item.amountCents);
+  });
+  return Array.from(totals, ([name, value]) => ({ name, value })).sort((left, right) => right.value - left.value);
+}
+
 export function budgetScope(budget: Budget): "daily" | "total" {
   return budget.scope === "total" ? "total" : "daily";
 }

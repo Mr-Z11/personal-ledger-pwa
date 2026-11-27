@@ -5423,6 +5423,101 @@ button.insight-card {
   background: linear-gradient(135deg, #d45b3f, #d6b25e 52%, #1f5f74);
 }
 
+.daily-expense-swatch {
+  background: #2f7d4f;
+}
+
+.other-expense-swatch {
+  background: #d45b3f;
+}
+
+/* 总支出柱 = 日常消费（绿）+ 其他支出（橙）；两段都只用实色，不叠合成层 */
+.total-trend-panel .trend-row .trend-fill.split-daily {
+  --trend-color: #2f7d4f;
+  border-radius: 999px 0 0 999px;
+  box-shadow: none;
+}
+
+.total-trend-panel .trend-row .trend-fill.split-other {
+  --trend-color: #d45b3f;
+  border-radius: 0 999px 999px 0;
+  box-shadow: none;
+}
+
+.total-trend-panel .trend-row .trend-fill.split-only {
+  border-radius: inherit;
+}
+
+.trend-split-detail {
+  margin-top: 0.48rem;
+  padding: 0.58rem 0.66rem;
+  border: 1px solid rgba(49, 71, 58, 0.1);
+  border-radius: 0.62rem;
+  background: rgba(255, 255, 255, 0.46);
+}
+
+.trend-split-totals {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.3rem 0.9rem;
+  color: rgba(36, 49, 39, 0.64);
+  font-size: 0.76rem;
+  font-weight: 800;
+}
+
+.trend-split-totals span {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.34rem;
+  min-width: 0;
+}
+
+.trend-split-totals b {
+  color: #243127;
+  font-size: 0.82rem;
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+.trend-split-list {
+  list-style: none;
+  display: grid;
+  gap: 0.26rem;
+  margin: 0.52rem 0 0;
+  padding: 0;
+}
+
+.trend-split-list li {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.6rem;
+  color: rgba(36, 49, 39, 0.72);
+  font-size: 0.74rem;
+  line-height: 1.35;
+}
+
+.trend-split-list li span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.trend-split-list li strong {
+  color: #243127;
+  font-size: 0.76rem;
+  white-space: nowrap;
+}
+
+.trend-split-empty,
+.trend-split-note {
+  margin: 0.5rem 0 0;
+  color: rgba(36, 49, 39, 0.52);
+  font-size: 0.68rem;
+  line-height: 1.5;
+}
+
 .floating,
 .floating-form {
   position: fixed;

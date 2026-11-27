@@ -182,10 +182,12 @@ import {
   markAllPurged,
   markPurged,
   offsetMonthKey,
+  otherExpenseCategoryBreakdown,
   percentDelta,
   previousMonthKeys,
   shortMonthLabel,
   specialExpenseTransactions,
+  splitExpenseTrendByPeriod,
   toBeijingDatetimeLocal,
   toBeijingTransactionTimestamp,
   yearLabel
@@ -4868,16 +4870,26 @@ function Reports({ transactions, accounts, categories, budgets, analysisNotes, o
     };
   });
   const expenseTrendAnchorMonth = period === "month" ? month : selectedYear === currentYear ? monthKey() : `${selectedYear}-12`;
-  const totalExpenseTrendData = Array.from({ length: 12 }, (_, index) => {
+  const totalExpenseTrendMonths = Array.from({ length: 12 }, (_, index) => {
     const date = dateFromMonthKey(expenseTrendAnchorMonth);
     date.setMonth(date.getMonth() - (11 - index));
-    const key = monthKey(date);
-    const summary = summarizeTransactions(transactions.filter((item) => item.type === "expense" && item.occurredAt.startsWith(key)));
-    return {
-      period: key,
-      expense: summary.expenseCents
-    };
+    return monthKey(date);
   });
+  const totalExpenseTrendData = splitExpenseTrendByPeriod(totalExpenseTrendMonths, transactions, categories);
+  const selectedTotalTrendPeriod = totalExpenseTrendData[selectedTotalTrendIndex ?? totalExpenseTrendData.length - 1]?.period ?? "";
+  const totalOtherBreakdown = useMemo(() => {
+    if (!selectedTotalTrendPeriod) return [];
+    return otherExpenseCategoryBreakdown(
+      transactions.filter((item) => item.type === "expense" && item.occurredAt.startsWith(selectedTotalTrendPeriod)),
+      categories
+    );
+  }, [selectedTotalTrendPeriod, transactions, categories]);
+  const totalDailyAverage = totalExpenseTrendData.length
+    ? Math.round(totalExpenseTrendData.reduce((sum, item) => sum + item.daily, 0) / totalExpenseTrendData.length)
+    : 0;
+  const totalOtherAverage = totalExpenseTrendData.length
+    ? Math.round(totalExpenseTrendData.reduce((sum, item) => sum + item.other, 0) / totalExpenseTrendData.length)
+    : 0;
   const recentExpenseAverage = Math.round(dailyTrendData.slice(-3).reduce((sum, item) => sum + item.expense, 0) / 3);
   const dailyTrendStart = dailyTrendData[0]?.period ?? periodKey;
   const dailyTrendEnd = dailyTrendData[dailyTrendData.length - 1]?.period ?? periodKey;
@@ -5725,6 +5737,9 @@ function Reports({ transactions, accounts, categories, budgets, analysisNotes, o
                 onSelect={setSelectedTotalTrendIndex}
                 colorOffset={3}
                 totalMode
+                otherBreakdown={totalOtherBreakdown}
+                averageDaily={totalDailyAverage}
+                averageOther={totalOtherAverage}
                 defaultOpen
               />
             </div>
@@ -5900,9 +5915,11 @@ function Reports({ transactions, accounts, categories, budgets, analysisNotes, o
 type TrendPoint = {
   period: string;
   expense: number;
+  daily?: number;
+  other?: number;
 };
 
-function TrendFoldPanel({ title, rangeLabel, legendLabel, data, periodKind, selectedIndex, onSelect, colorOffset = 0, totalMode = false, defaultOpen = false }: {
+function TrendFoldPanel({ title, rangeLabel, legendLabel, data, periodKind, selectedIndex, onSelect, colorOffset = 0, totalMode = false, otherBreakdown = [], averageDaily = 0, averageOther = 0, defaultOpen = false }: {
   title: string;
   rangeLabel: string;
   legendLabel: string;
@@ -5912,6 +5929,9 @@ function TrendFoldPanel({ title, rangeLabel, legendLabel, data, periodKind, sele
   onSelect: (index: number) => void;
   colorOffset?: number;
   totalMode?: boolean;
+  otherBreakdown?: { name: string; value: number }[];
+  averageDaily?: number;
+  averageOther?: number;
   defaultOpen?: boolean;
 }) {
   const maxTrend = Math.max(1, ...data.map((entry) => entry.expense));
@@ -5939,24 +5959,71 @@ function TrendFoldPanel({ title, rangeLabel, legendLabel, data, periodKind, sele
       </summary>
       <div className="trend-fold-body">
         <div className="trend-legend trend-expanded-legend">
-          <span><i className={`legend ${totalMode ? "expense-trend-swatch" : "trend-swatch"}`} />{legendLabel}</span>
+          {totalMode ? (
+            <>
+              <span><i className="legend daily-expense-swatch" />日常消费</span>
+              <span><i className="legend other-expense-swatch" />其他支出</span>
+            </>
+          ) : (
+            <span><i className="legend trend-swatch" />{legendLabel}</span>
+          )}
           <em>{periodKind === "month" ? "按月查看" : "按年查看"}</em>
         </div>
         <div className="trend-selected" key={selectedTrend?.period ?? "empty"}>
           <span>{selectedTrendLabel}</span>
           <strong>¥{centsToYuan(selectedTrend?.expense ?? 0)}</strong>
-          <em>点击{periodKind === "month" ? "月份" : "年份"}柱子，金额就在柱子旁显示</em>
+          <em>{totalMode ? "点柱子看多出来的部分来自哪些分类" : `点击${periodKind === "month" ? "月份" : "年份"}柱子，金额就在柱子旁显示`}</em>
         </div>
+        {totalMode && (
+          <div className="trend-split-detail" key={`${selectedTrend?.period ?? "empty"}-split`}>
+            <div className="trend-split-totals">
+              <span><i className="legend daily-expense-swatch" />日常消费 <b>¥{centsToYuan(selectedTrend?.daily ?? 0)}</b></span>
+              <span><i className="legend other-expense-swatch" />其他支出 <b>¥{centsToYuan(selectedTrend?.other ?? 0)}</b></span>
+            </div>
+            {otherBreakdown.length > 0 ? (
+              <ul className="trend-split-list">
+                {otherBreakdown.slice(0, 5).map((item) => (
+                  <li key={item.name}>
+                    <span>{item.name}</span>
+                    <strong>¥{centsToYuan(item.value)}</strong>
+                  </li>
+                ))}
+                {otherBreakdown.length > 5 && (
+                  <li>
+                    <span>其余 {otherBreakdown.length - 5} 类</span>
+                    <strong>¥{centsToYuan(otherBreakdown.slice(5).reduce((sum, item) => sum + item.value, 0))}</strong>
+                  </li>
+                )}
+              </ul>
+            ) : (
+              <p className="trend-split-empty">这个月没有其他支出，全部支出都是日常消费。</p>
+            )}
+            <p className="trend-split-note">
+              近12个月月均：日常消费 ¥{centsToYuan(averageDaily)} · 其他支出 ¥{centsToYuan(averageOther)}。其他支出 = 专项 / 贷款 / 保险 / 教育等，按预算口径不计入日常消费与日限额。
+            </p>
+          </div>
+        )}
         <div className={`trend-bars trend-bar-list ${periodKind === "month" ? "monthly-trend" : "yearly-trend"}`}>
           {data.map((item, index) => {
             const rowColor = trendColor(index + colorOffset);
             const isActive = index === activeTrendIndex;
+            const dailyCents = totalMode ? item.daily ?? 0 : item.expense;
+            const otherCents = totalMode ? item.other ?? 0 : 0;
+            const rawDailyWidth = (dailyCents / maxTrend) * 100;
+            const rawOtherWidth = (otherCents / maxTrend) * 100;
+            const rawTotalWidth = rawDailyWidth + rawOtherWidth;
+            const minScale = rawTotalWidth > 0 && rawTotalWidth < 3 ? 3 / rawTotalWidth : 1;
+            const dailyWidth = rawDailyWidth * minScale;
+            const otherWidth = rawOtherWidth * minScale;
             const fillWidth = item.expense > 0 ? Math.max(3, (item.expense / maxTrend) * 100) : 0;
             const label = periodKind === "month" ? shortMonthLabel(item.period) : item.period;
             const fullLabel = periodKind === "month" ? monthLabel(item.period) : yearLabel(item.period);
+            const rowLabel = totalMode
+              ? `${fullLabel} 总支出 ¥${centsToYuan(item.expense)}，日常消费 ¥${centsToYuan(dailyCents)}，其他支出 ¥${centsToYuan(otherCents)}`
+              : `${fullLabel} ${legendLabel} ¥${centsToYuan(item.expense)}`;
             return (
               <button
-                aria-label={`${fullLabel} ${legendLabel} ¥${centsToYuan(item.expense)}`}
+                aria-label={rowLabel}
                 aria-pressed={isActive}
                 className={isActive ? "trend-row active" : "trend-row"}
                 key={item.period}
@@ -5967,14 +6034,33 @@ function TrendFoldPanel({ title, rangeLabel, legendLabel, data, periodKind, sele
                 <span className="trend-y-label">{label}</span>
                 <span className="trend-track-wrap">
                   <span className="trend-track">
-                    <i
-                      className="trend-fill trend-bar"
-                      title={`${legendLabel} ¥${centsToYuan(item.expense)}`}
-                      style={{
-                        "--trend-color": rowColor,
-                        width: `${fillWidth}%`
-                      } as CSSProperties}
-                    />
+                    {totalMode ? (
+                      <>
+                        {dailyWidth > 0 && (
+                          <i
+                            className={`trend-fill split-daily ${otherWidth > 0 ? "" : "split-only"}`}
+                            title={`日常消费 ¥${centsToYuan(dailyCents)}`}
+                            style={{ width: `${dailyWidth}%` } as CSSProperties}
+                          />
+                        )}
+                        {otherWidth > 0 && (
+                          <i
+                            className={`trend-fill split-other ${dailyWidth > 0 ? "" : "split-only"}`}
+                            title={`其他支出 ¥${centsToYuan(otherCents)}`}
+                            style={{ left: `${dailyWidth}%`, width: `${otherWidth}%` } as CSSProperties}
+                          />
+                        )}
+                      </>
+                    ) : (
+                      <i
+                        className="trend-fill trend-bar"
+                        title={`${legendLabel} ¥${centsToYuan(item.expense)}`}
+                        style={{
+                          "--trend-color": rowColor,
+                          width: `${fillWidth}%`
+                        } as CSSProperties}
+                      />
+                    )}
                   </span>
                   {isActive && (
                     <span className="trend-bubble" key={item.period} style={

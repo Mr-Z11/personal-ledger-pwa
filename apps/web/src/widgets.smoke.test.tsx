@@ -43,6 +43,8 @@ import {
   inferCategoryParentName,
   isPlaceholderCategoryIcon,
   resolveImportedCategoryNames,
+  otherExpenseCategoryBreakdown,
+  splitExpenseTrendByPeriod,
   entryChunkFromIndexHtml,
   markAllPurged,
   markPurged
@@ -924,5 +926,54 @@ describe("报表子页头部精简（2026-11-22）", () => {
     expect(block).not.toContain("report-category-summary-title");
     expect(block).not.toContain("activeCategoryTransactions.length 笔");
     expect(block).toContain("centsToYuan(activeCategory.value)");
+  });
+});
+
+describe("总支出趋势拆分：消费 + 其他支出（2026-11-27）", () => {
+  const splitCategories: Category[] = [
+    ...categories,
+    { ...stamp, id: "cat-ins", name: "保险", kind: "expense", parentId: null, icon: "circle", color: "#8a5fb0" },
+    { ...stamp, id: "cat-edu-parent", name: "孩子教育", kind: "expense", parentId: null, icon: "circle", color: "#8a5fb0" },
+    { ...stamp, id: "cat-edu", name: "兴趣课程", kind: "expense", parentId: "cat-edu-parent", icon: "circle", color: "#8a5fb0" }
+  ];
+  const splitTransactions: Transaction[] = [
+    tx("s1", 100, "2026-11-02T12:00:00.000+08:00", "cat-food"),
+    tx("s2", 200, "2026-11-03T12:00:00.000+08:00", "cat-ins"),
+    tx("s3", 300, "2026-11-04T12:00:00.000+08:00", "cat-edu"),
+    tx("s4", 400, "2026-11-05T12:00:00.000+08:00", "cat-edu"),
+    tx("s5", 500, "2026-11-06T12:00:00.000+08:00", "cat-unknown"),
+    tx("s6", 600, "2026-10-07T12:00:00.000+08:00", "cat-food"),
+    { ...tx("s7", 700, "2026-11-08T12:00:00.000+08:00", "cat-ins"), type: "income" }
+  ];
+
+  it("拆分之和等于全部支出，日常消费剔除专项 / 教育 / 保险", () => {
+    const rows = splitExpenseTrendByPeriod(["2026-10", "2026-11"], splitTransactions, splitCategories);
+    expect(rows).toHaveLength(2);
+    expect(rows[0]).toEqual({ period: "2026-10", expense: yuanToCents(600), daily: yuanToCents(600), other: 0 });
+    expect(rows[1]).toEqual({ period: "2026-11", expense: yuanToCents(1500), daily: yuanToCents(600), other: yuanToCents(900) });
+    rows.forEach((row) => expect(row.expense).toBe(row.daily + row.other));
+  });
+
+  it("未分类支出归入日常消费，收入不参与拆分", () => {
+    const [row] = splitExpenseTrendByPeriod(["2026-11"], splitTransactions, splitCategories);
+    expect(row.daily).toBe(yuanToCents(600)); // ¥100 三餐 + ¥500 未分类
+    expect(row.expense).toBe(yuanToCents(1500)); // 不含 ¥700 收入
+  });
+
+  it("其他支出按分类汇总并排序，能回答「多出来的是哪些」", () => {
+    const monthItems = splitTransactions.filter((item) => item.occurredAt.startsWith("2026-11"));
+    expect(otherExpenseCategoryBreakdown(monthItems, splitCategories)).toEqual([
+      { name: "孩子教育 > 兴趣课程", value: yuanToCents(700) },
+      { name: "保险", value: yuanToCents(200) }
+    ]);
+    expect(otherExpenseCategoryBreakdown(monthItems.filter((item) => item.categoryId === "cat-food"), splitCategories)).toEqual([]);
+  });
+
+  it("总支出面板确实接了拆分数据与分类明细", () => {
+    const app = readFileSync(new URL("./App.tsx", import.meta.url), "utf8");
+    expect(app).toContain("splitExpenseTrendByPeriod(totalExpenseTrendMonths, transactions, categories)");
+    expect(app).toContain("otherBreakdown={totalOtherBreakdown}");
+    expect(app).toContain('className={`trend-fill split-daily');
+    expect(app).toContain('className={`trend-fill split-other');
   });
 });
