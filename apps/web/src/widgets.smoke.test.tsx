@@ -38,6 +38,7 @@ import {
 } from "./widgets";
 import { PlanView, loadInsuranceSchedule, parseInsuranceText, saveInsuranceSchedule } from "./plan";
 import {
+  averageExpenseTrendCents,
   categoryPath,
   inferCategoryIcon,
   inferCategoryParentName,
@@ -1005,5 +1006,23 @@ describe("趋势图参考金额本机存取（2026-11-28）", () => {
     expect(app).toContain("className=\"trend-reference-mark\"");
     const css = readFileSync(new URL("./styles.css", import.meta.url), "utf8");
     expect(css).toMatch(/\.trend-reference-mark\s*\{[^}]*border-left:\s*2px dashed/);
+  });
+});
+
+describe("近12个月平均月支出（2026-11-28）", () => {
+  it("按周期平均到分，空序列不除零", () => {
+    expect(averageExpenseTrendCents([{ expense: yuanToCents(100) }, { expense: yuanToCents(200) }, { expense: yuanToCents(301) }])).toBe(yuanToCents(200.33));
+    expect(averageExpenseTrendCents([])).toBe(0);
+  });
+
+  it("总支出面板展示平均月支出，且日常 + 其他之和等于它", () => {
+    const app = readFileSync(new URL("./App.tsx", import.meta.url), "utf8");
+    expect(app).toContain("const totalMonthlyAverage = totalDailyAverage + totalOtherAverage;");
+    expect(app).toContain("monthlyAverage={totalMonthlyAverage}");
+    expect(app).toContain("近12个月平均月支出");
+    expect(app).toContain("+ 月均其他支出 ¥");
+    // 只挂在总支出面板，消费面板不能被塞进「支出」口径
+    const block = app.slice(app.indexOf("title=\"近12个月支出趋势\""), app.indexOf("/>", app.indexOf("title=\"近12个月支出趋势\"")));
+    expect(block).toContain("monthlyAverage={totalMonthlyAverage}");
   });
 });

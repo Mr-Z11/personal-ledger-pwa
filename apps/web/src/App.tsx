@@ -181,6 +181,7 @@ import {
   monthTotalBudgetCents,
   markAllPurged,
   markPurged,
+  averageExpenseTrendCents,
   loadTrendReferenceCents,
   offsetMonthKey,
   saveTrendReferenceCents,
@@ -4895,12 +4896,10 @@ function Reports({ transactions, accounts, categories, budgets, analysisNotes, o
       categories
     );
   }, [selectedTotalTrendPeriod, transactions, categories]);
-  const totalDailyAverage = totalExpenseTrendData.length
-    ? Math.round(totalExpenseTrendData.reduce((sum, item) => sum + item.daily, 0) / totalExpenseTrendData.length)
-    : 0;
-  const totalOtherAverage = totalExpenseTrendData.length
-    ? Math.round(totalExpenseTrendData.reduce((sum, item) => sum + item.other, 0) / totalExpenseTrendData.length)
-    : 0;
+  const totalDailyAverage = averageExpenseTrendCents(totalExpenseTrendData.map((item) => ({ expense: item.daily })));
+  const totalOtherAverage = averageExpenseTrendCents(totalExpenseTrendData.map((item) => ({ expense: item.other })));
+  /** 近12个月平均月支出：月均日常消费 + 月均其他支出，保证明细相加等于总额 */
+  const totalMonthlyAverage = totalDailyAverage + totalOtherAverage;
   const recentExpenseAverage = Math.round(dailyTrendData.slice(-3).reduce((sum, item) => sum + item.expense, 0) / 3);
   const dailyTrendStart = dailyTrendData[0]?.period ?? periodKey;
   const dailyTrendEnd = dailyTrendData[dailyTrendData.length - 1]?.period ?? periodKey;
@@ -5769,6 +5768,7 @@ function Reports({ transactions, accounts, categories, budgets, analysisNotes, o
                 otherBreakdown={totalOtherBreakdown}
                 averageDaily={totalDailyAverage}
                 averageOther={totalOtherAverage}
+                monthlyAverage={totalMonthlyAverage}
                 referenceCents={trendReferenceCents}
                 defaultOpen
               />
@@ -5949,7 +5949,7 @@ type TrendPoint = {
   other?: number;
 };
 
-function TrendFoldPanel({ title, rangeLabel, legendLabel, data, periodKind, selectedIndex, onSelect, colorOffset = 0, totalMode = false, otherBreakdown = [], averageDaily = 0, averageOther = 0, referenceCents = 0, defaultOpen = false }: {
+function TrendFoldPanel({ title, rangeLabel, legendLabel, data, periodKind, selectedIndex, onSelect, colorOffset = 0, totalMode = false, otherBreakdown = [], averageDaily = 0, averageOther = 0, monthlyAverage, referenceCents = 0, defaultOpen = false }: {
   title: string;
   rangeLabel: string;
   legendLabel: string;
@@ -5962,6 +5962,7 @@ function TrendFoldPanel({ title, rangeLabel, legendLabel, data, periodKind, sele
   otherBreakdown?: { name: string; value: number }[];
   averageDaily?: number;
   averageOther?: number;
+  monthlyAverage?: number;
   referenceCents?: number;
   defaultOpen?: boolean;
 }) {
@@ -6001,6 +6002,13 @@ function TrendFoldPanel({ title, rangeLabel, legendLabel, data, periodKind, sele
           )}
           <em>{periodKind === "month" ? "按月查看" : "按年查看"}{referenceWidth !== null ? ` · 参考线 ¥${centsToYuan(referenceCents)}` : ""}</em>
         </div>
+        {monthlyAverage !== undefined && (
+          <div className="trend-monthly-average">
+            <span>近12个月平均月支出</span>
+            <strong>¥{centsToYuan(monthlyAverage)}</strong>
+            <em>= 月均日常消费 ¥{centsToYuan(averageDaily)} + 月均其他支出 ¥{centsToYuan(averageOther)}</em>
+          </div>
+        )}
         <div className="trend-selected" key={selectedTrend?.period ?? "empty"}>
           <span>{selectedTrendLabel}</span>
           <strong>¥{centsToYuan(selectedTrend?.expense ?? 0)}</strong>
@@ -6031,7 +6039,7 @@ function TrendFoldPanel({ title, rangeLabel, legendLabel, data, periodKind, sele
               <p className="trend-split-empty">这个月没有其他支出，全部支出都是日常消费。</p>
             )}
             <p className="trend-split-note">
-              近12个月月均：日常消费 ¥{centsToYuan(averageDaily)} · 其他支出 ¥{centsToYuan(averageOther)}。其他支出 = 专项 / 贷款 / 保险 / 教育等，按预算口径不计入日常消费与日限额。
+              其他支出 = 专项 / 贷款 / 保险 / 教育等，按预算口径不计入日常消费与日限额。
             </p>
           </div>
         )}

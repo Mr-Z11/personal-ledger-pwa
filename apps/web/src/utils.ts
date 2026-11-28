@@ -195,6 +195,11 @@ export function splitExpenseTrendByPeriod(periods: string[], transactions: Trans
   });
 }
 
+/** 趋势序列的周期平均值（分）；空序列返回 0。用于「近12个月平均月支出」这类统计。 */
+export function averageExpenseTrendCents(data: { expense: number }[]) {
+  return data.length > 0 ? Math.round(data.reduce((sum, item) => sum + item.expense, 0) / data.length) : 0;
+}
+
 /** 某个周期的「其他支出」按分类汇总，用来回答「多出来的到底是哪些支出」 */
 export function otherExpenseCategoryBreakdown(periodTransactions: Transaction[], categories: Category[]) {
   const totals = new Map<string, number>();
