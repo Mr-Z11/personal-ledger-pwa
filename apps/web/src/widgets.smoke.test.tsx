@@ -43,6 +43,8 @@ import {
   inferCategoryParentName,
   isPlaceholderCategoryIcon,
   resolveImportedCategoryNames,
+  loadTrendReferenceCents,
+  saveTrendReferenceCents,
   otherExpenseCategoryBreakdown,
   splitExpenseTrendByPeriod,
   entryChunkFromIndexHtml,
@@ -975,5 +977,33 @@ describe("总支出趋势拆分：消费 + 其他支出（2026-11-27）", () => 
     expect(app).toContain("otherBreakdown={totalOtherBreakdown}");
     expect(app).toContain('className={`trend-fill split-daily');
     expect(app).toContain('className={`trend-fill split-other');
+  });
+});
+
+describe("趋势图参考金额本机存取（2026-11-28）", () => {
+  it("按分保存与读取，清空后不再有参考线", () => {
+    saveTrendReferenceCents(12345);
+    expect(localStorage.getItem("ledger-trend-reference-cents")).toBe("12345");
+    expect(loadTrendReferenceCents()).toBe(12345);
+    saveTrendReferenceCents(0);
+    expect(localStorage.getItem("ledger-trend-reference-cents")).toBeNull();
+    expect(loadTrendReferenceCents()).toBe(0);
+  });
+
+  it("脏数据一律当作未设置，不会画出 0 元线", () => {
+    localStorage.setItem("ledger-trend-reference-cents", "-100");
+    expect(loadTrendReferenceCents()).toBe(0);
+    localStorage.setItem("ledger-trend-reference-cents", "abc");
+    expect(loadTrendReferenceCents()).toBe(0);
+    saveTrendReferenceCents(Number.NaN);
+    expect(localStorage.getItem("ledger-trend-reference-cents")).toBeNull();
+  });
+
+  it("两张趋势图共用同一参考金额，且都画出竖直虚线", () => {
+    const app = readFileSync(new URL("./App.tsx", import.meta.url), "utf8");
+    expect(app.match(/referenceCents=\{trendReferenceCents\}/g) ?? []).toHaveLength(2);
+    expect(app).toContain("className=\"trend-reference-mark\"");
+    const css = readFileSync(new URL("./styles.css", import.meta.url), "utf8");
+    expect(css).toMatch(/\.trend-reference-mark\s*\{[^}]*border-left:\s*2px dashed/);
   });
 });

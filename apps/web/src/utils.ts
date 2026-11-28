@@ -430,3 +430,28 @@ export function entryChunkFromIndexHtml(html: string): string | null {
   const match = /<script[^>]+src="[^"]*\/assets\/(index-[^"'/]+\.js)/i.exec(html ?? "");
   return match ? match[1] : null;
 }
+
+/* ==================== 趋势图参考线（本机设置） ==================== */
+const TREND_REFERENCE_KEY = "ledger-trend-reference-cents";
+
+/** 读取趋势参考金额（分）。只接受非负有限数；0 = 不画参考线。 */
+export function loadTrendReferenceCents() {
+  try {
+    const raw = localStorage.getItem(TREND_REFERENCE_KEY);
+    if (raw === null || raw === "") return 0;
+    const cents = Number(raw);
+    return Number.isFinite(cents) && cents > 0 ? Math.round(cents) : 0;
+  } catch {
+    return 0;
+  }
+}
+
+/** 保存趋势参考金额（分）。非正数直接清掉，避免留一条 0 元线。 */
+export function saveTrendReferenceCents(cents: number) {
+  try {
+    if (!Number.isFinite(cents) || cents <= 0) localStorage.removeItem(TREND_REFERENCE_KEY);
+    else localStorage.setItem(TREND_REFERENCE_KEY, String(Math.round(cents)));
+  } catch {
+    // 隐私模式 / 存储不可用时静默降级：本会话内 React 状态仍然生效
+  }
+}

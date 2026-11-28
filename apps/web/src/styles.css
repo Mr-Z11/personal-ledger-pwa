@@ -5518,6 +5518,68 @@ button.insight-card {
   line-height: 1.5;
 }
 
+/* 参考金额输入：全局 input{min-height:2.75rem;width:100%} 会把它撑成大框，这里单独收紧 */
+.trend-reference-setting {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.3rem 0.6rem;
+  margin: 0.1rem 0 0.68rem;
+  color: rgba(36, 49, 39, 0.72);
+  font-size: 0.76rem;
+  font-weight: 800;
+}
+
+.trend-reference-field {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.28rem;
+}
+
+.trend-reference-field input {
+  width: 5rem;
+  min-height: 1.9rem;
+  padding: 0.18rem 0.42rem;
+  border: 1px solid rgba(49, 71, 58, 0.24);
+  border-radius: 0.42rem;
+  background: rgba(255, 255, 255, 0.72);
+  color: #243127;
+  font-size: 0.76rem;
+  font-weight: 700;
+  text-align: right;
+  appearance: textfield;
+}
+
+.trend-reference-field input::-webkit-outer-spin-button,
+.trend-reference-field input::-webkit-inner-spin-button {
+  margin: 0;
+  -webkit-appearance: none;
+}
+
+.trend-reference-setting em {
+  color: rgba(36, 49, 39, 0.5);
+  font-size: 0.68rem;
+  font-style: normal;
+  font-weight: 700;
+}
+
+/* 竖直虚线画在轨道容器里（不进 .trend-track，避免 overflow:hidden 裁掉）。
+   上下各外扩半行间距，逐行拼起来就是一条贯通的参考线；不需要额外合成层。 */
+.trend-reference-mark {
+  position: absolute;
+  top: -0.5rem;
+  bottom: -0.5rem;
+  width: 0;
+  border-left: 2px dashed rgba(36, 49, 39, 0.78);
+  pointer-events: none;
+  z-index: 1;
+}
+
+.trend-row.active .trend-reference-mark {
+  top: -0.78rem;
+  bottom: -0.78rem;
+}
+
 .floating,
 .floating-form {
   position: fixed;

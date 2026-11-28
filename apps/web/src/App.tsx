@@ -181,7 +181,9 @@ import {
   monthTotalBudgetCents,
   markAllPurged,
   markPurged,
+  loadTrendReferenceCents,
   offsetMonthKey,
+  saveTrendReferenceCents,
   otherExpenseCategoryBreakdown,
   percentDelta,
   previousMonthKeys,
@@ -4667,6 +4669,15 @@ function Reports({ transactions, accounts, categories, budgets, analysisNotes, o
   const [selectedCategoryIndex, setSelectedCategoryIndex] = useState<number | null>(null);
   const [selectedTrendIndex, setSelectedTrendIndex] = useState<number | null>(null);
   const [selectedTotalTrendIndex, setSelectedTotalTrendIndex] = useState<number | null>(null);
+  /** 趋势图参考金额（日常消费口径，元输入 / 分存储）：两张趋势图共用一根竖直虚线 */
+  const [trendReferenceInput, setTrendReferenceInput] = useState(() => {
+    const cents = loadTrendReferenceCents();
+    return cents > 0 ? centsToYuan(cents) : "";
+  });
+  const trendReferenceCents = Math.max(0, Math.round((Number.parseFloat(trendReferenceInput) || 0) * 100));
+  useEffect(() => {
+    saveTrendReferenceCents(trendReferenceCents);
+  }, [trendReferenceCents]);
   const [reportSubStack, setReportSubStack] = useState<ReportSubPage[]>([]);
   const reportSub = reportSubStack.length > 0 ? reportSubStack[reportSubStack.length - 1] : null;
   /** 每进一层子页记一次「进来时的滚动量」，返回时原样还回去。
@@ -5716,6 +5727,23 @@ function Reports({ transactions, accounts, categories, budgets, analysisNotes, o
                   </p>
                 </section>
               )}
+              <div className="trend-reference-setting">
+                <label htmlFor="trend-reference-input">参考线（日常消费金额）</label>
+                <span className="trend-reference-field">
+                  <input
+                    id="trend-reference-input"
+                    inputMode="decimal"
+                    min={0}
+                    onChange={(event) => setTrendReferenceInput(event.target.value)}
+                    placeholder="未设置"
+                    step="0.01"
+                    type="number"
+                    value={trendReferenceInput}
+                  />
+                  <span>元</span>
+                </span>
+                <em>留空则隐藏；两张趋势图按同一金额画竖直虚线</em>
+              </div>
               <TrendFoldPanel
                 title={period === "month" ? "近12个月消费趋势" : "近6年消费趋势"}
                 rangeLabel={dailyTrendRangeLabel}
@@ -5725,6 +5753,7 @@ function Reports({ transactions, accounts, categories, budgets, analysisNotes, o
                 selectedIndex={selectedTrendIndex}
                 onSelect={setSelectedTrendIndex}
                 colorOffset={0}
+                referenceCents={trendReferenceCents}
                 defaultOpen
               />
               <TrendFoldPanel
@@ -5740,6 +5769,7 @@ function Reports({ transactions, accounts, categories, budgets, analysisNotes, o
                 otherBreakdown={totalOtherBreakdown}
                 averageDaily={totalDailyAverage}
                 averageOther={totalOtherAverage}
+                referenceCents={trendReferenceCents}
                 defaultOpen
               />
             </div>
@@ -5919,7 +5949,7 @@ type TrendPoint = {
   other?: number;
 };
 
-function TrendFoldPanel({ title, rangeLabel, legendLabel, data, periodKind, selectedIndex, onSelect, colorOffset = 0, totalMode = false, otherBreakdown = [], averageDaily = 0, averageOther = 0, defaultOpen = false }: {
+function TrendFoldPanel({ title, rangeLabel, legendLabel, data, periodKind, selectedIndex, onSelect, colorOffset = 0, totalMode = false, otherBreakdown = [], averageDaily = 0, averageOther = 0, referenceCents = 0, defaultOpen = false }: {
   title: string;
   rangeLabel: string;
   legendLabel: string;
@@ -5932,9 +5962,11 @@ function TrendFoldPanel({ title, rangeLabel, legendLabel, data, periodKind, sele
   otherBreakdown?: { name: string; value: number }[];
   averageDaily?: number;
   averageOther?: number;
+  referenceCents?: number;
   defaultOpen?: boolean;
 }) {
   const maxTrend = Math.max(1, ...data.map((entry) => entry.expense));
+  const referenceWidth = referenceCents > 0 ? Math.min(100, (referenceCents / maxTrend) * 100) : null;
   const activeTrendIndex = selectedIndex ?? data.length - 1;
   const selectedTrend = data[activeTrendIndex] ?? data[data.length - 1];
   const selectedTrendLabel = selectedTrend
@@ -5967,7 +5999,7 @@ function TrendFoldPanel({ title, rangeLabel, legendLabel, data, periodKind, sele
           ) : (
             <span><i className="legend trend-swatch" />{legendLabel}</span>
           )}
-          <em>{periodKind === "month" ? "按月查看" : "按年查看"}</em>
+          <em>{periodKind === "month" ? "按月查看" : "按年查看"}{referenceWidth !== null ? ` · 参考线 ¥${centsToYuan(referenceCents)}` : ""}</em>
         </div>
         <div className="trend-selected" key={selectedTrend?.period ?? "empty"}>
           <span>{selectedTrendLabel}</span>
@@ -6062,6 +6094,13 @@ function TrendFoldPanel({ title, rangeLabel, legendLabel, data, periodKind, sele
                       />
                     )}
                   </span>
+                  {referenceWidth !== null && (
+                    <i
+                      aria-hidden="true"
+                      className="trend-reference-mark"
+                      style={{ left: `${referenceWidth}%` } as CSSProperties}
+                    />
+                  )}
                   {isActive && (
                     <span className="trend-bubble" key={item.period} style={
                       (fillWidth > 72
